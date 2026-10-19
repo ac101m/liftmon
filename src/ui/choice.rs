@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::widgets::{Block, List, ListItem, ListState, StatefulWidget};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, StatefulWidget};
 
 use super::Element;
 use super::error::UiError;
@@ -99,12 +99,20 @@ impl Element for Choice {
             .enumerate()
             .map(|(i, option)| ListItem::new(format!("{}. {option}", i + 1)))
             .collect();
-        let title = self
+        let prompt = self
             .prompt
             .clone()
             .unwrap_or_else(|| "Select an option".into());
+        // Title is bracketed to read as a header (─[Main menu]), led by a single
+        // border glyph so it reads as part of the top edge; only the top/bottom
+        // edges are drawn, since side │bars would eat two columns for nothing on
+        // a narrow terminal (e.g. a phone over ssh).
         let list = List::new(items)
-            .block(Block::bordered().title(title))
+            .block(
+                Block::default()
+                    .title(format!("─[{prompt}]"))
+                    .borders(Borders::TOP | Borders::BOTTOM),
+            )
             .highlight_style(Style::new().reversed());
         self.state.select(Some(self.selected));
         list.render(area, buf, &mut self.state);
@@ -179,26 +187,26 @@ mod tests {
         let mut buf = Buffer::empty(area);
         choice.render(area, &mut buf);
 
-        // Borders around the box, title on the top border row.
-        assert_eq!(buf[(0, 0)].symbol(), "┌");
+        // Bracketed header on the top border row, led by one border glyph;
+        // no side bars anywhere.
+        assert!(RowText::at(&buf, 0).starts_with("─[pick]"));
         assert!(RowText::at(&buf, 1).contains("1. bench press"));
         assert!(RowText::at(&buf, 2).contains("2. squat"));
-        assert_eq!(
-            buf[(0, 5)].symbol(),
-            "└",
-            "bottom border at the area's last row"
+        assert!(
+            RowText::at(&buf, 5).chars().all(|c| c == '─'),
+            "bottom edge is a plain rule, no corners"
         );
 
         // The first option (selected) is reversed; the second is not.
         assert!(
-            buf[(1, 1)]
+            buf[(0, 1)]
                 .style()
                 .add_modifier
                 .contains(Modifier::REVERSED),
             "the selected row must be highlighted"
         );
         assert!(
-            !buf[(1, 2)]
+            !buf[(0, 2)]
                 .style()
                 .add_modifier
                 .contains(Modifier::REVERSED),
@@ -212,13 +220,13 @@ mod tests {
         buf.reset();
         choice.render(area, &mut buf);
         assert!(
-            !buf[(1, 1)]
+            !buf[(0, 1)]
                 .style()
                 .add_modifier
                 .contains(Modifier::REVERSED)
         );
         assert!(
-            buf[(1, 2)]
+            buf[(0, 2)]
                 .style()
                 .add_modifier
                 .contains(Modifier::REVERSED)

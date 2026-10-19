@@ -63,10 +63,10 @@ impl Shell {
 
     /// Ask a multiple-choice question within this session.
     ///
-    /// Logs the prompt to the history area, runs a [`Choice`] element, and
-    /// returns the user's selection. Unlike [`super::choice::get_user_selection`],
-    /// this keeps the same session (and history) across calls — the natural way
-    /// to drive a sequence of questions, as the main menu does.
+    /// Runs a [`Choice`] element and returns the user's selection. Unlike
+    /// [`super::choice::get_user_selection`], this keeps the same session (and
+    /// history) across calls — the natural way to drive a sequence of
+    /// questions, as the main menu does.
     pub(crate) fn ask<S: AsRef<str>>(
         &mut self,
         prompt: Option<String>,
@@ -77,9 +77,6 @@ impl Shell {
             !options.is_empty(),
             "cannot ask a question with no options to choose from"
         );
-        if let Some(prompt) = &prompt {
-            self.log(prompt);
-        }
         self.run(&mut Choice::new(prompt, options))
     }
 
