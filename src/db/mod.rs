@@ -205,6 +205,14 @@ impl Database {
     }
 }
 
+/// Apply all schema migrations to an arbitrary connection. Test-only: lets
+/// other modules (e.g. domain) build a scratch database in their unit tests.
+#[cfg(test)]
+pub(crate) fn apply_schema(conn: &mut Connection) -> Result<(), DbError> {
+    schema_migrations().to_latest(conn)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,13 +324,66 @@ mod tests {
     }
 
     #[test]
+    fn real_migration_chain_upgrades_v1_file_with_backup() {
+        let scratch = Scratch::new("real-chain.sqlite");
+
+        // Simulate a deploy that had shipped only migration v1: its file sits
+        // at schema version 1 with just the bootstrap table.
+        let v1_defs = [M::up(
+            "CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )];
+        let v1 = Migrations::from_slice(&v1_defs);
+        let mut conn = Connection::open(&scratch.path).unwrap();
+        v1.to_latest(&mut conn).unwrap();
+        drop(conn);
+
+        // This build knows one more migration (exercises): opening the old file
+        // reports an upgradable schema — the case main/UI prompts on.
+        let mut db = Database::open(&scratch.path).unwrap();
+        assert_eq!(
+            db.status().unwrap(),
+            DbStatus::Upgradeable { from: 1, to: 2 }
+        );
+
+        let outcome = db.upgrade().unwrap();
+        assert_eq!(outcome.applied, 1);
+        let backup = outcome.backup.expect("upgrading an old file must back it up");
+        assert!(
+            backup.exists(),
+            "backup should exist at {}",
+            backup.display()
+        );
+
+        // The live database is current and gained the exercises table from the
+        // real v2 migration; the backup still holds the bare v1 schema.
+        assert_eq!(db.status().unwrap(), DbStatus::Current);
+        let exercise_tables: i64 = db
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='exercises'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(exercise_tables, 1);
+
+        let backup_conn = Connection::open(&backup).unwrap();
+        let user_version: i64 = backup_conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(user_version, 1);
+    }
+
+    #[test]
     fn newer_database_is_rejected_as_too_new() {
         let scratch = Scratch::new("future.sqlite");
 
-        // A future build knew two migrations; the file is left at v2.
+        // A future build knew three migrations, one more than this build, so
+        // the file is left at a schema version we don't understand (v3).
         let future_defs = [
             M::up("CREATE TABLE a (x INTEGER);"),
             M::up("CREATE TABLE b (x INTEGER);"),
+            M::up("CREATE TABLE c (x INTEGER);"),
         ];
         let future = Migrations::from_slice(&future_defs);
         let mut conn = Connection::open(&scratch.path).unwrap();
@@ -330,7 +391,7 @@ mod tests {
         drop(conn);
 
         let mut db = Database::open(&scratch.path).unwrap();
-        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 2 });
+        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 3 });
         assert!(db.is_from_future().unwrap());
         assert!(
             matches!(db.upgrade(), Err(DbError::TooNew { .. })),

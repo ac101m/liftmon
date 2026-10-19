@@ -1,4 +1,5 @@
 mod db;
+mod domain;
 
 use std::io::{self, Write};
 use std::process::ExitCode;

@@ -42,6 +42,17 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
     )
     .down("DROP TABLE app_meta;")
     .comment("Bootstrap schema. Real domain tables arrive with the domain module."),
+    M::up(
+        r"
+        CREATE TABLE exercises (
+            id          INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL UNIQUE,
+            description TEXT NOT NULL
+        );
+        ",
+    )
+    .down("DROP TABLE exercises;")
+    .comment("Exercises, the first domain entity. name is unique (enforced by SQLite)."),
 ];
 
 /// The migrations, ready to apply to a connection.
