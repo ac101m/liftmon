@@ -13,6 +13,9 @@
 //! * Every frame redraws from [`ratatui::Frame::area`], so a terminal resize is
 //!   picked up on the next frame with no special handling. Rendering clips to a
 //!   fixed-size buffer instead of wrapping, so lines never wrap by accident.
+//! * The [`menu::Menu`] state machine tracks which screen we're on and what the
+//!   user's choice leads to; the main loop steps it forward over one shared
+//!   shell session until the user leaves.
 //!
 //! The shell needs a real terminal (raw mode); running it with a pipe as stdin
 //! or no controlling terminal fails cleanly via [`error::UiError`].
@@ -24,9 +27,14 @@
 
 mod choice;
 mod error;
+mod exercises_menu;
+mod main_menu;
+mod menu;
 mod shell;
 
 pub use choice::get_user_selection;
+pub(crate) use error::UiError;
+pub(crate) use menu::Menu;
 pub(crate) use shell::Shell;
 
 use crossterm::event::KeyEvent;

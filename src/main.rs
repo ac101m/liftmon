@@ -64,23 +64,23 @@ fn main() -> ExitCode {
     main_menu()
 }
 
-/// The app's main menu: repeatedly offer the high-level actions until the user
-/// leaves. Runs in one shell session, so each selection and its result stays
-/// visible in the history area above the menu.
+/// The app's main loop: walk the [`ui::Menu`] state machine over one shell
+/// session, so actions accumulate in the history area, until the user leaves.
 fn main_menu() -> ExitCode {
     let mut shell = match ui::Shell::new() {
         Ok(shell) => shell,
         Err(err) => return fail(format!("could not start the terminal UI: {err}")),
     };
 
-    // Repeat until the user leaves; "Exit" (and Ctrl+C) end the loop while
-    // "Exercises" merely logs and asks again.
-    while let Ok("Exercises") = shell
-        .ask(Some("Main menu".to_string()), ["Exercises", "Exit"])
-        .as_deref()
-    {
-        // Log-only placeholder until exercises have an implementation.
-        shell.log("exercises: not implemented yet");
+    // "Exit" (and Ctrl+C) end the walk; every other choice steps the machine
+    // on to the next screen.
+    let mut menu = ui::Menu::Main;
+    loop {
+        match menu.next(&mut shell) {
+            Ok(Some(next)) => menu = next,
+            Ok(None) | Err(ui::UiError::Interrupted) => break,
+            Err(err) => return fail(format!("{err}")),
+        }
     }
 
     ExitCode::SUCCESS
