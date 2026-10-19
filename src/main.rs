@@ -1,13 +1,13 @@
 mod db;
 mod domain;
+mod ui;
 
-use std::io::{self, Write};
 use std::process::ExitCode;
 
 use db::{Database, DbStatus};
 
-/// Temporary wiring until the UI module exists: opens the database at a
-/// hard-coded path and drives the migration/backup flow in plain text.
+/// Opens the database at a hard-coded path and drives the migration/backup
+/// flow. The interactive upgrade choice now goes through the UI module.
 fn main() -> ExitCode {
     let mut database = match Database::open("liftmon.sqlite") {
         Ok(db) => db,
@@ -25,21 +25,20 @@ fn main() -> ExitCode {
             Err(err) => return fail(format!("could not initialize the database: {err}")),
         },
         Ok(DbStatus::Current) => {
-            println!("Database schema is up to date (v{}).", database.version().unwrap());
+            println!(
+                "Database schema is up to date (v{}).",
+                database.version().unwrap()
+            );
         }
         Ok(DbStatus::Upgradeable { from, to }) => {
-            print!(
-                "Database schema is out of date (v{from} -> v{to}). \
-                 Upgrade now? A backup of the old file will be made first. [y/N] "
+            let choice = ui::get_user_selection(
+                Some(format!(
+                    "Database schema is out of date (v{from} -> v{to}); upgrade now? A backup of the old file will be made first."
+                )),
+                ["Upgrade now", "Cancel"],
             );
-            io::stdout().flush().expect("flush prompt");
-
-            let mut answer = String::new();
-            io::stdin()
-                .read_line(&mut answer)
-                .expect("read answer");
-            if is_affirmative(&answer) {
-                match database.upgrade() {
+            match choice.as_str() {
+                "Upgrade now" => match database.upgrade() {
                     Ok(outcome) => {
                         let backup = outcome
                             .backup
@@ -48,24 +47,43 @@ fn main() -> ExitCode {
                         println!("Upgraded database to schema v{to}{backup}.");
                     }
                     Err(err) => return fail(format!("upgrade failed: {err}")),
-                }
-            } else {
-                return fail("database upgrade declined; cannot continue.");
+                },
+                _ => return fail("database upgrade declined; cannot continue."),
             }
         }
-        Ok(DbStatus::FromFuture { version }) => return fail(format!(
-            "database is at schema v{version}, newer than this build supports (v{}); \
+        Ok(DbStatus::FromFuture { version }) => {
+            return fail(format!(
+                "database is at schema v{version}, newer than this build supports (v{}); \
              open it with a newer version of liftmon.",
-            Database::latest_version()
-        )),
+                Database::latest_version()
+            ));
+        }
         Err(err) => return fail(format!("could not check database schema: {err}")),
     }
 
-    ExitCode::SUCCESS
+    main_menu()
 }
 
-fn is_affirmative(answer: &str) -> bool {
-    !answer.trim().is_empty() && answer.trim().eq_ignore_ascii_case("y")
+/// The app's main menu: repeatedly offer the high-level actions until the user
+/// leaves. Runs in one shell session, so each selection and its result stays
+/// visible in the history area above the menu.
+fn main_menu() -> ExitCode {
+    let mut shell = match ui::Shell::new() {
+        Ok(shell) => shell,
+        Err(err) => return fail(format!("could not start the terminal UI: {err}")),
+    };
+
+    // Repeat until the user leaves; "Exit" (and Ctrl+C) end the loop while
+    // "Exercises" merely logs and asks again.
+    while let Ok("Exercises") = shell
+        .ask(Some("Main menu".to_string()), ["Exercises", "Exit"])
+        .as_deref()
+    {
+        // Log-only placeholder until exercises have an implementation.
+        shell.log("exercises: not implemented yet");
+    }
+
+    ExitCode::SUCCESS
 }
 
 fn fail(message: impl AsRef<str>) -> ExitCode {

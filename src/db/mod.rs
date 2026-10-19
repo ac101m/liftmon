@@ -74,7 +74,9 @@ pub enum DbError {
         source: rusqlite::Error,
     },
 
-    #[error("database at {path} is at schema version {version}, newer than this build supports ({latest})")]
+    #[error(
+        "database at {path} is at schema version {version}, newer than this build supports ({latest})"
+    )]
     TooNew {
         path: PathBuf,
         version: usize,
@@ -116,7 +118,10 @@ impl Database {
         let latest = Self::latest_version();
         match version {
             0 => Ok(DbStatus::Fresh),
-            v if v < latest => Ok(DbStatus::Upgradeable { from: v, to: latest }),
+            v if v < latest => Ok(DbStatus::Upgradeable {
+                from: v,
+                to: latest,
+            }),
             v if v == latest => Ok(DbStatus::Current),
             v => Ok(DbStatus::FromFuture { version: v }),
         }
@@ -190,8 +195,13 @@ impl Database {
         let mut candidate = PathBuf::from(format!("{}.bak-{}-{}", self.path.display(), from, secs));
         let mut n = 1;
         while candidate.exists() {
-            candidate =
-                PathBuf::from(format!("{}.bak-{}-{}-{}", self.path.display(), from, secs, n));
+            candidate = PathBuf::from(format!(
+                "{}.bak-{}-{}-{}",
+                self.path.display(),
+                from,
+                secs,
+                n
+            ));
             n += 1;
         }
         candidate
@@ -347,7 +357,9 @@ mod tests {
 
         let outcome = db.upgrade().unwrap();
         assert_eq!(outcome.applied, 1);
-        let backup = outcome.backup.expect("upgrading an old file must back it up");
+        let backup = outcome
+            .backup
+            .expect("upgrading an old file must back it up");
         assert!(
             backup.exists(),
             "backup should exist at {}",

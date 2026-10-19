@@ -1,7 +1,7 @@
 //! Exercises — the reference implementation of the domain entity pattern
 //! described in `src/domain/mod.rs`.
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::domain::DomainError;
 
@@ -111,7 +111,13 @@ mod tests {
         let conn = test_db();
         Exercise::create(&conn, "squat", "heavy").unwrap();
         let err = Exercise::create(&conn, "squat", "a different description").unwrap_err();
-        assert!(matches!(err, DomainError::NameTaken { kind: "exercise", .. }));
+        assert!(matches!(
+            err,
+            DomainError::NameTaken {
+                kind: "exercise",
+                ..
+            }
+        ));
     }
 
     #[test]
