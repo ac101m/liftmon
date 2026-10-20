@@ -2,7 +2,9 @@
 //!
 //! The user's typing lives in a single-line filter row; the list below shows
 //! every option whose name contains that text (case-insensitively), so an
-//! empty filter lists everything and the box narrows as they type. Up/Down
+//! empty filter lists everything and the list narrows as they type. The box
+//! keeps a constant height (`min(5, options)` list rows) so it never changes
+//! size while filtering; the matches scroll within that fixed window. Up/Down
 //! move the highlight through the filtered list, Enter picks the highlighted
 //! match, and Escape cancels.
 
@@ -20,6 +22,12 @@ use super::{Element, ElementResult};
 fn matches_filter(option: &str, filter_lower: &str) -> bool {
     filter_lower.is_empty() || option.to_lowercase().contains(filter_lower)
 }
+
+/// How many matches the list shows at once: `min(5, total options)`. The box
+/// keeps this many rows no matter how the filter narrows, so it never changes
+/// size while typing (up to five on screen, fewer when there are fewer
+/// options to begin with).
+const MAX_VISIBLE: usize = 5;
 
 /// State of the filterable list while it is being answered.
 pub(crate) struct Picker {
@@ -54,6 +62,13 @@ impl Picker {
             last_width: 0,
             state,
         }
+    }
+
+    /// The fixed number of list rows this picker draws: `min(5, total
+    /// options)`. The shell gives the element exactly this much room, so the
+    /// box keeps its size while the filter narrows the matches.
+    fn visible_rows(&self) -> usize {
+        self.all.len().min(MAX_VISIBLE)
     }
 
     /// The options currently matching the filter, in their original order.
@@ -127,8 +142,9 @@ impl Picker {
 impl Element for Picker {
     fn natural_height(&self, _width: u16) -> u16 {
         // Top border, the filter row, the matches (or a no-match hint), bottom
-        // border.
-        2 + 1 + self.matches().len().max(1) as u16
+        // border. The list keeps its fixed `visible_rows` even as the filter
+        // narrows, so the box does not resize while typing.
+        2 + 1 + self.visible_rows() as u16
     }
 
     fn hint(&self) -> String {
@@ -244,6 +260,15 @@ mod tests {
         Picker::new(
             Some("Select".into()),
             OPTIONS.iter().map(|s| s.to_string()).collect(),
+        )
+    }
+
+    /// A picker with more options than can fit on screen at once (to exercise
+    /// the fixed five-row window).
+    fn big_picker() -> Picker {
+        Picker::new(
+            Some("Select".into()),
+            (0..17).map(|i| format!("exercise {i:02}")).collect(),
         )
     }
 
@@ -367,19 +392,54 @@ mod tests {
     }
 
     #[test]
-    fn natural_height_counts_filter_row_plus_matches_plus_borders() {
+    fn natural_height_is_fixed_while_the_filter_narrows() {
+        let mut picker = big_picker(); // 17 options -> five list rows
+        assert_eq!(picker.natural_height(40), 2 + 1 + 5);
+
+        type_text(&mut picker, "exercise 1"); // narrows to a handful
+        assert_eq!(picker.natural_height(40), 2 + 1 + 5);
+
+        type_text(&mut picker, " 15"); // now nothing matches
+        assert_eq!(picker.natural_height(40), 2 + 1 + 5);
+    }
+
+    #[test]
+    fn natural_height_is_min_of_five_when_fewer_options() {
+        // Four options: the fixed count is four, and it stays put (no
+        // hint-only collapse) even when nothing matches.
         let mut picker = picker();
         assert_eq!(picker.natural_height(40), 2 + 1 + OPTIONS.len() as u16);
 
         type_text(&mut picker, "squ");
-        assert_eq!(picker.natural_height(40), 2 + 1 + 1);
+        assert_eq!(picker.natural_height(40), 2 + 1 + OPTIONS.len() as u16);
 
-        type_text(&mut picker, "at"); // "squat"
-        assert_eq!(picker.natural_height(40), 2 + 1 + 1);
-
-        // No matches still shows the hint row, so the box never collapses.
         type_text(&mut picker, "zzz");
-        assert_eq!(picker.natural_height(40), 2 + 1 + 1);
+        assert_eq!(picker.natural_height(40), 2 + 1 + OPTIONS.len() as u16);
+    }
+
+    #[test]
+    fn renders_fixed_list_rows_and_scrolls_the_highlight_into_view() {
+        let mut picker = big_picker();
+        let area = Rect::new(0, 0, 40, picker.natural_height(40));
+
+        let mut buf = Buffer::empty(area);
+        picker.render(area, &mut buf);
+        let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(2).trim_end(), "1. exercise 00");
+        assert_eq!(row(6).trim_end(), "5. exercise 04", "box fits five rows");
+        assert!(row(7).chars().all(|c| c == '─'), "bottom rule");
+
+        // March the highlight off the bottom edge; the list scrolls to keep
+        // the selection in view without the box changing size.
+        for _ in 0..5 {
+            picker.on_key(key(KeyCode::Down));
+        }
+        assert_eq!(picker.selected, 5);
+        let mut buf = Buffer::empty(area);
+        picker.render(area, &mut buf);
+        let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(2).trim_end(), "2. exercise 01", "list scrolled");
+        assert_eq!(row(6).trim_end(), "6. exercise 05", "highlight in view");
     }
 
     #[test]
