@@ -56,7 +56,7 @@ impl Exercise {
     }
 
     /// Write this exercise's current `name` and `description` to its row.
-    #[allow(dead_code)] // part of the entity pattern; a future loader/editor will call this
+    #[allow(dead_code)] // part of the entity pattern; a future editor will call this
     pub fn save(&self, conn: &Connection) -> Result<(), DomainError> {
         let changed = conn.execute(
             "UPDATE exercises SET name = ?1, description = ?2 WHERE id = ?3",
@@ -69,6 +69,19 @@ impl Exercise {
             });
         }
         Ok(())
+    }
+
+    /// Load every exercise, in name order.
+    pub fn all(conn: &Connection) -> Result<Vec<Self>, DomainError> {
+        let mut stmt = conn.prepare("SELECT id, name, description FROM exercises ORDER BY name")?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Self {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 }
 
@@ -177,5 +190,28 @@ mod tests {
                 id: 999
             })
         ));
+    }
+
+    #[test]
+    fn all_returns_rows_in_name_order() {
+        let conn = test_db();
+        Exercise::create(&conn, "squat", "back squat").unwrap();
+        Exercise::create(&conn, "bench press", "flat bench").unwrap();
+        Exercise::create(&conn, "deadlift", "conventional").unwrap();
+
+        let all = Exercise::all(&conn).unwrap();
+        assert_eq!(
+            all.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            ["bench press", "deadlift", "squat"],
+            "rows come back sorted by name"
+        );
+        assert_eq!(all[0].description, "flat bench");
+        assert!(all.iter().all(|e| e.id > 0));
+    }
+
+    #[test]
+    fn all_on_empty_db_returns_empty() {
+        let conn = test_db();
+        assert!(Exercise::all(&conn).unwrap().is_empty());
     }
 }

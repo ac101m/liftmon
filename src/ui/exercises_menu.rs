@@ -7,9 +7,13 @@ use crate::ui::shell::Shell;
 
 /// Ask the exercise menu question and return where the user's choice leads.
 pub(super) fn run(shell: &mut Shell) -> Result<Option<Menu>, UiError> {
-    let choice = shell.ask(Some("Exercises".to_string()), ["Add exercise", "Back"])?;
+    let choice = shell.ask(
+        Some("Exercises".to_string()),
+        ["Add exercise", "Show exercise", "Back"],
+    )?;
     Ok(match choice.as_str() {
         "Add exercise" => Some(Menu::AddExercise),
+        "Show exercise" => Some(Menu::SelectExercise),
         _ => Some(Menu::Main), // "Back"
     })
 }

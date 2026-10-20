@@ -6,8 +6,9 @@
 //! Ctrl+C).
 //!
 //! Each screen's behaviour lives in its own file — see [`super::main_menu`],
-//! [`super::exercises_menu`] and [`super::add_exercise`] — so this file stays a
-//! thin dispatcher as more menus are added.
+//! [`super::exercises_menu`], [`super::add_exercise`] and
+//! [`super::select_exercise`] — so this file stays a thin dispatcher as more
+//! menus are added.
 
 use rusqlite::Connection;
 
@@ -18,10 +19,12 @@ use super::shell::Shell;
 pub(crate) enum Menu {
     /// The top-level menu (Exercises / Exit).
     Main,
-    /// The exercise screen (Add exercise / Back).
+    /// The exercise screen (Add exercise / Show exercise / Back).
     Exercises,
     /// The add-exercise form (name, then description).
     AddExercise,
+    /// The pick-an-exercise screen (filter box + list).
+    SelectExercise,
 }
 
 impl Menu {
@@ -40,6 +43,7 @@ impl Menu {
             Menu::Main => super::main_menu::run(shell),
             Menu::Exercises => super::exercises_menu::run(shell),
             Menu::AddExercise => super::add_exercise::run(shell, conn),
+            Menu::SelectExercise => super::select_exercise::run(shell, conn),
         }
     }
 }

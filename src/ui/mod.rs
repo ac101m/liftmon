@@ -31,6 +31,8 @@ mod error;
 mod exercises_menu;
 mod main_menu;
 mod menu;
+mod picker;
+mod select_exercise;
 mod shell;
 mod text_input;
 

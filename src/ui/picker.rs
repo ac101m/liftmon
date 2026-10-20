@@ -1,0 +1,453 @@
+//! The picker element: a filter box on top of a multiple-choice list.
+//!
+//! The user's typing lives in a single-line filter row; the list below shows
+//! every option whose name contains that text (case-insensitively), so an
+//! empty filter lists everything and the box narrows as they type. Up/Down
+//! move the highlight through the filtered list, Enter picks the highlighted
+//! match, and Escape cancels.
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{
+    Block, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget,
+};
+
+use super::{Element, ElementResult};
+
+/// Which options match a filter (case-insensitive substring).
+fn matches_filter(option: &str, filter_lower: &str) -> bool {
+    filter_lower.is_empty() || option.to_lowercase().contains(filter_lower)
+}
+
+/// State of the filterable list while it is being answered.
+pub(crate) struct Picker {
+    /// Question text; shown as the box header, e.g. "Select exercise".
+    prompt: Option<String>,
+    /// Every option, in their given order; the filter narrows this.
+    all: Vec<String>,
+    /// The typed filter.
+    filter: String,
+    /// Byte index into `filter` where the caret sits (a char boundary).
+    filter_cursor: usize,
+    /// Index into the current matches of the highlighted row.
+    selected: usize,
+    /// Column width of the last render; used to clip the filter row.
+    last_width: u16,
+    /// Scroll/selection state for the underlying ratatui `List`.
+    state: ListState,
+}
+
+impl Picker {
+    /// Build a picker over `options`; they must not be empty (empty options
+    /// would be unresolvable, so [`super::shell::Shell::pick`] asserts it).
+    pub(crate) fn new(prompt: Option<String>, options: Vec<String>) -> Self {
+        let mut state = ListState::default();
+        state.select(Some(0));
+        Self {
+            prompt,
+            all: options,
+            filter: String::new(),
+            filter_cursor: 0,
+            selected: 0,
+            last_width: 0,
+            state,
+        }
+    }
+
+    /// The options currently matching the filter, in their original order.
+    fn matches(&self) -> Vec<&str> {
+        let filter_lower = self.filter.to_lowercase();
+        self.all
+            .iter()
+            .filter(|option| matches_filter(option, &filter_lower))
+            .map(String::as_str)
+            .collect()
+    }
+
+    /// Move the highlight by `delta` rows, wrapping around the ends. With no
+    /// matches there is nothing to move.
+    fn move_selected(&mut self, delta: isize) {
+        let matches = self.matches();
+        let len = matches.len();
+        if len == 0 {
+            return;
+        }
+        self.selected = (self.selected as isize + delta).rem_euclid(len as isize) as usize;
+        self.state.select(Some(self.selected));
+    }
+
+    /// The text to draw on the (single-line) filter row and the caret's column:
+    /// the window of `width` characters ending at the caret, so the caret
+    /// never slides off the right edge while typing past the width.
+    fn visible_filter(&self, width: u16) -> (String, u16) {
+        if width == 0 {
+            return (String::new(), 0);
+        }
+        let before = self.filter[..self.filter_cursor].chars().count();
+        let start = before.saturating_sub(width as usize - 1);
+        let text: String = self
+            .filter
+            .chars()
+            .skip(start)
+            .take(width as usize)
+            .collect();
+        (text, (before - start) as u16)
+    }
+
+    /// Move the caret one char backwards; at the start it stays put.
+    fn move_cursor_left(&mut self) {
+        self.filter_cursor = self.filter[..self.filter_cursor]
+            .char_indices()
+            .next_back()
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+    }
+
+    /// Move the caret one char forwards; at the end it stays put.
+    fn move_cursor_right(&mut self) {
+        if self.filter_cursor < self.filter.len() {
+            self.filter_cursor += self.filter[self.filter_cursor..]
+                .chars()
+                .next()
+                .map(|c| c.len_utf8())
+                .unwrap_or(0);
+        }
+    }
+
+    /// The filter changed, so the matches may have narrowed: start the
+    /// highlight back at the top of the new list.
+    fn filter_changed(&mut self) {
+        self.selected = 0;
+        self.state.select(Some(0));
+    }
+}
+
+impl Element for Picker {
+    fn natural_height(&self, _width: u16) -> u16 {
+        // Top border, the filter row, the matches (or a no-match hint), bottom
+        // border.
+        2 + 1 + self.matches().len().max(1) as u16
+    }
+
+    fn hint(&self) -> String {
+        "type to filter · ↑/↓ move · Enter select · Esc cancel · Ctrl+C quit".into()
+    }
+
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
+        self.last_width = area.width;
+        let prompt = self.prompt.clone().unwrap_or_else(|| "Select".into());
+        let matches = self.matches();
+        // (`self.state` is kept in sync with `self.selected` by the editing
+        // methods, so the List has nothing extra to set here.)
+
+        // Same look as the choice box: a ─[header] top edge and a plain bottom
+        // rule, with no side bars.
+        let block = Block::default()
+            .title(format!("─[{prompt}]"))
+            .borders(Borders::TOP | Borders::BOTTOM);
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        // The filter row, clipped to one line (the caret is parked by the
+        // shell via `cursor()`).
+        let filter_area = Rect::new(inner.x, inner.y, inner.width, 1);
+        let (filter_text, _) = self.visible_filter(inner.width);
+        Paragraph::new(filter_text).render(filter_area, buf);
+
+        // The matches below it (or a hint when nothing matches).
+        if matches.is_empty() {
+            let hint_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
+            Paragraph::new("no matching exercises")
+                .style(Style::new().add_modifier(Modifier::DIM))
+                .render(hint_area, buf);
+            return;
+        }
+        let items: Vec<ListItem> = matches
+            .iter()
+            .enumerate()
+            .map(|(i, name)| ListItem::new(format!("{}. {name}", i + 1)))
+            .collect();
+        let list_area = Rect::new(
+            inner.x,
+            inner.y + 1,
+            inner.width,
+            inner.height.saturating_sub(1),
+        );
+        StatefulWidget::render(
+            List::new(items).highlight_style(Style::new().reversed()),
+            list_area,
+            buf,
+            &mut self.state,
+        );
+    }
+
+    /// Where the caret sits on the filter row, in element coordinates: row 1
+    /// (beneath the top border), at its clipped column.
+    fn cursor(&self) -> Option<(u16, u16)> {
+        let (_, x) = self.visible_filter(self.last_width.max(1));
+        Some((x, 1))
+    }
+
+    fn on_key(&mut self, key: KeyEvent) -> Option<ElementResult> {
+        match key.code {
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.filter.insert(self.filter_cursor, c);
+                self.filter_cursor += c.len_utf8();
+                self.filter_changed();
+            }
+            KeyCode::Backspace if self.filter_cursor > 0 => {
+                let start = self.filter[..self.filter_cursor]
+                    .char_indices()
+                    .next_back()
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                self.filter.replace_range(start..self.filter_cursor, "");
+                self.filter_cursor = start;
+                self.filter_changed();
+            }
+            KeyCode::Left => self.move_cursor_left(),
+            KeyCode::Right => self.move_cursor_right(),
+            KeyCode::Up => self.move_selected(-1),
+            KeyCode::Down => self.move_selected(1),
+            KeyCode::Enter => {
+                // Pick the highlighted match, if any.
+                let matches = self.matches();
+                if let Some(name) = matches.get(self.selected) {
+                    return Some(ElementResult::Value((*name).to_owned()));
+                }
+            }
+            KeyCode::Esc => return Some(ElementResult::Cancelled),
+            _ => {}
+        }
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Picker;
+    use crate::ui::{Element, ElementResult};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use ratatui::style::Modifier;
+
+    const OPTIONS: [&str; 4] = ["bench press", "deadlift", "incline bench", "squat"];
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn picker() -> Picker {
+        Picker::new(
+            Some("Select".into()),
+            OPTIONS.iter().map(|s| s.to_string()).collect(),
+        )
+    }
+
+    fn type_text(input: &mut Picker, text: &str) {
+        for c in text.chars() {
+            input.on_key(key(KeyCode::Char(c)));
+        }
+    }
+
+    fn names(picker: &Picker) -> Vec<&str> {
+        picker.matches()
+    }
+
+    #[test]
+    fn empty_filter_lists_all_options() {
+        let picker = picker();
+        assert_eq!(names(&picker), OPTIONS.to_vec());
+    }
+
+    #[test]
+    fn typing_narrows_matches_case_insensitively() {
+        let mut picker = picker();
+        type_text(&mut picker, "beNch");
+        assert_eq!(names(&picker), vec!["bench press", "incline bench"]);
+        // The filter is the whole string, so typing on narrows it further.
+        type_text(&mut picker, " p");
+        assert_eq!(names(&picker), vec!["bench press"]);
+    }
+
+    #[test]
+    fn typing_resets_selection_to_the_first_match() {
+        let mut picker = picker();
+        picker.on_key(key(KeyCode::Down));
+        picker.on_key(key(KeyCode::Down)); // selected = 2
+        assert_eq!(picker.selected, 2, "sanity: we moved the highlight");
+
+        type_text(&mut picker, "e");
+        assert_eq!(picker.selected, 0, "filtering jumps back to the top");
+        assert_eq!(
+            names(&picker),
+            vec!["bench press", "deadlift", "incline bench"]
+        );
+    }
+
+    #[test]
+    fn up_down_do_nothing_with_no_matches() {
+        let mut picker = picker();
+        type_text(&mut picker, "zzz");
+        assert!(names(&picker).is_empty());
+        picker.on_key(key(KeyCode::Down));
+        picker.on_key(key(KeyCode::Up));
+        assert_eq!(picker.selected, 0);
+    }
+
+    #[test]
+    fn up_down_move_and_wrap_through_the_matches() {
+        let mut picker = picker();
+        picker.on_key(key(KeyCode::Down));
+        assert_eq!(picker.selected, 1);
+        picker.on_key(key(KeyCode::Down));
+        assert_eq!(picker.selected, 2);
+        picker.on_key(key(KeyCode::Down));
+        picker.on_key(key(KeyCode::Down)); // wraps past the end
+        assert_eq!(picker.selected, 0);
+        picker.on_key(key(KeyCode::Up)); // wraps past the start
+        assert_eq!(picker.selected, OPTIONS.len() - 1);
+    }
+
+    #[test]
+    fn enter_returns_the_highlighted_filtered_match() {
+        let mut picker = picker();
+        type_text(&mut picker, "sq");
+        picker.on_key(key(KeyCode::Down)); // 0 -> 1 (wraps back to 0 with one match)
+        let result = picker.on_key(key(KeyCode::Enter));
+        assert_eq!(result, Some(ElementResult::Value("squat".to_string())));
+    }
+
+    #[test]
+    fn enter_with_no_matches_does_nothing() {
+        let mut picker = picker();
+        type_text(&mut picker, "zzz");
+        assert_eq!(picker.on_key(key(KeyCode::Enter)), None);
+    }
+
+    #[test]
+    fn escape_cancels_the_picker() {
+        let mut picker = picker();
+        type_text(&mut picker, "ben");
+        assert_eq!(
+            picker.on_key(key(KeyCode::Esc)),
+            Some(ElementResult::Cancelled)
+        );
+    }
+
+    #[test]
+    fn backspace_edits_and_reapplies_the_filter() {
+        let mut picker = picker();
+        type_text(&mut picker, "bencx");
+        assert!(names(&picker).is_empty(), "the stray 'x' kills every match");
+
+        picker.on_key(key(KeyCode::Backspace)); // removes the 'x'
+        assert_eq!(names(&picker), vec!["bench press", "incline bench"]);
+    }
+
+    #[test]
+    fn arrow_keys_move_the_caret_through_the_filter() {
+        let mut picker = picker();
+        type_text(&mut picker, "abc");
+
+        // Move back to the start and type there — text is inserted at the
+        // caret, so this lands the 'x' in front.
+        picker.on_key(key(KeyCode::Left));
+        picker.on_key(key(KeyCode::Left));
+        picker.on_key(key(KeyCode::Left));
+        picker.on_key(key(KeyCode::Char('x')));
+        assert_eq!(picker.filter, "xabc");
+
+        // Backspace removes the char before the caret (the 'x').
+        picker.on_key(key(KeyCode::Backspace));
+        assert_eq!(picker.filter, "abc");
+    }
+
+    #[test]
+    fn natural_height_counts_filter_row_plus_matches_plus_borders() {
+        let mut picker = picker();
+        assert_eq!(picker.natural_height(40), 2 + 1 + OPTIONS.len() as u16);
+
+        type_text(&mut picker, "squ");
+        assert_eq!(picker.natural_height(40), 2 + 1 + 1);
+
+        type_text(&mut picker, "at"); // "squat"
+        assert_eq!(picker.natural_height(40), 2 + 1 + 1);
+
+        // No matches still shows the hint row, so the box never collapses.
+        type_text(&mut picker, "zzz");
+        assert_eq!(picker.natural_height(40), 2 + 1 + 1);
+    }
+
+    #[test]
+    fn renders_filter_row_and_matches_with_the_selection_highlighted() {
+        let mut picker = picker();
+        let area = Rect::new(0, 0, 40, picker.natural_height(40));
+        let mut buf = Buffer::empty(area);
+        picker.render(area, &mut buf);
+
+        let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert!(
+            row(0).starts_with("─[Select]"),
+            "header like the choice box"
+        );
+        assert_eq!(row(1).trim_end(), "", "the filter row starts empty");
+        assert!(row(2).trim_end().starts_with("1. bench press"));
+        assert!(row(3).trim_end().starts_with("2. deadlift"));
+        assert_eq!(row(5).trim_end(), "4. squat");
+
+        // The first match (selected) is reversed; the second is not.
+        assert!(
+            buf[(0, 2)]
+                .style()
+                .add_modifier
+                .contains(Modifier::REVERSED)
+        );
+        assert!(
+            !buf[(0, 3)]
+                .style()
+                .add_modifier
+                .contains(Modifier::REVERSED)
+        );
+
+        // The bottom edge is a plain rule, no corners.
+        let bottom = area.height - 1;
+        assert!(row(bottom).chars().all(|c| c == '─'));
+    }
+
+    #[test]
+    fn renders_typed_filter_on_the_filter_row() {
+        let mut picker = picker();
+        type_text(&mut picker, "ben");
+        let area = Rect::new(0, 0, 40, picker.natural_height(40));
+        let mut buf = Buffer::empty(area);
+        picker.render(area, &mut buf);
+
+        let row1: String = (0..40).map(|x| buf[(x, 1)].symbol()).collect();
+        assert_eq!(row1.trim_end(), "ben", "typed filter shows on row 1");
+        assert_eq!(picker.cursor(), Some((3, 1)), "caret after the filter text");
+
+        // Matches narrowed to the two 'bench' exercises.
+        let row2: String = (0..40).map(|x| buf[(x, 2)].symbol()).collect();
+        assert!(row2.trim_end().starts_with("1. bench press"));
+    }
+
+    #[test]
+    fn renders_a_dim_hint_when_nothing_matches() {
+        let mut picker = picker();
+        type_text(&mut picker, "zzz");
+        let area = Rect::new(0, 0, 40, picker.natural_height(40));
+        let mut buf = Buffer::empty(area);
+        picker.render(area, &mut buf);
+
+        let row2: String = (0..40).map(|x| buf[(x, 2)].symbol()).collect();
+        assert_eq!(row2.trim_end(), "no matching exercises");
+        assert!(
+            buf[(0, 2)].style().add_modifier.contains(Modifier::DIM),
+            "the hint is dimmed so it doesn't read as a selectable option"
+        );
+    }
+}

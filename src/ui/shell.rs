@@ -27,6 +27,7 @@ use super::Element;
 use super::ElementResult;
 use super::choice::Choice;
 use super::error::UiError;
+use super::picker::Picker;
 use super::text_input::TextInput;
 
 /// How often the shell redraws even with no input, so a terminal resize shows
@@ -111,6 +112,27 @@ impl Shell {
             ElementResult::Cancelled => Ok(ReadOutcome::Cancelled {
                 partial: input.text(),
             }),
+        }
+    }
+
+    /// Ask the user to filter and pick one of `options`.
+    ///
+    /// Runs a [`super::picker::Picker`] element: typing narrows the list,
+    /// Up/Down move the highlight, Enter picks. Returns `None` when the user
+    /// backed out with Escape.
+    pub(crate) fn pick<S: AsRef<str>>(
+        &mut self,
+        prompt: Option<String>,
+        options: impl IntoIterator<Item = S>,
+    ) -> Result<Option<String>, UiError> {
+        let options: Vec<String> = options.into_iter().map(|s| s.as_ref().to_owned()).collect();
+        assert!(
+            !options.is_empty(),
+            "cannot pick from an empty list of options"
+        );
+        match self.run(&mut Picker::new(prompt, options))? {
+            ElementResult::Value(value) => Ok(Some(value)),
+            ElementResult::Cancelled => Ok(None),
         }
     }
 

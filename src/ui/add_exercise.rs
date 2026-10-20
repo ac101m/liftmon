@@ -26,6 +26,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
             Some(name) => name,
             None => return Ok(Some(Menu::Exercises)), // cancelled the form
         };
+
         let description = match ask_description(shell)? {
             Some(description) => description,
             None => return Ok(Some(Menu::Exercises)), // cancelled the form
