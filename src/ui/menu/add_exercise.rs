@@ -2,8 +2,10 @@
 //! writes the new exercise to the database.
 //!
 //! Escape backs out of the current field; the user then confirms with a
-//! Yes/No prompt. Saying No stays in the field with what they had typed, so a
-//! second thought costs nothing and doesn't reset the rest of the form.
+//! Yes/No prompt. An escape with nothing typed yet (both fields empty) cancels
+//! the form outright instead, since there is nothing to lose. Saying No stays
+//! in the field with what they had typed, so a second thought costs nothing
+//! and doesn't reset the rest of the form.
 //!
 //! Each field is asked in its own loop ([`ask_name`], [`ask_description`]), so
 //! voicing a field again never jumps back to an earlier one.
@@ -64,6 +66,13 @@ fn ask_name(shell: &mut Shell, initial: &str) -> Result<Option<String>, UiError>
                 return Ok(Some(name));
             }
             ReadOutcome::Cancelled { partial } => {
+                // The name field is the only work a fresh form holds, and the
+                // description stage is unreachable until it is non-empty, so
+                // "both fields empty" reduces to "nothing typed here yet":
+                // cancel outright instead of asking.
+                if partial.trim().is_empty() {
+                    return Ok(None);
+                }
                 if abandon(shell)? {
                     return Ok(None);
                 }
