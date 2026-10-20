@@ -56,6 +56,7 @@ impl Exercise {
     }
 
     /// Write this exercise's current `name` and `description` to its row.
+    #[allow(dead_code)] // part of the entity pattern; a future loader/editor will call this
     pub fn save(&self, conn: &Connection) -> Result<(), DomainError> {
         let changed = conn.execute(
             "UPDATE exercises SET name = ?1, description = ?2 WHERE id = ?3",

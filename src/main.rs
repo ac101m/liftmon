@@ -61,22 +61,22 @@ fn main() -> ExitCode {
         Err(err) => return fail(format!("could not check database schema: {err}")),
     }
 
-    main_menu()
+    main_menu(&database)
 }
 
 /// The app's main loop: walk the [`ui::Menu`] state machine over one shell
 /// session, so actions accumulate in the history area, until the user leaves.
-fn main_menu() -> ExitCode {
+fn main_menu(database: &Database) -> ExitCode {
     let mut shell = match ui::Shell::new() {
         Ok(shell) => shell,
         Err(err) => return fail(format!("could not start the terminal UI: {err}")),
     };
 
     // "Exit" (and Ctrl+C) end the walk; every other choice steps the machine
-    // on to the next screen.
+    // on to the next screen. The connection goes along so screens can persist.
     let mut menu = ui::Menu::Main;
     loop {
-        match menu.next(&mut shell) {
+        match menu.next(&mut shell, database.connection()) {
             Ok(Some(next)) => menu = next,
             Ok(None) | Err(ui::UiError::Interrupted) => break,
             Err(err) => return fail(format!("{err}")),

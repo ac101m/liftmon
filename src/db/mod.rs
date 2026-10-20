@@ -207,9 +207,8 @@ impl Database {
         candidate
     }
 
-    /// Access to the underlying connection, used by the domain layer to run
-    /// persistence queries against the migrated schema.
-    #[allow(dead_code)] // consumed by the domain layer, which does not exist yet
+    /// Access to the underlying connection, used by the domain layer and the
+    /// UI to run persistence queries against the migrated schema.
     pub fn connection(&self) -> &Connection {
         &self.conn
     }

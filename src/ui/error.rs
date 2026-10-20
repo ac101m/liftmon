@@ -11,4 +11,8 @@ pub enum UiError {
     /// The user pressed Ctrl+C to quit.
     #[error("interrupted")]
     Interrupted,
+
+    /// A failure from the domain layer (usually a database error).
+    #[error("{0}")]
+    Domain(#[from] crate::domain::DomainError),
 }

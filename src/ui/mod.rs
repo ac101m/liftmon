@@ -3,7 +3,7 @@
 //! The shell surfaces a classic CLI layout: a **history area** on top showing
 //! the log of past actions, and a **prompt bar** on the bottom showing the
 //! active element's key hints. Between them lives the active **element**
-//! (currently the multiple-choice list, later text input, etc.).
+//! (the multiple-choice list and a text input, with more to come).
 //!
 //! * The [`shell::Shell`] owns the terminal session — raw mode, the alternate
 //!   screen, restoring them on exit/panic — and the single event/render loop
@@ -25,12 +25,14 @@
 //! the log across them, as the app's main menu does — hold a [`Shell`] and use
 //! [`shell::Shell::ask`].
 
+mod add_exercise;
 mod choice;
 mod error;
 mod exercises_menu;
 mod main_menu;
 mod menu;
 mod shell;
+mod text_input;
 
 pub use choice::get_user_selection;
 pub(crate) use error::UiError;
@@ -45,11 +47,14 @@ use ratatui::layout::Rect;
 ///
 /// The shell owns the screen and the loop; an element owns everything about
 /// itself: how tall it would like to be, what hint it shows in the prompt bar,
-/// how it draws, and how keys move it around. Returning `Some(value)` from
-/// [`Element::on_key`] finishes the element with that value.
+/// how it draws, and how keys move it around. Returning
+/// [`Some(ElementResult)`] from [`Element::on_key`] finishes the element with
+/// that result.
 pub(crate) trait Element {
-    /// Preferred height in rows (before the shell caps it to fit the screen).
-    fn natural_height(&self) -> u16;
+    /// Preferred height in rows, for the given column width, before the shell
+    /// caps it to fit the screen. Text that wraps (e.g. input) grows with its
+    /// width.
+    fn natural_height(&self, width: u16) -> u16;
 
     /// One-line key hint shown in the prompt bar at the bottom.
     fn hint(&self) -> String;
@@ -57,6 +62,22 @@ pub(crate) trait Element {
     /// Draw the element into the given area. Called every frame.
     fn render(&mut self, area: Rect, buf: &mut Buffer);
 
-    /// Handle one key press. `Some(value)` means the user is done.
-    fn on_key(&mut self, key: KeyEvent) -> Option<String>;
+    /// Handle one key press. `Some(result)` means the user is done with the
+    /// element.
+    fn on_key(&mut self, key: KeyEvent) -> Option<ElementResult>;
+
+    /// Where, in element coordinates, the shell should park the real terminal
+    /// cursor — used by text input so the caret follows the user's typing.
+    /// `None` (the default) leaves the cursor alone.
+    fn cursor(&self) -> Option<(u16, u16)> {
+        None
+    }
+}
+
+/// How an element finishes: with the value the user produced, or with Escape
+/// when the user backed out before committing anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ElementResult {
+    Value(String),
+    Cancelled,
 }

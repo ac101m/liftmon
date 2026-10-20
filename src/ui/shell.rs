@@ -24,12 +24,22 @@ use ratatui::widgets::{List, Paragraph, Widget};
 use ratatui::{DefaultTerminal, Frame};
 
 use super::Element;
+use super::ElementResult;
 use super::choice::Choice;
 use super::error::UiError;
+use super::text_input::TextInput;
 
 /// How often the shell redraws even with no input, so a terminal resize shows
 /// up quickly.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+/// How asking for a single line of text turned out.
+pub(crate) enum ReadOutcome {
+    /// The user pressed Enter.
+    Value(String),
+    /// The user pressed Escape; `partial` is what they had typed so far.
+    Cancelled { partial: String },
+}
 
 /// A running terminal session.
 pub(crate) struct Shell {
@@ -77,15 +87,39 @@ impl Shell {
             !options.is_empty(),
             "cannot ask a question with no options to choose from"
         );
-        self.run(&mut Choice::new(prompt, options))
+        match self.run(&mut Choice::new(prompt, options))? {
+            ElementResult::Value(value) => Ok(value),
+            ElementResult::Cancelled => {
+                unreachable!("a Choice element has no Escape key")
+            }
+        }
     }
 
-    /// Run one [`Element`] to completion, returning the value it produced.
+    /// Ask for a single line of text within this session.
+    ///
+    /// Runs a [`TextInput`] element seeded with `initial` (so re-asking after a
+    /// cancelled attempt keeps what the user typed), and reports whether they
+    /// confirmed with Enter or backed out with Escape.
+    pub(crate) fn read_line(
+        &mut self,
+        prompt: Option<String>,
+        initial: &str,
+    ) -> Result<ReadOutcome, UiError> {
+        let mut input = TextInput::new(prompt, initial);
+        match self.run(&mut input)? {
+            ElementResult::Value(value) => Ok(ReadOutcome::Value(value)),
+            ElementResult::Cancelled => Ok(ReadOutcome::Cancelled {
+                partial: input.text(),
+            }),
+        }
+    }
+
+    /// Run one [`Element`] to completion, returning how it finished.
     ///
     /// The element is redrawn every frame, with the history above it and the
     /// prompt bar below. Keys are the element's business; Ctrl+C is the
     /// shell's, and quits as [`UiError::Interrupted`].
-    pub(crate) fn run(&mut self, element: &mut dyn Element) -> Result<String, UiError> {
+    pub(crate) fn run(&mut self, element: &mut dyn Element) -> Result<ElementResult, UiError> {
         loop {
             self.terminal.try_draw(|frame| {
                 render_frame(frame, &self.history, element);
@@ -102,8 +136,8 @@ impl Shell {
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                 return Err(UiError::Interrupted);
             }
-            if let Some(value) = element.on_key(key) {
-                return Ok(value);
+            if let Some(result) = element.on_key(key) {
+                return Ok(result);
             }
         }
     }
@@ -118,6 +152,8 @@ impl Drop for Shell {
 }
 
 /// Renders one frame: history on top, the element below it, prompt bar last.
+/// Elements that want a caret (e.g. text input) point the terminal cursor at
+/// it, which the draw then shows there.
 fn render_frame(frame: &mut Frame<'_>, history: &[String], element: &mut dyn Element) {
     let [history_area, element_area, bar_area] = layout_areas(frame.area(), element);
     let buf = frame.buffer_mut();
@@ -125,6 +161,12 @@ fn render_frame(frame: &mut Frame<'_>, history: &[String], element: &mut dyn Ele
     render_history(buf, history_area, history);
     element.render(element_area, buf);
     render_prompt_bar(buf, bar_area, element.hint());
+
+    // Park the real terminal cursor on the element's caret, if it wants one;
+    // with no caret the draw hides the cursor.
+    if let Some((x, y)) = element.cursor() {
+        frame.set_cursor_position((element_area.x + x, element_area.y + y));
+    }
 }
 
 /// Three horizontal bands: history, the element, and the 1-row prompt bar.
@@ -134,7 +176,10 @@ fn render_frame(frame: &mut Frame<'_>, history: &[String], element: &mut dyn Ele
 /// off the screen.
 fn layout_areas(area: Rect, element: &dyn Element) -> [Rect; 3] {
     let available = area.height.saturating_sub(1); // reserve the prompt bar
-    let element_height = element.natural_height().min(available / 2).min(available);
+    let element_height = element
+        .natural_height(area.width)
+        .min(available / 2)
+        .min(available);
 
     let chunks = Layout::vertical([
         Constraint::Fill(1),
@@ -176,14 +221,14 @@ mod tests {
 
     struct DummyElement(u16);
     impl Element for DummyElement {
-        fn natural_height(&self) -> u16 {
+        fn natural_height(&self, _width: u16) -> u16 {
             self.0
         }
         fn hint(&self) -> String {
             "hints here".into()
         }
         fn render(&mut self, _area: Rect, _buf: &mut Buffer) {}
-        fn on_key(&mut self, _key: crossterm::event::KeyEvent) -> Option<String> {
+        fn on_key(&mut self, _key: crossterm::event::KeyEvent) -> Option<ElementResult> {
             None
         }
     }

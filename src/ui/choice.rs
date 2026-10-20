@@ -8,6 +8,7 @@ use ratatui::style::Style;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, StatefulWidget};
 
 use super::Element;
+use super::ElementResult;
 use super::error::UiError;
 use super::shell::Shell;
 
@@ -83,7 +84,7 @@ impl Choice {
 }
 
 impl Element for Choice {
-    fn natural_height(&self) -> u16 {
+    fn natural_height(&self, _width: u16) -> u16 {
         // One row per option, plus the box's top and bottom border.
         self.options.len() as u16 + 2
     }
@@ -118,11 +119,13 @@ impl Element for Choice {
         list.render(area, buf, &mut self.state);
     }
 
-    fn on_key(&mut self, key: KeyEvent) -> Option<String> {
+    fn on_key(&mut self, key: KeyEvent) -> Option<ElementResult> {
         match key.code {
             KeyCode::Up => self.move_selected(-1),
             KeyCode::Down => self.move_selected(1),
-            KeyCode::Enter => return Some(self.options[self.selected].clone()),
+            KeyCode::Enter => {
+                return Some(ElementResult::Value(self.options[self.selected].clone()));
+            }
             _ => {}
         }
         None
@@ -132,7 +135,7 @@ impl Element for Choice {
 #[cfg(test)]
 mod tests {
     use super::Choice;
-    use crate::ui::Element;
+    use crate::ui::{Element, ElementResult};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
@@ -166,7 +169,7 @@ mod tests {
         choice.on_key(key(KeyCode::Down));
         assert_eq!(
             choice.on_key(key(KeyCode::Enter)),
-            Some("squat".to_string())
+            Some(ElementResult::Value("squat".to_string()))
         );
     }
 
