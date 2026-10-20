@@ -141,7 +141,7 @@ impl Element for TextInput {
 #[cfg(test)]
 mod tests {
     use super::TextInput;
-    use crate::ui::{Element, ElementResult};
+    use super::{Element, ElementResult};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;

@@ -1,19 +1,24 @@
-//! Menu state machine.
+//! The app's screens and the [`Menu`] state machine that walks between them.
 //!
 //! [`Menu`] records where we currently stand in the app's screen tree, and
 //! [`Menu::next`] asks the current screen's question and returns the next
 //! state — or [`None`] when the user leaves the menus entirely ("Exit" or
 //! Ctrl+C).
 //!
-//! Each screen's behaviour lives in its own file — see [`super::main_menu`],
-//! [`super::exercises_menu`], [`super::add_exercise`] and
-//! [`super::select_exercise`] — so this file stays a thin dispatcher as more
-//! menus are added.
+//! Each screen's behaviour lives in its own file — see [`self::main_menu`],
+//! [`self::exercises_menu`], [`self::add_exercise`] and
+//! [`self::select_exercise`] — so this file stays a thin dispatcher as more
+//! menus are added. The screens are built on the reusable element framework in
+//! [`super::utils`] (the shell, the input elements, errors).
 
 use rusqlite::Connection;
 
-use super::error::UiError;
-use super::shell::Shell;
+use crate::ui::utils::{Shell, UiError};
+
+mod add_exercise;
+mod exercises_menu;
+mod main_menu;
+mod select_exercise;
 
 /// The current screen in the app's menu hierarchy.
 pub(crate) enum Menu {
@@ -40,10 +45,10 @@ impl Menu {
         conn: &Connection,
     ) -> Result<Option<Menu>, UiError> {
         match self {
-            Menu::Main => super::main_menu::run(shell),
-            Menu::Exercises => super::exercises_menu::run(shell),
-            Menu::AddExercise => super::add_exercise::run(shell, conn),
-            Menu::SelectExercise => super::select_exercise::run(shell, conn),
+            Menu::Main => main_menu::run(shell),
+            Menu::Exercises => exercises_menu::run(shell),
+            Menu::AddExercise => add_exercise::run(shell, conn),
+            Menu::SelectExercise => select_exercise::run(shell, conn),
         }
     }
 }

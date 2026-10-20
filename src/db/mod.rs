@@ -4,7 +4,7 @@
 //! [`Database::status`] to learn what kind of database they are pointing at,
 //! then either call [`Database::upgrade`] (after the user agrees) or report a
 //! compatibility problem. Upgrading an existing schema first creates a backup
-//! of the old file, per the requirement in `src/db/README.md`.
+//! of the old file.
 
 mod migrations;
 

@@ -7,9 +7,9 @@ use rusqlite::Connection;
 
 use crate::domain::Exercise;
 
+use crate::ui::utils::{Shell, UiError};
+
 use super::Menu;
-use super::error::UiError;
-use super::shell::Shell;
 
 /// Ask the user to pick an exercise, then show it. Escape backs out with
 /// nothing logged.

@@ -3,9 +3,8 @@
 //! Its options are "Exercises" (descend into the exercise screen) and "Exit"
 //! (leave the menus entirely).
 
-use crate::ui::error::UiError;
 use crate::ui::menu::Menu;
-use crate::ui::shell::Shell;
+use crate::ui::utils::{Shell, UiError};
 
 /// Ask the main menu question and return where the user's choice leads.
 pub(super) fn run(shell: &mut Shell) -> Result<Option<Menu>, UiError> {

@@ -271,7 +271,7 @@ fn render_prompt_bar(buf: &mut Buffer, area: Rect, hint: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::Element;
+    use crate::ui::utils::Element;
 
     struct DummyElement(u16);
     impl Element for DummyElement {

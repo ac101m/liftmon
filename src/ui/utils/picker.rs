@@ -244,7 +244,7 @@ impl Element for Picker {
 #[cfg(test)]
 mod tests {
     use super::Picker;
-    use crate::ui::{Element, ElementResult};
+    use super::{Element, ElementResult};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;

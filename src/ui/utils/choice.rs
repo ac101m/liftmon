@@ -135,7 +135,7 @@ impl Element for Choice {
 #[cfg(test)]
 mod tests {
     use super::Choice;
-    use crate::ui::{Element, ElementResult};
+    use super::{Element, ElementResult};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;

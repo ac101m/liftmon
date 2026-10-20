@@ -12,9 +12,9 @@ use rusqlite::Connection;
 
 use crate::domain::{DomainError, Exercise};
 
+use crate::ui::utils::{ReadOutcome, Shell, UiError};
+
 use super::Menu;
-use super::error::UiError;
-use super::shell::{ReadOutcome, Shell};
 
 /// Drive the whole form, retrying from the name when it turns out to be taken.
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
