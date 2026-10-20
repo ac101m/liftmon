@@ -6,10 +6,10 @@
 //! Ctrl+C).
 //!
 //! Each screen's behaviour lives in its own file — see [`self::main_menu`],
-//! [`self::exercises_menu`], [`self::add_exercise`] and
-//! [`self::select_exercise`] — so this file stays a thin dispatcher as more
-//! menus are added. The screens are built on the reusable element framework in
-//! [`super::utils`] (the shell, the input elements, errors).
+//! [`self::exercises_menu`], [`self::add_exercise`], [`self::select_exercise`]
+//! and [`self::exercise_options`] — so this file stays a thin dispatcher as
+//! more menus are added. The screens are built on the reusable element
+//! framework in [`super::utils`] (the shell, the input elements, errors).
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -19,6 +19,7 @@ use crate::domain::Exercise;
 use crate::ui::utils::{Shell, UiError};
 
 mod add_exercise;
+mod exercise_options;
 mod exercises_menu;
 mod main_menu;
 mod select_exercise;
@@ -27,12 +28,15 @@ mod select_exercise;
 pub(crate) enum Menu {
     /// The top-level menu (Exercises / Exit).
     Main,
-    /// The exercise screen (Add exercise / Show exercise / Back).
+    /// The exercise screen (Add exercise / List exercises / Back).
     Exercises,
     /// The add-exercise form (name, then description).
     AddExercise,
     /// The pick-an-exercise screen (filter box + list).
     SelectExercise,
+    /// The actions for one picked exercise, named by its unique name so the
+    /// prompt updates after a rename.
+    ExerciseOptions { name: String },
 }
 
 /// Print an exercise to the history area the way the screens present one: the
@@ -66,6 +70,7 @@ impl Menu {
             Menu::Exercises => exercises_menu::run(shell),
             Menu::AddExercise => add_exercise::run(shell, conn),
             Menu::SelectExercise => select_exercise::run(shell, conn),
+            Menu::ExerciseOptions { name } => exercise_options::run(shell, conn, name),
         }
     }
 }

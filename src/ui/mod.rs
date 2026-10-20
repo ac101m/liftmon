@@ -3,9 +3,9 @@
 //! * [`utils`] — the reusable element framework: the shell session, the input
 //!   elements (choice list, filterable picker, text input), and the UI errors.
 //!   Self-contained; it knows nothing about the app's screens.
-//! * [`menu`] — the app's screens (main menu, exercises menu, the add/show
-//!   forms) and the [`Menu`] state machine that walks between them over one
-//!   shared shell session.
+//! * [`menu`] — the app's screens (main menu, exercises menu, the add form,
+//!   the picker, the per-exercise actions) and the [`Menu`] state machine that
+//!   walks between them over one shared shell session.
 //!
 //! This module re-exports the public surface the rest of the app uses:
 //! [`get_user_selection`] for one-off questions, and [`Shell`], [`Menu`] and

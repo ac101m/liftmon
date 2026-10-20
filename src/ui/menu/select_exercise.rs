@@ -1,5 +1,5 @@
-//! The "show exercise" screen: pick an exercise with the filter box below and
-//! get its name and description printed in the log area.
+//! The "list exercises" screen: pick an exercise with the filter box below;
+//! selecting one opens its per-exercise actions screen.
 
 use rusqlite::Connection;
 
@@ -9,8 +9,8 @@ use crate::ui::utils::{Shell, UiError};
 
 use super::Menu;
 
-/// Ask the user to pick an exercise, then show it. Escape backs out with
-/// nothing logged.
+/// Ask the user to pick an exercise, landing on its actions screen. Escape
+/// backs out with nothing happening.
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     let exercises = Exercise::all(conn)?;
     if exercises.is_empty() {
@@ -24,12 +24,5 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     };
 
     // Names are UNIQUE, so the picked name identifies exactly one exercise.
-    let exercise = exercises
-        .iter()
-        .find(|e| e.name == chosen)
-        .expect("the picker only returns names from the loaded list");
-    // Print the exercise in the shared style (bold name, description beneath,
-    // as one history entry).
-    super::log_exercise(shell, exercise);
-    Ok(Some(Menu::Exercises))
+    Ok(Some(Menu::ExerciseOptions { name: chosen }))
 }

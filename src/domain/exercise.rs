@@ -56,12 +56,30 @@ impl Exercise {
     }
 
     /// Write this exercise's current `name` and `description` to its row.
-    #[allow(dead_code)] // part of the entity pattern; a future editor will call this
+    ///
+    /// A rename that collides with another exercise's name (the only UNIQUE
+    /// column) surfaces [`DomainError::NameTaken`] instead of the raw SQLite
+    /// error, so the editor can log it and re-ask.
     pub fn save(&self, conn: &Connection) -> Result<(), DomainError> {
-        let changed = conn.execute(
+        let changed = match conn.execute(
             "UPDATE exercises SET name = ?1, description = ?2 WHERE id = ?3",
             params![self.name, self.description, self.id],
-        )?;
+        ) {
+            Ok(changed) => changed,
+            Err(err)
+                if matches!(
+                    &err,
+                    rusqlite::Error::SqliteFailure(ffi_err, _)
+                        if ffi_err.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+                ) =>
+            {
+                return Err(DomainError::NameTaken {
+                    kind: "exercise",
+                    name: self.name.clone(),
+                });
+            }
+            Err(err) => return Err(err.into()),
+        };
         if changed == 0 {
             return Err(DomainError::MissingRow {
                 kind: "exercise",
@@ -69,6 +87,38 @@ impl Exercise {
             });
         }
         Ok(())
+    }
+
+    /// Remove this exercise's row. Errors with [`DomainError::MissingRow`] when
+    /// the row is already gone.
+    pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
+        let changed = conn.execute("DELETE FROM exercises WHERE id = ?1", params![self.id])?;
+        if changed == 0 {
+            return Err(DomainError::MissingRow {
+                kind: "exercise",
+                id: self.id,
+            });
+        }
+        Ok(())
+    }
+
+    /// Load the exercise with the given unique `name`, if one exists.
+    pub fn find_by_name(conn: &Connection, name: &str) -> Result<Option<Self>, DomainError> {
+        match conn.query_row(
+            "SELECT id, name, description FROM exercises WHERE name = ?1",
+            [name],
+            |row| {
+                Ok(Self {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                })
+            },
+        ) {
+            Ok(exercise) => Ok(Some(exercise)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
     }
 
     /// Load every exercise, in name order.
@@ -190,6 +240,77 @@ mod tests {
                 id: 999
             })
         ));
+    }
+
+    #[test]
+    fn rename_rejects_a_name_already_taken() {
+        let conn = test_db();
+        Exercise::create(&conn, "bench press", "one").unwrap();
+        let mut squat = Exercise::create(&conn, "squat", "two").unwrap();
+
+        squat.name = "bench press".into();
+        assert!(matches!(
+            squat.save(&conn),
+            Err(DomainError::NameTaken {
+                kind: "exercise",
+                ..
+            })
+        ));
+        // ...and the row is left untouched.
+        let name: String = conn
+            .query_row(
+                "SELECT name FROM exercises WHERE id = ?1",
+                [squat.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "squat");
+    }
+
+    #[test]
+    fn delete_removes_the_row() {
+        let conn = test_db();
+        let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
+
+        exercise.delete(&conn).unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM exercises", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn delete_missing_row_errors() {
+        let conn = test_db();
+        let ghost = Exercise {
+            id: 999,
+            name: "ghost".into(),
+            description: String::new(),
+        };
+        assert!(matches!(
+            ghost.delete(&conn),
+            Err(DomainError::MissingRow {
+                kind: "exercise",
+                id: 999
+            })
+        ));
+    }
+
+    #[test]
+    fn find_by_name_returns_the_row_or_none() {
+        let conn = test_db();
+        Exercise::create(&conn, "bench press", "flat").unwrap();
+
+        let found = Exercise::find_by_name(&conn, "bench press")
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.description, "flat");
+        assert!(
+            Exercise::find_by_name(&conn, "no such name")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
