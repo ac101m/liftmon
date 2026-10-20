@@ -45,7 +45,10 @@ pub(crate) enum ReadOutcome {
 /// A running terminal session.
 pub(crate) struct Shell {
     terminal: DefaultTerminal,
-    history: Vec<String>,
+    /// The run's log: one entry per `log` call, each a list of styled [`Line`]s
+    /// that render as a unit (e.g. a bold name over its description). Entries
+    /// are drawn with a blank row between them in the history area.
+    history: Vec<Vec<Line<'static>>>,
 }
 
 impl Shell {
@@ -67,9 +70,18 @@ impl Shell {
         })
     }
 
-    /// Append a line to the history area.
-    pub(crate) fn log(&mut self, line: impl Into<String>) {
-        self.history.push(line.into());
+    /// Append a single-line entry to the history area. Besides plain text,
+    /// callers can pass a [`Line`] with styled spans (e.g. a bold exercise
+    /// name).
+    pub(crate) fn log(&mut self, line: impl Into<Line<'static>>) {
+        self.history.push(vec![line.into()]);
+    }
+
+    /// Append a multi-line entry to the history area, rendered as one unit
+    /// (e.g. a bold exercise name over its description) with a blank row
+    /// before the next entry.
+    pub(crate) fn log_lines(&mut self, lines: Vec<Line<'static>>) {
+        self.history.push(lines);
     }
 
     /// Ask a multiple-choice question within this session.
@@ -176,7 +188,7 @@ impl Drop for Shell {
 /// Renders one frame: history on top, the element below it, prompt bar last.
 /// Elements that want a caret (e.g. text input) point the terminal cursor at
 /// it, which the draw then shows there.
-fn render_frame(frame: &mut Frame<'_>, history: &[String], element: &mut dyn Element) {
+fn render_frame(frame: &mut Frame<'_>, history: &[Vec<Line<'static>>], element: &mut dyn Element) {
     let [history_area, element_area, bar_area] = layout_areas(frame.area(), element);
     let buf = frame.buffer_mut();
 
@@ -214,17 +226,37 @@ fn layout_areas(area: Rect, element: &dyn Element) -> [Rect; 3] {
 }
 
 /// The log of past actions, newest at the bottom (clipped, never wrapped).
-fn render_history(buf: &mut Buffer, area: Rect, history: &[String]) {
+/// Each entry is a unit, with a blank row between entries.
+fn render_history(buf: &mut Buffer, area: Rect, history: &[Vec<Line<'static>>]) {
     if area.height == 0 || area.width == 0 || history.is_empty() {
         return;
     }
-    // Show the tail that fits; the "scrollback" is everything above.
-    let start = history.len().saturating_sub(area.height as usize);
-    let lines: Vec<Line> = history[start..]
-        .iter()
-        .map(|line| Line::from(line.clone()).style(Style::new().add_modifier(Modifier::DIM)))
-        .collect();
-    List::new(lines).render(area, buf);
+    // Show the tail that fits: walk from the newest entry backwards, stopping
+    // once the next entry plus its blank separator would overflow the area
+    // (the "scrollback" is everything dropped in front). Lines are collected
+    // newest-first, so each entry's own lines are gathered reversed too and the
+    // whole tail is flipped at the end.
+    let mut rows: Vec<Line> = Vec::new();
+    for entry in history.iter().rev() {
+        let separators = usize::from(!rows.is_empty()); // a blank between entries
+        if rows.len() + entry.len() + separators > area.height as usize {
+            break;
+        }
+        if !rows.is_empty() {
+            rows.push(Line::from(""));
+        }
+        // Each entry keeps its own span styles (a bold name), dimmed as a base
+        // so plain entries read subdued while a styled heading still pops.
+        rows.extend(
+            entry
+                .iter()
+                .rev()
+                .cloned()
+                .map(|line| line.style(Style::new().add_modifier(Modifier::DIM))),
+        );
+    }
+    rows.reverse();
+    List::new(rows).render(area, buf);
 }
 
 /// The one-row status bar with the element's key hints, in reverse video.
@@ -286,14 +318,56 @@ mod tests {
         assert_eq!(element.y, 20 - element.height - 1);
     }
 
+    /// Build `history` from single-line entries, one unit each.
+    fn entries(lines: impl IntoIterator<Item = Line<'static>>) -> Vec<Vec<Line<'static>>> {
+        lines.into_iter().map(|line| vec![line]).collect()
+    }
+
     #[test]
-    fn history_shows_the_newest_lines_at_the_bottom() {
-        let history: Vec<String> = ["first", "second", "third"].map(String::from).to_vec();
-        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 2));
-        render_history(&mut buf, Rect::new(0, 0, 40, 2), &history);
+    fn history_puts_a_blank_row_between_entries() {
+        let history = entries(["first", "second"].map(Line::from));
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 3));
+        render_history(&mut buf, Rect::new(0, 0, 40, 3), &history);
+
+        let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0).trim_end(), "first");
+        assert_eq!(row(1).trim_end(), "", "blank row separates the entries");
+        assert_eq!(row(2).trim_end(), "second");
+    }
+
+    #[test]
+    fn history_keeps_a_multi_line_entry_contiguous() {
+        // A bold name over its description is one entry, so no blank splits
+        // them; the blank goes between entries.
+        let history = vec![
+            vec![Line::from("first")],
+            vec![Line::from("bench press"), Line::from("flat barbell press")],
+        ];
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 4));
+        render_history(&mut buf, Rect::new(0, 0, 40, 4), &history);
+
+        let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0).trim_end(), "first");
+        assert_eq!(row(1).trim_end(), "", "blank between the two entries");
+        assert_eq!(row(2).trim_end(), "bench press");
+        assert_eq!(
+            row(3).trim_end(),
+            "flat barbell press",
+            "no blank inside a unit"
+        );
+    }
+
+    #[test]
+    fn history_scrolls_the_oldest_entries_off() {
+        // Three entries on a three-row screen: "first" gives up its row so the
+        // newest entries (blank-separated) sit at the bottom.
+        let history = entries(["first", "second", "third"].map(Line::from));
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 3));
+        render_history(&mut buf, Rect::new(0, 0, 40, 3), &history);
 
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0).trim_end(), "second");
-        assert_eq!(row(1).trim_end(), "third");
+        assert_eq!(row(1).trim_end(), "");
+        assert_eq!(row(2).trim_end(), "third");
     }
 }
