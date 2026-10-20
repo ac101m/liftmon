@@ -1,9 +1,9 @@
 //! The per-exercise screen: actions on the exercise the user just picked.
 //!
-//! The prompt is the exercise's own name, and the options change it, change
-//! its description, delete it (after a Yes/No "are you sure"), or back out.
-//! Edits loop back onto this screen under the (possibly renamed) exercise, so
-//! several changes can be made before leaving.
+//! The prompt is the exercise's own name, and the options print a summary of
+//! it, edit its name, edit its description, delete it (after a Yes/No "are you
+//! sure"), or back out. Edits loop back onto this screen under the (possibly
+//! renamed) exercise, so several changes can be made before leaving.
 
 use rusqlite::Connection;
 
@@ -28,19 +28,23 @@ pub(super) fn run(
         match shell
             .ask(
                 Some(exercise.name.clone()),
-                ["change name", "change description", "delete", "back"],
+                ["info", "edit name", "edit description", "delete", "back"],
             )?
             .as_str()
         {
+            // Read-only: print the exercise in the shared style and stay here.
+            "info" => {
+                super::log_exercise(shell, &exercise);
+            }
             // Renaming reloads the loop under the new name so the prompt keeps
             // tracking the exercise.
-            "change name" => {
-                if let Some(new_name) = change_name(shell, conn, &exercise)? {
+            "edit name" => {
+                if let Some(new_name) = edit_name(shell, conn, &exercise)? {
                     name = new_name;
                 }
             }
-            "change description" => {
-                change_description(shell, conn, &exercise)?;
+            "edit description" => {
+                edit_description(shell, conn, &exercise)?;
             }
             "delete" => {
                 let sure = shell.ask(
@@ -61,7 +65,7 @@ pub(super) fn run(
 /// Ask for a new name and save it, retrying from what was typed when it turns
 /// out to be taken (or empty). Returns the new name on success, [`None`] when
 /// the user backed out with Escape.
-fn change_name(
+fn edit_name(
     shell: &mut Shell,
     conn: &Connection,
     exercise: &Exercise,
@@ -102,7 +106,7 @@ fn change_name(
 
 /// Ask for a new description (empty clears it) and save it. Returns `Some(())`
 /// on success, [`None`] when the user backed out with Escape.
-fn change_description(
+fn edit_description(
     shell: &mut Shell,
     conn: &Connection,
     exercise: &Exercise,
