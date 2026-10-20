@@ -618,6 +618,7 @@ dependencies = [
  "rusqlite_migration",
  "tempfile",
  "thiserror 2.0.21",
+ "unicode-width",
 ]
 
 [[package]]

@@ -19,9 +19,10 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, Paragraph, Widget};
 use ratatui::{DefaultTerminal, Frame};
+use unicode_width::UnicodeWidthChar;
 
 use super::Element;
 use super::ElementResult;
@@ -225,38 +226,93 @@ fn layout_areas(area: Rect, element: &dyn Element) -> [Rect; 3] {
     [chunks[0], chunks[1], chunks[2]]
 }
 
-/// The log of past actions, newest at the bottom (clipped, never wrapped).
-/// Each entry is a unit, with a blank row between entries.
+/// The log of past actions, newest at the bottom. Long lines wrap onto more
+/// rows at the area's width instead of being clipped. Each entry is a unit,
+/// with a blank row between entries.
 fn render_history(buf: &mut Buffer, area: Rect, history: &[Vec<Line<'static>>]) {
     if area.height == 0 || area.width == 0 || history.is_empty() {
         return;
     }
     // Show the tail that fits: walk from the newest entry backwards, stopping
     // once the next entry plus its blank separator would overflow the area
-    // (the "scrollback" is everything dropped in front). Lines are collected
-    // newest-first, so each entry's own lines are gathered reversed too and the
-    // whole tail is flipped at the end.
+    // (the "scrollback" is everything dropped in front). A wrapped line counts
+    // as the rows it occupies. Lines are collected newest-first, so each
+    // entry's own lines are gathered reversed too — and each wrapped line's
+    // pieces along with them — and the whole tail is flipped at the end.
     let mut rows: Vec<Line> = Vec::new();
     for entry in history.iter().rev() {
         let separators = usize::from(!rows.is_empty()); // a blank between entries
-        if rows.len() + entry.len() + separators > area.height as usize {
+        let entry_rows: usize = entry
+            .iter()
+            .map(|line| wrap_line(line.clone(), area.width).len())
+            .sum();
+        if rows.len() + entry_rows + separators > area.height as usize {
             break;
         }
         if !rows.is_empty() {
             rows.push(Line::from(""));
         }
+        let mut entry_pieces: Vec<Line> = Vec::new();
+        for line in entry.iter().rev() {
+            let mut wrapped = wrap_line(line.clone(), area.width);
+            wrapped.reverse();
+            entry_pieces.extend(wrapped);
+        }
         // Each entry keeps its own span styles (a bold name), dimmed as a base
         // so plain entries read subdued while a styled heading still pops.
         rows.extend(
-            entry
-                .iter()
-                .rev()
-                .cloned()
+            entry_pieces
+                .into_iter()
                 .map(|line| line.style(Style::new().add_modifier(Modifier::DIM))),
         );
     }
     rows.reverse();
     List::new(rows).render(area, buf);
+}
+
+/// Split `line` into as many lines as it needs to fit `columns` display
+/// columns, returning it unchanged when it already fits. The pieces carry the
+/// original line's style and alignment, and each span's style goes onto the
+/// characters that came from it, so a bold heading keeps its bold across a
+/// wrap. Zero-width characters (e.g. combining marks) take no column and stay
+/// glued to what precedes them.
+fn wrap_line(line: Line<'static>, columns: u16) -> Vec<Line<'static>> {
+    let columns = columns.max(1) as usize;
+    if line.width() <= columns {
+        return vec![line];
+    }
+    let Line {
+        spans,
+        style,
+        alignment,
+    } = line;
+    let mut chunks: Vec<Vec<Span<'static>>> = vec![Vec::new()];
+    let mut used = 0usize;
+    for span in spans {
+        for ch in span.content.chars() {
+            let width = UnicodeWidthChar::width(ch).unwrap_or(0);
+            // Start a new row only when this row already holds text, so a
+            // single over-wide character still lands on its own row rather than
+            // looping forever on empty rows.
+            if !chunks.last().expect("chunks is never empty").is_empty() && used + width > columns {
+                chunks.push(Vec::new());
+                used = 0;
+            }
+            chunks
+                .last_mut()
+                .expect("chunks is never empty")
+                .push(Span::styled(ch.to_string(), span.style));
+            used += width;
+        }
+    }
+    chunks
+        .into_iter()
+        .map(|spans| Line {
+            spans,
+            style,
+            alignment,
+        })
+        .collect()
 }
 
 /// The one-row status bar with the element's key hints, in reverse video.
@@ -369,5 +425,68 @@ mod tests {
         assert_eq!(row(0).trim_end(), "second");
         assert_eq!(row(1).trim_end(), "");
         assert_eq!(row(2).trim_end(), "third");
+    }
+
+    #[test]
+    fn history_wraps_a_long_line_onto_more_rows() {
+        // A 15-char description on a 5-wide log area wraps across three rows
+        // instead of truncating past the fifth column.
+        let history = vec![vec![Line::from("0123456789abcde")]];
+        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 3));
+        render_history(&mut buf, Rect::new(0, 0, 5, 3), &history);
+
+        let row = |y: u16| (0..5).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0), "01234");
+        assert_eq!(row(1), "56789");
+        assert_eq!(
+            row(2),
+            "abcde",
+            "the tail tails out on its own row, not clipped"
+        );
+    }
+
+    #[test]
+    fn history_budget_counts_wrapped_rows() {
+        // "0123456789abcde" wraps to two rows at 10 cols, so on a three-row
+        // screen it leaves no room for the older entry — exactly as if it were
+        // two separate lines.
+        let history = vec![vec![Line::from("old")], vec![Line::from("0123456789abcde")]];
+        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 3));
+        render_history(&mut buf, Rect::new(0, 0, 10, 3), &history);
+
+        let row = |y: u16| (0..10).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0), "0123456789");
+        assert_eq!(row(1).trim_end(), "abcde");
+        assert_eq!(row(2).trim_end(), "", "the older entry scrolled off");
+    }
+
+    #[test]
+    fn wrapping_preserves_span_styles() {
+        // A bold span that straddles a wrap boundary stays bold on both rows.
+        let history = vec![vec![Line::from(vec![Span::styled(
+            "abcdef",
+            Modifier::BOLD,
+        )])]];
+        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 2));
+        render_history(&mut buf, Rect::new(0, 0, 5, 2), &history);
+
+        assert_eq!(buf[(0, 0)].symbol(), "a");
+        assert_eq!(buf[(4, 0)].symbol(), "e");
+        assert_eq!(
+            buf[(0, 1)].symbol(),
+            "f",
+            "the wrapped piece starts on row 2"
+        );
+        // Only the content cells are styled; List pads the rest with spaces.
+        for x in 0..5 {
+            assert!(
+                buf[(x, 0)].style().add_modifier.contains(Modifier::BOLD),
+                "first-row cell ({x},0) keeps bold from the wrapped span"
+            );
+        }
+        assert!(
+            buf[(0, 1)].style().add_modifier.contains(Modifier::BOLD),
+            "the wrapped piece keeps bold too"
+        );
     }
 }
