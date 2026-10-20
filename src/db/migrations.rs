@@ -53,6 +53,44 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
     )
     .down("DROP TABLE exercises;")
     .comment("Exercises, the first domain entity. name is unique (enforced by SQLite)."),
+    M::up(
+        r"
+        CREATE TABLE sessions (
+            id         INTEGER PRIMARY KEY,
+            start_date TEXT NOT NULL,
+            end_date   TEXT
+        );
+
+        CREATE TABLE exercise_performances (
+            id          INTEGER PRIMARY KEY,
+            session_id  INTEGER NOT NULL REFERENCES sessions(id),
+            exercise_id INTEGER NOT NULL REFERENCES exercises(id),
+            date        TEXT NOT NULL,
+            time_of_day TEXT NOT NULL
+        );
+
+        CREATE TABLE sets (
+            id                      INTEGER PRIMARY KEY,
+            exercise_performance_id INTEGER NOT NULL REFERENCES exercise_performances(id),
+            exercise_id             INTEGER NOT NULL REFERENCES exercises(id),
+            weight_kg               REAL NOT NULL,
+            reps                    INTEGER NOT NULL,
+            to_failure              INTEGER NOT NULL
+        );
+
+        -- FK columns the session-tree query joins on.
+        CREATE INDEX idx_performances_session ON exercise_performances(session_id);
+        CREATE INDEX idx_sets_performance ON sets(exercise_performance_id);
+        ",
+    )
+    .down(
+        r"
+        DROP TABLE sets;
+        DROP TABLE exercise_performances;
+        DROP TABLE sessions;
+        ",
+    )
+    .comment("Sessions, exercise performances and sets — the workout-record domain."),
 ];
 
 /// The migrations, ready to apply to a connection.

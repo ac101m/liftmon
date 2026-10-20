@@ -346,16 +346,17 @@ mod tests {
         v1.to_latest(&mut conn).unwrap();
         drop(conn);
 
-        // This build knows one more migration (exercises): opening the old file
-        // reports an upgradable schema — the case main/UI prompts on.
+        // This build knows two more migrations (exercises, then the workout
+        // tables): opening the old file reports an upgradable schema — the case
+        // main/UI prompts on.
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 1, to: 2 }
+            DbStatus::Upgradeable { from: 1, to: 3 }
         );
 
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 1);
+        assert_eq!(outcome.applied, 2);
         let backup = outcome
             .backup
             .expect("upgrading an old file must back it up");
@@ -389,12 +390,13 @@ mod tests {
     fn newer_database_is_rejected_as_too_new() {
         let scratch = Scratch::new("future.sqlite");
 
-        // A future build knew three migrations, one more than this build, so
-        // the file is left at a schema version we don't understand (v3).
+        // A future build knew four migrations, one more than this build, so
+        // the file is left at a schema version we don't understand (v4).
         let future_defs = [
             M::up("CREATE TABLE a (x INTEGER);"),
             M::up("CREATE TABLE b (x INTEGER);"),
             M::up("CREATE TABLE c (x INTEGER);"),
+            M::up("CREATE TABLE d (x INTEGER);"),
         ];
         let future = Migrations::from_slice(&future_defs);
         let mut conn = Connection::open(&scratch.path).unwrap();
@@ -402,7 +404,7 @@ mod tests {
         drop(conn);
 
         let mut db = Database::open(&scratch.path).unwrap();
-        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 3 });
+        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 4 });
         assert!(db.is_from_future().unwrap());
         assert!(
             matches!(db.upgrade(), Err(DbError::TooNew { .. })),

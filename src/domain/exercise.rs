@@ -121,6 +121,25 @@ impl Exercise {
         }
     }
 
+    /// Load the exercise with the given `id`, if one exists.
+    pub fn find_by_id(conn: &Connection, id: i64) -> Result<Option<Self>, DomainError> {
+        match conn.query_row(
+            "SELECT id, name, description FROM exercises WHERE id = ?1",
+            [id],
+            |row| {
+                Ok(Self {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                })
+            },
+        ) {
+            Ok(exercise) => Ok(Some(exercise)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
     /// Load every exercise, in name order.
     pub fn all(conn: &Connection) -> Result<Vec<Self>, DomainError> {
         let mut stmt = conn.prepare("SELECT id, name, description FROM exercises ORDER BY name")?;
@@ -311,6 +330,17 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn find_by_id_returns_the_row_or_none() {
+        let conn = test_db();
+        let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
+
+        let found = Exercise::find_by_id(&conn, exercise.id).unwrap().unwrap();
+        assert_eq!(found.name, "bench press");
+        assert_eq!(found.description, "flat");
+        assert!(Exercise::find_by_id(&conn, 999).unwrap().is_none());
     }
 
     #[test]

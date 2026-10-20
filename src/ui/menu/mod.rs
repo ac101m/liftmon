@@ -6,7 +6,8 @@
 //! Ctrl+C).
 //!
 //! Each screen's behaviour lives in its own file — see [`self::main_menu`],
-//! [`self::exercises_menu`], [`self::add_exercise`], [`self::select_exercise`]
+//! [`self::exercises_menu`], [`self::session_menu`], [`self::freeform_session`],
+//! [`self::resume_session`], [`self::add_exercise`], [`self::select_exercise`]
 //! and [`self::exercise_options`] — so this file stays a thin dispatcher as
 //! more menus are added. The screens are built on the reusable element
 //! framework in [`super::utils`] (the shell, the input elements, errors).
@@ -21,12 +22,15 @@ use crate::ui::utils::{Shell, UiError};
 mod add_exercise;
 mod exercise_options;
 mod exercises_menu;
+mod freeform_session;
 mod main_menu;
+mod resume_session;
 mod select_exercise;
+mod session_menu;
 
 /// The current screen in the app's menu hierarchy.
 pub(crate) enum Menu {
-    /// The top-level menu (Exercises / Exit).
+    /// The top-level menu (Exercises / Sessions / Exit).
     Main,
     /// The exercise screen (Add exercise / List exercises / Back).
     Exercises,
@@ -37,6 +41,24 @@ pub(crate) enum Menu {
     /// The actions for one picked exercise, named by its unique name so the
     /// prompt updates after a rename.
     ExerciseOptions { name: String },
+    /// The session screen (Begin freeform session / Resume session / Back).
+    Sessions,
+    /// The pick-an-unfinished-session screen, then on into its freeform flow.
+    ResumeSession,
+    /// The freeform session flow: pick exercises and log sets until the user
+    /// pauses (session left open) or ends it.
+    FreeformSession(FreeformStart),
+}
+
+/// How a freeform session begins.
+pub(crate) enum FreeformStart {
+    /// A brand-new session, created when the first exercise is picked.
+    New,
+    /// Continue an unfinished session, starting at its most recent exercise.
+    Resume {
+        /// The session to continue.
+        session_id: i64,
+    },
 }
 
 /// Print an exercise to the history area the way the screens present one: the
@@ -71,6 +93,9 @@ impl Menu {
             Menu::AddExercise => add_exercise::run(shell, conn),
             Menu::SelectExercise => select_exercise::run(shell, conn),
             Menu::ExerciseOptions { name } => exercise_options::run(shell, conn, name),
+            Menu::Sessions => session_menu::run(shell),
+            Menu::ResumeSession => resume_session::run(shell, conn),
+            Menu::FreeformSession(start) => freeform_session::run(shell, conn, start),
         }
     }
 }

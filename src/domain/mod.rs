@@ -10,10 +10,24 @@
 //! * the backing table is added as a schema migration in `db/migrations.rs`,
 //! * UNIQUE columns are enforced in the schema and surfaced by `create` (e.g.
 //!   [`DomainError::NameTaken`] for a duplicate exercise name).
+//!
+//! Entities that contain others — a [`Session`] holds its
+//! [`ExercisePerformance`]s, each of which holds its [`Set`]s — carry those
+//! children as fields on the struct, populated by the loaders. The session
+//! loaders fetch a whole tree in one query (see [`Session::all`]) so no N+1;
+//! a freshly created entity comes back with empty children, and reloading via
+//! the loader gives the current view.
 
 mod error;
 pub mod exercise;
+mod exercise_performance;
+mod session;
+mod set;
 
 pub use self::error::DomainError;
 // Flat path used by consumers (ui/logic).
 pub use self::exercise::Exercise;
+// The workout entities are the public surface for the session screens.
+pub use self::exercise_performance::ExercisePerformance;
+pub use self::session::Session;
+pub use self::set::Set;
