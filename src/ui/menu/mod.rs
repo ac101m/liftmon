@@ -11,8 +11,11 @@
 //! menus are added. The screens are built on the reusable element framework in
 //! [`super::utils`] (the shell, the input elements, errors).
 
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
+use crate::domain::Exercise;
 use crate::ui::utils::{Shell, UiError};
 
 mod add_exercise;
@@ -30,6 +33,20 @@ pub(crate) enum Menu {
     AddExercise,
     /// The pick-an-exercise screen (filter box + list).
     SelectExercise,
+}
+
+/// Print an exercise to the history area the way the screens present one: the
+/// name bold on its own line, the description (if any) beneath it, grouped as
+/// one entry so the blank separator goes after them, not between them.
+pub(super) fn log_exercise(shell: &mut Shell, exercise: &Exercise) {
+    let mut lines = vec![Line::from(vec![Span::styled(
+        exercise.name.clone(),
+        Style::new().add_modifier(Modifier::BOLD),
+    )])];
+    if !exercise.description.is_empty() {
+        lines.push(Line::from(exercise.description.clone()));
+    }
+    shell.log_lines(lines);
 }
 
 impl Menu {

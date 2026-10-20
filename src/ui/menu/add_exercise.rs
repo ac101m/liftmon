@@ -34,7 +34,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
 
         match Exercise::create(conn, name, description) {
             Ok(exercise) => {
-                shell.log(format!("added exercise '{}'", exercise.name));
+                super::log_exercise(shell, &exercise);
                 return Ok(Some(Menu::Exercises));
             }
             // Only the name is UNIQUE, so a constraint violation means a

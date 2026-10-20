@@ -1,8 +1,6 @@
 //! The "show exercise" screen: pick an exercise with the filter box below and
 //! get its name and description printed in the log area.
 
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
 use crate::domain::Exercise;
@@ -30,16 +28,8 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         .iter()
         .find(|e| e.name == chosen)
         .expect("the picker only returns names from the loaded list");
-    // Print the exercise: the name bold on its own line, the description (if
-    // any) beneath it, as one history entry — so the two rows stay together and
-    // the blank separator goes after them, not between them.
-    let mut lines = vec![Line::from(vec![Span::styled(
-        exercise.name.clone(),
-        Style::new().add_modifier(Modifier::BOLD),
-    )])];
-    if !exercise.description.is_empty() {
-        lines.push(Line::from(exercise.description.clone()));
-    }
-    shell.log_lines(lines);
+    // Print the exercise in the shared style (bold name, description beneath,
+    // as one history entry).
+    super::log_exercise(shell, exercise);
     Ok(Some(Menu::Exercises))
 }
