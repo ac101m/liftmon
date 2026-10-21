@@ -16,7 +16,9 @@
 //! children as fields on the struct, populated by the loaders. The session
 //! loaders fetch a whole tree in one query (see [`Session::all`]) so no N+1;
 //! a freshly created entity comes back with empty children, and reloading via
-//! the loader gives the current view.
+//! the loader gives the current view. When only the list matters — the resume
+//! screen — the lightweight [`SessionInfo`] rows avoid the tree entirely (see
+//! [`Session::list_info`]).
 
 mod error;
 pub mod exercise;
@@ -29,5 +31,5 @@ pub use self::error::DomainError;
 pub use self::exercise::Exercise;
 // The workout entities are the public surface for the session screens.
 pub use self::exercise_performance::ExercisePerformance;
-pub use self::session::Session;
+pub use self::session::{Session, SessionInfo};
 pub use self::set::Set;

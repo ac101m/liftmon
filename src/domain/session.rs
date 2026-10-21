@@ -1,6 +1,6 @@
 //! Sessions — a workout session, made up of exercise performances.
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveDateTime};
 use rusqlite::{Connection, params};
 
 use crate::domain::DomainError;
@@ -24,6 +24,24 @@ pub struct Session {
     /// The performances logged during the session, in date/time order. Empty
     /// in a freshly created entity; the loaders populate it.
     pub performances: Vec<ExercisePerformance>,
+}
+
+/// The resume screen's lightweight view of a session: its own row's columns
+/// plus the moment of its most recent exercise — but not the performances/sets
+/// tree. Loaded by [`Session::list_info`] as one grouped query that never
+/// joins `sets`, so listing a long history costs one row per session rather
+/// than one row per set.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionInfo {
+    /// Database row id.
+    pub id: i64,
+    /// The day the session started.
+    pub start_date: NaiveDate,
+    /// The day the session ended; [`None`] while it is still open.
+    pub end_date: Option<NaiveDate>,
+    /// The date and time of its most recent exercise. [`None`] for a session
+    /// with nothing logged yet.
+    pub last_exercise_at: Option<NaiveDateTime>,
 }
 
 #[allow(dead_code)] // delete waits on the session management UI
@@ -64,6 +82,32 @@ impl Session {
         Ok(())
     }
 
+    /// Reopen a session that was ended — clear its `end_date` — so work can
+    /// continue in it. The resume flow calls this when the user carries on a
+    /// session that had been finished, so the new sets are never logged after
+    /// its old end date. Errors with [`DomainError::MissingRow`] when the row
+    /// is already gone.
+    pub fn reopen(&mut self, conn: &Connection) -> Result<(), DomainError> {
+        self.end_date = None;
+        Self::reopen_by_id(conn, self.id)
+    }
+
+    /// Reopen the session with the given `id` — clear its `end_date` — without
+    /// loading it. The resume screen holds only a [`SessionInfo`], not a full
+    /// session tree, so it reopens by id and lets the freeform flow load the
+    /// session when the resume actually happens. Errors with
+    /// [`DomainError::MissingRow`] when the row is already gone.
+    pub fn reopen_by_id(conn: &Connection, id: i64) -> Result<(), DomainError> {
+        let changed = conn.execute("UPDATE sessions SET end_date = NULL WHERE id = ?1", [id])?;
+        if changed == 0 {
+            return Err(DomainError::MissingRow {
+                kind: "session",
+                id,
+            });
+        }
+        Ok(())
+    }
+
     /// Load the session with the given `id`, with its whole performances →
     /// sets tree, if one exists.
     pub fn find_by_id(conn: &Connection, id: i64) -> Result<Option<Self>, DomainError> {
@@ -73,6 +117,37 @@ impl Session {
     /// Load every session with its whole tree, most recent first.
     pub fn all(conn: &Connection) -> Result<Vec<Self>, DomainError> {
         tree(conn, None)
+    }
+
+    /// Load one [`SessionInfo`] per session — its own columns plus the
+    /// date/time of its most recent exercise — most recent first. Unlike
+    /// [`Session::all`], this never joins `sets` (and returns no set data at
+    /// all), so its cost tracks the number of sessions.
+    pub fn list_info(conn: &Connection) -> Result<Vec<SessionInfo>, DomainError> {
+        let mut stmt = conn.prepare(
+            "SELECT s.id, s.start_date, s.end_date,
+                    MAX(p.date || 'T' || p.time_of_day)
+             FROM sessions s
+             LEFT JOIN exercise_performances p ON p.session_id = s.id
+             GROUP BY s.id
+             ORDER BY s.start_date DESC, s.id DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let last_at: Option<String> = row.get(3)?;
+            Ok(SessionInfo {
+                id: row.get(0)?,
+                start_date: row.get(1)?,
+                end_date: row.get(2)?,
+                // The date/time stamps are stored as fixed-width ISO text
+                // (with a fractional-seconds suffix when non-zero), so the
+                // concatenation sorts chronologically and MAX(...) picks the
+                // most recent exercise.
+                last_exercise_at: last_at.as_deref().and_then(|stamp| {
+                    NaiveDateTime::parse_from_str(stamp, "%Y-%m-%dT%H:%M:%S%.f").ok()
+                }),
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     /// Remove this session and everything under it — its performances and
@@ -243,6 +318,43 @@ mod tests {
     }
 
     #[test]
+    fn reopen_clears_and_persists_end_date() {
+        let conn = test_db();
+        let mut session = Session::create(&conn, date(2026, 10, 20)).unwrap();
+        session.end(&conn, date(2026, 10, 21)).unwrap();
+
+        session.reopen(&conn).unwrap();
+
+        assert_eq!(session.end_date, None);
+        let stored: Option<NaiveDate> = conn
+            .query_row(
+                "SELECT end_date FROM sessions WHERE id = ?1",
+                [session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, None);
+    }
+
+    #[test]
+    fn reopen_missing_row_errors() {
+        let conn = test_db();
+        let mut ghost = Session {
+            id: 999,
+            start_date: date(2026, 10, 20),
+            end_date: Some(date(2026, 10, 20)),
+            performances: Vec::new(),
+        };
+        assert!(matches!(
+            ghost.reopen(&conn),
+            Err(DomainError::MissingRow {
+                kind: "session",
+                id: 999
+            })
+        ));
+    }
+
+    #[test]
     fn all_returns_sessions_with_full_performances_sets_tree() {
         let conn = test_db();
         let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
@@ -331,6 +443,64 @@ mod tests {
         let loaded = Session::find_by_id(&conn, session.id).unwrap().unwrap();
         assert_eq!(loaded.id, session.id);
         assert!(loaded.performances.is_empty());
+    }
+
+    #[test]
+    fn list_info_returns_metadata_and_most_recent_exercise_without_sets() {
+        let conn = test_db();
+        let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
+
+        // Older, ended session: two performances (09:00 then 10:00), the
+        // first laden with sets that the info view must not surface.
+        let mut old = Session::create(&conn, date(2026, 10, 19)).unwrap();
+        let p1 =
+            ExercisePerformance::create(&conn, old.id, exercise.id, date(2026, 10, 19), time(9, 0))
+                .unwrap();
+        Set::create(&conn, p1.id, exercise.id, 100.0, 5, true).unwrap();
+        Set::create(&conn, p1.id, exercise.id, 102.5, 4, true).unwrap();
+        Set::create(&conn, p1.id, exercise.id, 105.0, 3, true).unwrap();
+        ExercisePerformance::create(&conn, old.id, exercise.id, date(2026, 10, 19), time(10, 0))
+            .unwrap();
+        old.end(&conn, date(2026, 10, 19)).unwrap();
+
+        // Newer, open session: one performance, one set.
+        let fresh = Session::create(&conn, date(2026, 10, 20)).unwrap();
+        let p2 = ExercisePerformance::create(
+            &conn,
+            fresh.id,
+            exercise.id,
+            date(2026, 10, 20),
+            time(7, 30),
+        )
+        .unwrap();
+        Set::create(&conn, p2.id, exercise.id, 60.0, 10, false).unwrap();
+
+        // A third session with nothing logged at all.
+        let empty = Session::create(&conn, date(2026, 10, 18)).unwrap();
+
+        let infos = Session::list_info(&conn).unwrap();
+        assert_eq!(infos.len(), 3);
+
+        // Most recent first.
+        assert_eq!(infos[0].id, fresh.id);
+        assert_eq!(infos[1].id, old.id);
+        assert_eq!(infos[2].id, empty.id);
+
+        // Metadata only — no set data anywhere on the object.
+        assert_eq!(infos[0].end_date, None);
+        assert_eq!(infos[1].end_date, Some(date(2026, 10, 19)));
+        assert_eq!(infos[2].start_date, date(2026, 10, 18));
+
+        // The most recent exercise's moment — the later 10:00, not 09:00.
+        assert_eq!(
+            infos[1].last_exercise_at,
+            Some(date(2026, 10, 19).and_time(time(10, 0)))
+        );
+        assert_eq!(
+            infos[0].last_exercise_at,
+            Some(date(2026, 10, 20).and_time(time(7, 30)))
+        );
+        assert_eq!(infos[2].last_exercise_at, None);
     }
 
     #[test]

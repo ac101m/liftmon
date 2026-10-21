@@ -1,8 +1,7 @@
 //! The freeform-session screen: the whole workout flow, driven from one screen
 //! until the user pauses or ends it.
 //!
-//! Choosing "begin freeform session" (or resuming an unfinished one) lands
-//! here. The flow is an outer loop over exercises (pick one, log sets against
+//! Choosing "new session" (or resuming a previous one) lands here. The flow is an outer loop over exercises (pick one, log sets against
 //! it) and an inner loop over the set entry plus the performance menu:
 //!
 //! ```text
@@ -12,15 +11,13 @@
 //! * "next set" starts another set for the same exercise,
 //! * "next exercise" breaks back to the picker, moving on to the next
 //!   exercise,
-//! * "pause session" returns to the session menu leaving the session open
-//!   (its `end_date` stays NULL — the resume screen brings it back),
 //! * "end session" records today as the end date.
 //!
 //! A brand-new session's row is created lazily when the first exercise is
 //! picked, so backing out of the picker before anything was recorded leaves
 //! nothing behind. A resumed session skips the picker on entry and lands on
 //! the performance menu for its most recent exercise, so the user decides
-//! whether to add another set, move on, pause, or end. An exercise performance
+//! whether to add another set, move on, or end. An exercise performance
 //! is created for every picked exercise, and a set row for every completed set
 //! (Escape anywhere in the set form cancels that set).
 
@@ -96,7 +93,7 @@ pub(super) fn run(
                 match shell
                     .ask(
                         Some(exercise.name.clone()),
-                        ["next set", "next exercise", "pause session", "end session"],
+                        ["next set", "next exercise", "end session"],
                     )?
                     .as_deref()
                 {
@@ -104,10 +101,6 @@ pub(super) fn run(
                     Some("next set") => break,
                     // Break back to the picker for the next exercise.
                     Some("next exercise") => continue 'exercises,
-                    Some("pause session") => {
-                        shell.log("Session paused — still open");
-                        return Ok(Some(Menu::Sessions));
-                    }
                     // "end session": the session is only ever None before the
                     // first exercise, which this loop cannot have reached.
                     Some("end session") => {

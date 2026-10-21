@@ -43,10 +43,10 @@ pub(crate) enum Menu {
     ExerciseOptions { name: String },
     /// The session screen (Begin freeform session / Resume session / Back).
     Sessions,
-    /// The pick-an-unfinished-session screen, then on into its freeform flow.
+    /// The pick-a-session-to-resume screen, then on into its freeform flow.
     ResumeSession,
     /// The freeform session flow: pick exercises and log sets until the user
-    /// pauses (session left open) or ends it.
+    /// ends it.
     FreeformSession(FreeformStart),
 }
 
@@ -54,7 +54,7 @@ pub(crate) enum Menu {
 pub(crate) enum FreeformStart {
     /// A brand-new session, created when the first exercise is picked.
     New,
-    /// Continue an unfinished session, starting at its most recent exercise.
+    /// Continue a previous session, starting at its most recent exercise.
     Resume {
         /// The session to continue.
         session_id: i64,

@@ -1,4 +1,4 @@
-//! The session screen: begin a freeform workout session, resume an unfinished
+//! The session screen: begin a freeform workout session, resume a previous
 //! one, or back out to the main menu.
 
 use crate::ui::menu::{FreeformStart, Menu};
@@ -8,10 +8,10 @@ use crate::ui::utils::{Shell, UiError};
 pub(super) fn run(shell: &mut Shell) -> Result<Option<Menu>, UiError> {
     let choice = shell.ask(
         Some("Sessions".to_string()),
-        ["begin freeform session", "resume session", "back"],
+        ["new session", "resume session", "back"],
     )?;
     Ok(match choice.as_deref() {
-        Some("begin freeform session") => Some(Menu::FreeformSession(FreeformStart::New)),
+        Some("new session") => Some(Menu::FreeformSession(FreeformStart::New)),
         Some("resume session") => Some(Menu::ResumeSession),
         _ => Some(Menu::Main), // "back", or Escape
     })
