@@ -73,7 +73,7 @@ fn edit_name(
 ) -> Result<Option<String>, UiError> {
     let mut prefill = exercise.name.clone();
     loop {
-        match shell.read_line(Some("New name".to_string()), &prefill)? {
+        match shell.read_line(Some("New name".to_string()), None, &prefill)? {
             ReadOutcome::Value(name) => {
                 let name = name.trim().to_owned();
                 if name.is_empty() {
@@ -112,7 +112,11 @@ fn edit_description(
     conn: &Connection,
     exercise: &Exercise,
 ) -> Result<Option<()>, UiError> {
-    match shell.read_line(Some("New description".to_string()), &exercise.description)? {
+    match shell.read_line(
+        Some("New description".to_string()),
+        None,
+        &exercise.description,
+    )? {
         ReadOutcome::Value(description) => {
             let description = description.trim().to_owned();
             if description == exercise.description {

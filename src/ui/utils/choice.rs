@@ -16,7 +16,7 @@ use super::shell::Shell;
 /// selection — or [`None`] when they backed out with Escape (which the caller
 /// treats like its decline option).
 ///
-/// `options` must not be empty. The question (if any) is written to the
+/// `options` must not be empty. The box title (if any) is written to the
 /// shell's history area, and also used as the box title around the list.
 /// Ctrl+C quits the app (restoring the terminal first).
 ///
@@ -24,7 +24,7 @@ use super::shell::Shell;
 /// calls. Callers that want a persistent history (e.g. a main menu that logs
 /// between questions) hold a [`Shell`] themselves and use [`Shell::ask`].
 pub fn get_user_selection<S: AsRef<str>>(
-    prompt: Option<String>,
+    title: Option<String>,
     options: impl IntoIterator<Item = S>,
 ) -> Option<String> {
     let mut shell = match Shell::new() {
@@ -35,7 +35,7 @@ pub fn get_user_selection<S: AsRef<str>>(
         }
     };
 
-    match shell.ask(prompt, options) {
+    match shell.ask(title, options) {
         Ok(selection) => selection,
         Err(err) => {
             let interrupted = matches!(err, UiError::Interrupted);
@@ -53,8 +53,9 @@ pub fn get_user_selection<S: AsRef<str>>(
 
 /// State of the multiple-choice list while it is being answered.
 pub(crate) struct Choice {
-    /// Question text; `None` shows the generic "Select an option" title.
-    prompt: Option<String>,
+    /// The box title in the top border; `None` shows the generic "Select an
+    /// option" title.
+    title: Option<String>,
     options: Vec<String>,
     /// Index into `options` of the highlighted row.
     selected: usize,
@@ -64,11 +65,11 @@ pub(crate) struct Choice {
 
 impl Choice {
     /// Build a choice list; `options` must not be empty.
-    pub(crate) fn new(prompt: Option<String>, options: Vec<String>) -> Self {
+    pub(crate) fn new(title: Option<String>, options: Vec<String>) -> Self {
         let mut state = ListState::default();
         state.select(Some(0));
         Self {
-            prompt,
+            title,
             options,
             selected: 0,
             state,
@@ -101,8 +102,8 @@ impl Element for Choice {
             .enumerate()
             .map(|(i, option)| ListItem::new(format!("{}. {option}", i + 1)))
             .collect();
-        let prompt = self
-            .prompt
+        let title = self
+            .title
             .clone()
             .unwrap_or_else(|| "Select an option".into());
         // Title is bracketed to read as a header (─[Main menu]), led by a single
@@ -112,7 +113,7 @@ impl Element for Choice {
         let list = List::new(items)
             .block(
                 Block::default()
-                    .title(format!("─[{prompt}]"))
+                    .title(format!("─[{title}]"))
                     .borders(Borders::TOP | Borders::BOTTOM),
             )
             .highlight_style(Style::new().reversed());

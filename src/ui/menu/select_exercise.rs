@@ -19,7 +19,12 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     }
 
     let names: Vec<String> = exercises.iter().map(|e| e.name.clone()).collect();
-    let Some(chosen) = shell.pick(Some("Select exercise".to_string()), names)? else {
+    let Some(chosen) = shell.pick(
+        Some("Select exercise".to_string()),
+        Some("type to filter".to_string()),
+        names,
+    )?
+    else {
         return Ok(Some(Menu::Exercises)); // Escape: backed out
     };
 

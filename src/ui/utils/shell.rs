@@ -95,7 +95,7 @@ impl Shell {
     /// questions, as the main menu does.
     pub(crate) fn ask<S: AsRef<str>>(
         &mut self,
-        prompt: Option<String>,
+        title: Option<String>,
         options: impl IntoIterator<Item = S>,
     ) -> Result<Option<String>, UiError> {
         let options: Vec<String> = options.into_iter().map(|s| s.as_ref().to_owned()).collect();
@@ -103,7 +103,7 @@ impl Shell {
             !options.is_empty(),
             "cannot ask a question with no options to choose from"
         );
-        match self.run(&mut Choice::new(prompt, options))? {
+        match self.run(&mut Choice::new(title, options))? {
             ElementResult::Value(value) => Ok(Some(value)),
             ElementResult::Cancelled => Ok(None),
         }
@@ -113,13 +113,15 @@ impl Shell {
     ///
     /// Runs a [`TextInput`] element seeded with `initial` (so re-asking after a
     /// cancelled attempt keeps what the user typed), and reports whether they
-    /// confirmed with Enter or backed out with Escape.
+    /// confirmed with Enter or backed out with Escape. `prompt` is the optional
+    /// suggestion shown dimmed beside the "> " gutter while the field is empty.
     pub(crate) fn read_line(
         &mut self,
+        title: Option<String>,
         prompt: Option<String>,
         initial: &str,
     ) -> Result<ReadOutcome, UiError> {
-        let mut input = TextInput::new(prompt, initial);
+        let mut input = TextInput::new(title, prompt, initial);
         match self.run(&mut input)? {
             ElementResult::Value(value) => Ok(ReadOutcome::Value(value)),
             ElementResult::Cancelled => Ok(ReadOutcome::Cancelled {
@@ -131,10 +133,12 @@ impl Shell {
     /// Ask the user to filter and pick one of `options`.
     ///
     /// Runs a [`super::picker::Picker`] element: typing narrows the list,
-    /// Up/Down move the highlight, Enter picks. Returns `None` when the user
-    /// backed out with Escape.
+    /// Up/Down move the highlight, Enter picks. `prompt` is the optional
+    /// suggestion shown dimmed in the filter row while it is empty. Returns
+    /// `None` when the user backed out with Escape.
     pub(crate) fn pick<S: AsRef<str>>(
         &mut self,
+        title: Option<String>,
         prompt: Option<String>,
         options: impl IntoIterator<Item = S>,
     ) -> Result<Option<String>, UiError> {
@@ -143,7 +147,7 @@ impl Shell {
             !options.is_empty(),
             "cannot pick from an empty list of options"
         );
-        match self.run(&mut Picker::new(prompt, options))? {
+        match self.run(&mut Picker::new(title, prompt, options))? {
             ElementResult::Value(value) => Ok(Some(value)),
             ElementResult::Cancelled => Ok(None),
         }

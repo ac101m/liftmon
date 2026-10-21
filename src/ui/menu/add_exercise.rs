@@ -55,7 +55,11 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
 fn ask_name(shell: &mut Shell, initial: &str) -> Result<Option<String>, UiError> {
     let mut pending = initial.to_owned();
     loop {
-        match shell.read_line(Some("Exercise name".to_string()), &pending)? {
+        match shell.read_line(
+            Some("Exercise name".to_string()),
+            Some("e.g. Bench press".to_string()),
+            &pending,
+        )? {
             ReadOutcome::Value(name) => {
                 let name = name.trim().to_owned();
                 if name.is_empty() {
@@ -87,7 +91,7 @@ fn ask_name(shell: &mut Shell, initial: &str) -> Result<Option<String>, UiError>
 fn ask_description(shell: &mut Shell) -> Result<Option<String>, UiError> {
     let mut pending = String::new();
     loop {
-        match shell.read_line(Some("Description (optional)".to_string()), &pending)? {
+        match shell.read_line(Some("Description (optional)".to_string()), None, &pending)? {
             ReadOutcome::Value(description) => return Ok(Some(description.trim().to_owned())),
             ReadOutcome::Cancelled { partial } => {
                 if abandon(shell)? {

@@ -29,6 +29,8 @@ pub(crate) use shell::{ReadOutcome, Shell};
 use crossterm::event::KeyEvent;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 
 /// A piece of the interactive UI driven by the [`shell`] session.
 ///
@@ -67,4 +69,26 @@ pub(crate) trait Element {
 pub(crate) enum ElementResult {
     Value(String),
     Cancelled,
+}
+
+/// Build the input row shared by the input elements ([`self::picker`]'s
+/// filter and [`self::text_input`]'s entry): a two-column "> " gutter marking
+/// the row as a prompt, followed by the typed content, or the element's
+/// dimmed suggestion when the field is empty (an element without a suggestion
+/// then shows just the gutter). Pass `content` as [`None`] to show the
+/// empty-field row.
+pub(crate) fn prompt_row(content: Option<String>, prompt: Option<&str>) -> Line<'static> {
+    let mut spans = vec![Span::raw("> ")];
+    match content {
+        Some(text) => spans.push(Span::raw(text)),
+        None => {
+            if let Some(prompt) = prompt {
+                spans.push(Span::styled(
+                    prompt.to_owned(),
+                    Style::new().add_modifier(Modifier::DIM),
+                ));
+            }
+        }
+    }
+    Line::from(spans)
 }

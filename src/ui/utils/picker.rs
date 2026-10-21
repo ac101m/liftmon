@@ -1,12 +1,14 @@
 //! The picker element: a filter box on top of a multiple-choice list.
 //!
-//! The user's typing lives in a single-line filter row; the list below shows
-//! every option whose name contains that text (case-insensitively), so an
-//! empty filter lists everything and the list narrows as they type. The box
-//! keeps a constant height (`min(5, options)` list rows) so it never changes
-//! size while filtering; the matches scroll within that fixed window. Up/Down
-//! move the highlight through the filtered list, Enter picks the highlighted
-//! match, and Escape cancels.
+//! The user's typing lives in a single-line filter row, prefixed with a "> "
+//! prompt and showing the element's (dimmed) suggestion while it is empty —
+//! e.g. "type to filter"; the list below shows every option whose name
+//! contains the text (case-insensitively), so an empty filter lists everything
+//! and the list narrows as they type. The box keeps a constant height
+//! (`min(5, options)` list rows) so it never changes size while filtering;
+//! the matches scroll within that fixed window. Up/Down move the highlight
+//! through the filtered list, Enter picks the highlighted match, and Escape
+//! cancels.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::buffer::Buffer;
@@ -31,7 +33,10 @@ const MAX_VISIBLE: usize = 5;
 
 /// State of the filterable list while it is being answered.
 pub(crate) struct Picker {
-    /// Question text; shown as the box header, e.g. "Select exercise".
+    /// The box title in the top border, e.g. "Select exercise".
+    title: Option<String>,
+    /// The suggestion shown dimmed in the filter row while it is empty (e.g.
+    /// "type to filter"); `None` leaves the row just the "> " prompt.
     prompt: Option<String>,
     /// Every option, in their given order; the filter narrows this.
     all: Vec<String>,
@@ -50,10 +55,11 @@ pub(crate) struct Picker {
 impl Picker {
     /// Build a picker over `options`; they must not be empty (empty options
     /// would be unresolvable, so [`super::shell::Shell::pick`] asserts it).
-    pub(crate) fn new(prompt: Option<String>, options: Vec<String>) -> Self {
+    pub(crate) fn new(title: Option<String>, prompt: Option<String>, options: Vec<String>) -> Self {
         let mut state = ListState::default();
         state.select(Some(0));
         Self {
+            title,
             prompt,
             all: options,
             filter: String::new(),
@@ -148,12 +154,12 @@ impl Element for Picker {
     }
 
     fn hint(&self) -> String {
-        "type to filter · ↑/↓ move · Enter select · Esc cancel · Ctrl+C quit".into()
+        "↑/↓ move · Enter select · Esc cancel · Ctrl+C quit".into()
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
         self.last_width = area.width;
-        let prompt = self.prompt.clone().unwrap_or_else(|| "Select".into());
+        let title = self.title.clone().unwrap_or_else(|| "Select".into());
         let matches = self.matches();
         // (`self.state` is kept in sync with `self.selected` by the editing
         // methods, so the List has nothing extra to set here.)
@@ -161,16 +167,24 @@ impl Element for Picker {
         // Same look as the choice box: a ─[header] top edge and a plain bottom
         // rule, with no side bars.
         let block = Block::default()
-            .title(format!("─[{prompt}]"))
+            .title(format!("─[{title}]"))
             .borders(Borders::TOP | Borders::BOTTOM);
         let inner = block.inner(area);
         block.render(area, buf);
 
-        // The filter row, clipped to one line (the caret is parked by the
-        // shell via `cursor()`).
+        // The filter row: the shared "> " prompt marks the field as an input,
+        // and an empty filter shows the element's dimmed suggestion so the
+        // prompt is discoverable. The text is clipped to one line (the caret
+        // is parked by the shell via `cursor()`).
         let filter_area = Rect::new(inner.x, inner.y, inner.width, 1);
-        let (filter_text, _) = self.visible_filter(inner.width);
-        Paragraph::new(filter_text).render(filter_area, buf);
+        let field_width = inner.width.saturating_sub(2); // room for the "> " prompt
+        let (filter_text, _) = self.visible_filter(field_width);
+        let content = if self.filter.is_empty() {
+            None
+        } else {
+            Some(filter_text)
+        };
+        super::prompt_row(content, self.prompt.as_deref()).render(filter_area, buf);
 
         // The matches below it (or a hint when nothing matches).
         if matches.is_empty() {
@@ -200,10 +214,12 @@ impl Element for Picker {
     }
 
     /// Where the caret sits on the filter row, in element coordinates: row 1
-    /// (beneath the top border), at its clipped column.
+    /// (beneath the top border), two columns past the "> " prompt, at its
+    /// clipped column.
     fn cursor(&self) -> Option<(u16, u16)> {
-        let (_, x) = self.visible_filter(self.last_width.max(1));
-        Some((x, 1))
+        let field_width = self.last_width.saturating_sub(2); // room for "> "
+        let (_, x) = self.visible_filter(field_width.max(1));
+        Some((x + 2, 1))
     }
 
     fn on_key(&mut self, key: KeyEvent) -> Option<ElementResult> {
@@ -259,6 +275,7 @@ mod tests {
     fn picker() -> Picker {
         Picker::new(
             Some("Select".into()),
+            Some("type to filter".into()),
             OPTIONS.iter().map(|s| s.to_string()).collect(),
         )
     }
@@ -268,6 +285,7 @@ mod tests {
     fn big_picker() -> Picker {
         Picker::new(
             Some("Select".into()),
+            Some("type to filter".into()),
             (0..17).map(|i| format!("exercise {i:02}")).collect(),
         )
     }
@@ -454,7 +472,11 @@ mod tests {
             row(0).starts_with("─[Select]"),
             "header like the choice box"
         );
-        assert_eq!(row(1).trim_end(), "", "the filter row starts empty");
+        assert_eq!(
+            row(1).trim_end(),
+            "> type to filter",
+            "an empty filter shows the prompt placeholder"
+        );
         assert!(row(2).trim_end().starts_with("1. bench press"));
         assert!(row(3).trim_end().starts_with("2. deadlift"));
         assert_eq!(row(5).trim_end(), "4. squat");
@@ -487,12 +509,58 @@ mod tests {
         picker.render(area, &mut buf);
 
         let row1: String = (0..40).map(|x| buf[(x, 1)].symbol()).collect();
-        assert_eq!(row1.trim_end(), "ben", "typed filter shows on row 1");
-        assert_eq!(picker.cursor(), Some((3, 1)), "caret after the filter text");
+        assert_eq!(
+            row1.trim_end(),
+            "> ben",
+            "typed filter shows on row 1 after the prompt"
+        );
+        assert_eq!(picker.cursor(), Some((5, 1)), "caret after the filter text");
 
         // Matches narrowed to the two 'bench' exercises.
         let row2: String = (0..40).map(|x| buf[(x, 2)].symbol()).collect();
         assert!(row2.trim_end().starts_with("1. bench press"));
+    }
+
+    #[test]
+    fn empty_filter_shows_a_dim_placeholder_that_yields_to_typing() {
+        let mut picker = picker();
+        let area = Rect::new(0, 0, 40, picker.natural_height(40));
+        let mut buf = Buffer::empty(area);
+        picker.render(area, &mut buf);
+
+        let row1: String = (0..40).map(|x| buf[(x, 1)].symbol()).collect();
+        assert_eq!(row1.trim_end(), "> type to filter");
+        assert!(
+            buf[(2, 1)].style().add_modifier.contains(Modifier::DIM),
+            "the placeholder is dim so it doesn't read as typed input"
+        );
+
+        // Typing replaces the placeholder; the prompt prefix stays.
+        type_text(&mut picker, "ben");
+        buf.reset();
+        picker.render(area, &mut buf);
+        let row1: String = (0..40).map(|x| buf[(x, 1)].symbol()).collect();
+        assert_eq!(row1.trim_end(), "> ben");
+        assert_eq!(picker.cursor(), Some((5, 1)));
+    }
+
+    #[test]
+    fn picker_without_a_prompt_shows_a_bare_filter_row() {
+        let mut picker = Picker::new(
+            Some("Select".into()),
+            None,
+            OPTIONS.iter().map(|s| s.to_string()).collect(),
+        );
+        let area = Rect::new(0, 0, 40, picker.natural_height(40));
+        let mut buf = Buffer::empty(area);
+        picker.render(area, &mut buf);
+
+        let row1: String = (0..40).map(|x| buf[(x, 1)].symbol()).collect();
+        assert_eq!(
+            row1.trim_end(),
+            ">",
+            "no suggestion, just the prompt gutter — the field is still marked"
+        );
     }
 
     #[test]

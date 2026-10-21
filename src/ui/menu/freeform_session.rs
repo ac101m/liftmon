@@ -138,7 +138,12 @@ fn begin_exercise(
         return Ok(None);
     }
     let names: Vec<String> = exercises.iter().map(|e| e.name.clone()).collect();
-    let Some(chosen) = shell.pick(Some("Select exercise".to_string()), names)? else {
+    let Some(chosen) = shell.pick(
+        Some("Select exercise".to_string()),
+        Some("type to filter".to_string()),
+        names,
+    )?
+    else {
         return Ok(None); // Escape: backed out
     };
     // Names are UNIQUE, so the picked name identifies exactly one exercise.
@@ -197,7 +202,11 @@ fn ask_set(
 fn ask_weight(shell: &mut Shell) -> Result<Option<f64>, UiError> {
     let mut pending = String::new();
     loop {
-        match shell.read_line(Some("Weight (kg)".to_string()), &pending)? {
+        match shell.read_line(
+            Some("Weight (kg)".to_string()),
+            Some("e.g. 100".to_string()),
+            &pending,
+        )? {
             ReadOutcome::Value(raw) => match parse_weight(&raw) {
                 Some(weight) => return Ok(Some(weight)),
                 None => {
@@ -215,7 +224,11 @@ fn ask_weight(shell: &mut Shell) -> Result<Option<f64>, UiError> {
 fn ask_reps(shell: &mut Shell) -> Result<Option<u32>, UiError> {
     let mut pending = String::new();
     loop {
-        match shell.read_line(Some("Reps".to_string()), &pending)? {
+        match shell.read_line(
+            Some("Reps".to_string()),
+            Some("e.g. 5".to_string()),
+            &pending,
+        )? {
             ReadOutcome::Value(raw) => match parse_reps(&raw) {
                 Some(reps) => return Ok(Some(reps)),
                 None => {
