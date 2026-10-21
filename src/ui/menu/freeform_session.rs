@@ -48,7 +48,7 @@ pub(super) fn run(
         FreeformStart::Resume { session_id } => match Session::find_by_id(conn, session_id)? {
             Some(session) => Some(session),
             None => {
-                shell.log("that session is no longer there");
+                shell.log("That session is no longer there");
                 return Ok(Some(Menu::Sessions));
             }
         },
@@ -60,7 +60,7 @@ pub(super) fn run(
         Some(session) => match session.performances.last() {
             Some(performance) => {
                 let Some(exercise) = Exercise::find_by_id(conn, performance.exercise_id)? else {
-                    shell.log("that exercise is no longer there");
+                    shell.log("That exercise is no longer there");
                     return Ok(Some(Menu::Sessions));
                 };
                 Some((exercise, performance.clone()))
@@ -105,14 +105,14 @@ pub(super) fn run(
                     // Break back to the picker for the next exercise.
                     Some("next exercise") => continue 'exercises,
                     Some("pause session") => {
-                        shell.log("session paused — still open");
+                        shell.log("Session paused — still open");
                         return Ok(Some(Menu::Sessions));
                     }
                     // "end session": the session is only ever None before the
                     // first exercise, which this loop cannot have reached.
                     Some("end session") => {
                         session.as_mut().expect("started").end(conn, today())?;
-                        shell.log("session ended");
+                        shell.log("Session ended");
                         return Ok(Some(Menu::Sessions));
                     }
                     // Escape: no back option here — re-ask the menu.
@@ -134,7 +134,7 @@ fn begin_exercise(
 ) -> Result<Option<(Exercise, ExercisePerformance)>, UiError> {
     let exercises = Exercise::all(conn)?;
     if exercises.is_empty() {
-        shell.log("no exercises yet — add one first");
+        shell.log("No exercises yet — add one first");
         return Ok(None);
     }
     let names: Vec<String> = exercises.iter().map(|e| e.name.clone()).collect();
@@ -210,7 +210,7 @@ fn ask_weight(shell: &mut Shell) -> Result<Option<f64>, UiError> {
             ReadOutcome::Value(raw) => match parse_weight(&raw) {
                 Some(weight) => return Ok(Some(weight)),
                 None => {
-                    shell.log("enter the weight as a number, e.g. 100 or 102.5");
+                    shell.log("Enter the weight as a number, e.g. 100 or 102.5");
                     pending = raw;
                 }
             },
@@ -232,7 +232,7 @@ fn ask_reps(shell: &mut Shell) -> Result<Option<u32>, UiError> {
             ReadOutcome::Value(raw) => match parse_reps(&raw) {
                 Some(reps) => return Ok(Some(reps)),
                 None => {
-                    shell.log("enter the rep count as a whole number, e.g. 5");
+                    shell.log("Enter the rep count as a whole number, e.g. 5");
                     pending = raw;
                 }
             },

@@ -22,7 +22,7 @@ pub(super) fn run(
 ) -> Result<Option<Menu>, UiError> {
     loop {
         let Some(exercise) = Exercise::find_by_name(conn, &name)? else {
-            shell.log(format!("exercise '{name}' no longer exists"));
+            shell.log(format!("Exercise '{name}' no longer exists"));
             return Ok(Some(Menu::Exercises));
         };
         match shell
@@ -54,7 +54,7 @@ pub(super) fn run(
                 if sure.as_deref() == Some("Yes") {
                     match exercise.delete(conn) {
                         Ok(()) => {
-                            shell.log(format!("deleted '{}'", exercise.name));
+                            shell.log(format!("Deleted exercise '{}'", exercise.name));
                             return Ok(Some(Menu::Exercises)); // it no longer exists
                         }
                         // A used exercise is refused by the schema (ON DELETE
@@ -64,7 +64,7 @@ pub(super) fn run(
                         Err(DomainError::InUse { ref name, .. }) => {
                             let session_count = exercise.used_in_sessions(conn)?;
                             shell.log(format!(
-                                "can't delete '{name}' — it's used in {session_count} session{}",
+                                "Can't delete exercise '{name}' — it's used in {session_count} session{}",
                                 if session_count == 1 { "" } else { "s" }
                             ));
                         }
@@ -92,7 +92,7 @@ fn edit_name(
             ReadOutcome::Value(name) => {
                 let name = name.trim().to_owned();
                 if name.is_empty() {
-                    shell.log("the name cannot be empty");
+                    shell.log("The name cannot be empty");
                     prefill.clear();
                     continue;
                 }
@@ -109,7 +109,7 @@ fn edit_name(
                     // Only the name is UNIQUE, so this is a duplicate name:
                     // log it and re-ask, keeping what they had typed.
                     Err(DomainError::NameTaken { .. }) => {
-                        shell.log(format!("an exercise named '{name}' already exists"));
+                        shell.log(format!("An exercise named '{name}' already exists"));
                         prefill = name;
                     }
                     Err(err) => return Err(err.into()),

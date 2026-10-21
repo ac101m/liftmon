@@ -14,7 +14,7 @@ use super::Menu;
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     let exercises = Exercise::all(conn)?;
     if exercises.is_empty() {
-        shell.log("no exercises yet — add one first");
+        shell.log("No exercises yet — add one first");
         return Ok(Some(Menu::Exercises));
     }
 

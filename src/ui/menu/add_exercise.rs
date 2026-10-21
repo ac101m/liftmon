@@ -7,7 +7,7 @@
 //! in the field with what they had typed, so a second thought costs nothing
 //! and doesn't reset the rest of the form.
 //!
-//! Each field is asked in its own loop ([`ask_name`], [`ask_description`]), so
+//! Each field is asked in its own loop ([`ask_exercise_name`], [`ask_description`]), so
 //! voicing a field again never jumps back to an earlier one.
 
 use rusqlite::Connection;
@@ -24,7 +24,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     // us back to collect it again, prefilled with what the user had typed.
     let mut prefill = String::new();
     loop {
-        let name = match ask_name(shell, &prefill)? {
+        let name = match ask_exercise_name(shell, &prefill)? {
             Some(name) => name,
             None => return Ok(Some(Menu::Exercises)), // cancelled the form
         };
@@ -42,7 +42,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
             // Only the name is UNIQUE, so a constraint violation means a
             // duplicate name: log it and re-ask, keeping the typed name.
             Err(DomainError::NameTaken { name, .. }) => {
-                shell.log(format!("an exercise named '{name}' already exists"));
+                shell.log(format!("An exercise named '{name}' already exists"));
                 prefill = name;
             }
             Err(err) => return Err(err.into()),
@@ -52,7 +52,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
 
 /// Ask for the exercise name until it is non-empty. `None` means the user
 /// cancelled the whole form.
-fn ask_name(shell: &mut Shell, initial: &str) -> Result<Option<String>, UiError> {
+fn ask_exercise_name(shell: &mut Shell, initial: &str) -> Result<Option<String>, UiError> {
     let mut pending = initial.to_owned();
     loop {
         match shell.read_line(
@@ -63,17 +63,13 @@ fn ask_name(shell: &mut Shell, initial: &str) -> Result<Option<String>, UiError>
             ReadOutcome::Value(name) => {
                 let name = name.trim().to_owned();
                 if name.is_empty() {
-                    shell.log("the name cannot be empty");
+                    shell.log("The name cannot be empty");
                     pending.clear();
                     continue;
                 }
                 return Ok(Some(name));
             }
             ReadOutcome::Cancelled { partial } => {
-                // The name field is the only work a fresh form holds, and the
-                // description stage is unreachable until it is non-empty, so
-                // "both fields empty" reduces to "nothing typed here yet":
-                // cancel outright instead of asking.
                 if partial.trim().is_empty() {
                     return Ok(None);
                 }

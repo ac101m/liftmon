@@ -23,7 +23,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         .filter(|s| s.end_date.is_none())
         .collect();
     if unfinished.is_empty() {
-        shell.log("no unfinished sessions to resume");
+        shell.log("No unfinished sessions to resume");
         return Ok(Some(Menu::Sessions));
     }
 
