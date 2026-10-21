@@ -18,11 +18,11 @@
 //!
 //! A brand-new session's row is created lazily when the first exercise is
 //! picked, so backing out of the picker before anything was recorded leaves
-//! nothing behind. A resumed session skips the picker on entry and drops
-//! straight into the set form for its most recent exercise, carrying on where
-//! the user left off. An exercise performance is created for every picked
-//! exercise, and a set row for every completed set (Escape in the set form
-//! cancels that set).
+//! nothing behind. A resumed session skips the picker on entry and lands on
+//! the performance menu for its most recent exercise, so the user decides
+//! whether to add another set, move on, pause, or end. An exercise performance
+//! is created for every picked exercise, and a set row for every completed set
+//! (Escape anywhere in the set form cancels that set).
 
 use chrono::{Local, NaiveDate, NaiveTime};
 use rusqlite::Connection;
@@ -72,17 +72,24 @@ pub(super) fn run(
         },
     };
     'exercises: loop {
-        let (exercise, performance) = match current.take() {
-            Some(seeded) => seeded,
+        // A resumed session lands on the seeded exercise's performance menu
+        // rather than straight into the weight form, so the user chooses
+        // whether to add a set, move on, pause, or end. Every later (picked)
+        // exercise keeps asking a set first, as before.
+        let (exercise, performance, mut menu_first) = match current.take() {
+            Some(seeded) => (seeded.0, seeded.1, true),
             None => {
                 let Some(pair) = begin_exercise(shell, conn, &mut session)? else {
                     return Ok(Some(Menu::Sessions)); // backed out of the picker
                 };
-                pair
+                (pair.0, pair.1, false)
             }
         };
         loop {
-            ask_set(shell, conn, &exercise, &performance)?;
+            if !menu_first {
+                ask_set(shell, conn, &exercise, &performance)?;
+            }
+            menu_first = false;
             // The performance menu. There is no "back" option on it, so Escape
             // just re-asks the menu rather than starting another set.
             loop {
