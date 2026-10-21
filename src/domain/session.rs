@@ -76,28 +76,18 @@ impl Session {
     }
 
     /// Remove this session and everything under it — its performances and
-    /// their sets. Errors with [`DomainError::MissingRow`] when the session is
-    /// already gone. Runs in one transaction so a failure leaves the tree
-    /// intact.
+    /// their sets. The schema deletes the sub-tree (`ON DELETE CASCADE`, so
+    /// performances and sets go with their session, migration v3), which makes
+    /// one statement enough. Errors with [`DomainError::MissingRow`] when the
+    /// session is already gone.
     pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
-        let tx = conn.unchecked_transaction()?;
-        tx.execute(
-            "DELETE FROM sets WHERE exercise_performance_id IN
-             (SELECT id FROM exercise_performances WHERE session_id = ?1)",
-            [self.id],
-        )?;
-        tx.execute(
-            "DELETE FROM exercise_performances WHERE session_id = ?1",
-            [self.id],
-        )?;
-        let changed = tx.execute("DELETE FROM sessions WHERE id = ?1", [self.id])?;
+        let changed = conn.execute("DELETE FROM sessions WHERE id = ?1", [self.id])?;
         if changed == 0 {
             return Err(DomainError::MissingRow {
                 kind: "session",
                 id: self.id,
             });
         }
-        tx.commit()?;
         Ok(())
     }
 }

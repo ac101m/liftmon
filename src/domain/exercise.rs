@@ -89,10 +89,39 @@ impl Exercise {
         Ok(())
     }
 
-    /// Remove this exercise's row. Errors with [`DomainError::MissingRow`] when
-    /// the row is already gone.
+    /// Remove this exercise's row. Refused with [`DomainError::InUse`] when
+    /// other rows still reference it — `exercise_performances` and `sets` hold
+    /// the exercise with `ON DELETE RESTRICT` (migration v3), so deleting a
+    /// used exercise fails at the constraint level rather than corrupting
+    /// history. Errors with [`DomainError::MissingRow`] when the row is already
+    /// gone.
     pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
-        let changed = conn.execute("DELETE FROM exercises WHERE id = ?1", params![self.id])?;
+        let changed = match conn.execute("DELETE FROM exercises WHERE id = ?1", params![self.id]) {
+            Ok(changed) => changed,
+            // exercises is the parent of both workout-record tables' exercise
+            // FKs, so a used exercise trips ON DELETE RESTRICT — surface it as
+            // a friendly InUse, mirroring NameTaken, not a raw database error.
+            // (A RESTRICT/NO ACTION violation is raised through the FK-trigger
+            // mechanism, so it reports SQLITE_CONSTRAINT_TRIGGER; 787 is the
+            // plain foreign-key code.)
+            Err(err)
+                if matches!(
+                    &err,
+                    rusqlite::Error::SqliteFailure(ffi_err, _)
+                        if matches!(
+                            ffi_err.extended_code,
+                            rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY
+                                | rusqlite::ffi::SQLITE_CONSTRAINT_TRIGGER
+                        )
+                ) =>
+            {
+                return Err(DomainError::InUse {
+                    kind: "exercise",
+                    name: self.name.clone(),
+                });
+            }
+            Err(err) => return Err(err.into()),
+        };
         if changed == 0 {
             return Err(DomainError::MissingRow {
                 kind: "exercise",
@@ -100,6 +129,17 @@ impl Exercise {
             });
         }
         Ok(())
+    }
+
+    /// How many distinct sessions have a performance of this exercise — the
+    /// workout records that stop [`Self::delete`] from working.
+    pub fn used_in_sessions(&self, conn: &Connection) -> Result<usize, DomainError> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(DISTINCT session_id) FROM exercise_performances WHERE exercise_id = ?1",
+            [self.id],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
     }
 
     /// Load the exercise with the given unique `name`, if one exists.
@@ -158,12 +198,19 @@ impl Exercise {
 mod tests {
     use super::*;
     use crate::db::apply_schema;
+    use crate::domain::{ExercisePerformance, Session};
+    use chrono::{NaiveDate, NaiveTime};
 
     /// An in-memory database with the full schema applied.
     fn test_db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
         apply_schema(&mut conn).unwrap();
         conn
+    }
+
+    fn date(y: i32, m: u32, d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, d).unwrap()
     }
 
     #[test]
@@ -314,6 +361,67 @@ mod tests {
                 id: 999
             })
         ));
+    }
+
+    #[test]
+    fn delete_refuses_an_exercise_that_is_still_used() {
+        let conn = test_db();
+        let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
+        let session = Session::create(&conn, date(2026, 10, 20)).unwrap();
+        ExercisePerformance::create(
+            &conn,
+            session.id,
+            exercise.id,
+            date(2026, 10, 20),
+            NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            exercise.delete(&conn),
+            Err(DomainError::InUse { kind: "exercise", ref name }) if name == "bench press"
+        ));
+        // ...and the row is still there to be used.
+        assert!(Exercise::find_by_id(&conn, exercise.id).unwrap().is_some());
+    }
+
+    #[test]
+    fn used_in_sessions_counts_sessions_performing_the_exercise() {
+        let conn = test_db();
+        let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
+        let unused = Exercise::create(&conn, "deadlift", "conventional").unwrap();
+
+        // One session with a single performance, another with two: two distinct
+        // sessions have this exercise logged.
+        let first = Session::create(&conn, date(2026, 10, 19)).unwrap();
+        ExercisePerformance::create(
+            &conn,
+            first.id,
+            exercise.id,
+            date(2026, 10, 19),
+            NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
+        )
+        .unwrap();
+        let second = Session::create(&conn, date(2026, 10, 20)).unwrap();
+        ExercisePerformance::create(
+            &conn,
+            second.id,
+            exercise.id,
+            date(2026, 10, 20),
+            NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+        )
+        .unwrap();
+        ExercisePerformance::create(
+            &conn,
+            second.id,
+            exercise.id,
+            date(2026, 10, 20),
+            NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(exercise.used_in_sessions(&conn).unwrap(), 2);
+        assert_eq!(unused.used_in_sessions(&conn).unwrap(), 0);
     }
 
     #[test]

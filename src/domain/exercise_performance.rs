@@ -85,22 +85,17 @@ impl ExercisePerformance {
         Ok(Some(performance))
     }
 
-    /// Remove this performance and its sets. Errors with
+    /// Remove this performance and its sets. The sets go with it (`ON DELETE
+    /// CASCADE`, migration v3), so one statement is enough. Errors with
     /// [`DomainError::MissingRow`] when the row is already gone.
     pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
-        let tx = conn.unchecked_transaction()?;
-        tx.execute(
-            "DELETE FROM sets WHERE exercise_performance_id = ?1",
-            [self.id],
-        )?;
-        let changed = tx.execute("DELETE FROM exercise_performances WHERE id = ?1", [self.id])?;
+        let changed = conn.execute("DELETE FROM exercise_performances WHERE id = ?1", [self.id])?;
         if changed == 0 {
             return Err(DomainError::MissingRow {
                 kind: "exercise performance",
                 id: self.id,
             });
         }
-        tx.commit()?;
         Ok(())
     }
 }
