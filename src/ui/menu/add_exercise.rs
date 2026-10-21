@@ -100,16 +100,17 @@ fn ask_description(shell: &mut Shell) -> Result<Option<String>, UiError> {
 }
 
 /// The "are you sure?" prompt when the user pressed Escape mid-form. Returns
-/// true when they confirmed giving up on this exercise.
+/// true when they confirmed giving up on this exercise. Escape here re-cancels
+/// the confirm, keeping the form.
 fn abandon(shell: &mut Shell) -> Result<bool, UiError> {
     match shell
         .ask(
             Some("Cancel adding this exercise?".to_string()),
             ["Yes", "No"],
         )?
-        .as_str()
+        .as_deref()
     {
-        "Yes" => Ok(true),
+        Some("Yes") => Ok(true),
         _ => Ok(false),
     }
 }

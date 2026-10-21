@@ -71,7 +71,7 @@ pub(super) fn run(
             None => None,
         },
     };
-    loop {
+    'exercises: loop {
         let (exercise, performance) = match current.take() {
             Some(seeded) => seeded,
             None => {
@@ -83,27 +83,33 @@ pub(super) fn run(
         };
         loop {
             ask_set(shell, conn, &exercise, &performance)?;
-            match shell
-                .ask(
-                    Some(exercise.name.clone()),
-                    ["next set", "next exercise", "pause session", "end session"],
-                )?
-                .as_str()
-            {
-                // Another set for the same exercise; the loop just continues.
-                "next set" => {}
-                // Break back to the picker for the next exercise.
-                "next exercise" => break,
-                "pause session" => {
-                    shell.log("session paused — still open");
-                    return Ok(Some(Menu::Sessions));
-                }
-                // "end session": the session is only ever None before the first
-                // exercise, which the performance loop cannot have reached.
-                _ => {
-                    session.as_mut().expect("started").end(conn, today())?;
-                    shell.log("session ended");
-                    return Ok(Some(Menu::Sessions));
+            // The performance menu. There is no "back" option on it, so Escape
+            // just re-asks the menu rather than starting another set.
+            loop {
+                match shell
+                    .ask(
+                        Some(exercise.name.clone()),
+                        ["next set", "next exercise", "pause session", "end session"],
+                    )?
+                    .as_deref()
+                {
+                    // Another set for the same exercise.
+                    Some("next set") => break,
+                    // Break back to the picker for the next exercise.
+                    Some("next exercise") => continue 'exercises,
+                    Some("pause session") => {
+                        shell.log("session paused — still open");
+                        return Ok(Some(Menu::Sessions));
+                    }
+                    // "end session": the session is only ever None before the
+                    // first exercise, which this loop cannot have reached.
+                    Some("end session") => {
+                        session.as_mut().expect("started").end(conn, today())?;
+                        shell.log("session ended");
+                        return Ok(Some(Menu::Sessions));
+                    }
+                    // Escape: no back option here — re-ask the menu.
+                    _ => {}
                 }
             }
         }
@@ -146,7 +152,7 @@ fn begin_exercise(
 }
 
 /// Ask for one set — weight, then rep count, then a Yes/No on whether it was
-/// taken to failure — and record it. Escape in the weight or rep count cancels
+/// taken to failure — and record it. Escape anywhere in the set form cancels
 /// the set (nothing is created) and the caller shows the performance menu.
 fn ask_set(
     shell: &mut Shell,
@@ -160,7 +166,10 @@ fn ask_set(
     let Some(reps) = ask_reps(shell)? else {
         return Ok(());
     };
-    let to_failure = shell.ask(Some("Taken to failure?".to_string()), ["Yes", "No"])? == "Yes";
+    let Some(to_failure) = shell.ask(Some("Taken to failure?".to_string()), ["Yes", "No"])? else {
+        return Ok(());
+    };
+    let to_failure = to_failure == "Yes";
     Set::create(
         conn,
         performance.id,

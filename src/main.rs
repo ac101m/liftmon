@@ -37,8 +37,9 @@ fn main() -> ExitCode {
                 )),
                 ["Upgrade now", "Cancel"],
             );
-            match choice.as_str() {
-                "Upgrade now" => match database.upgrade() {
+            match choice.as_deref() {
+                // "Cancel" and Escape both decline.
+                Some("Upgrade now") => match database.upgrade() {
                     Ok(outcome) => {
                         let backup = outcome
                             .backup

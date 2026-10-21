@@ -13,7 +13,8 @@ use super::error::UiError;
 use super::shell::Shell;
 
 /// Ask the user to pick one of `options` in a throwaway shell, returning their
-/// selection.
+/// selection — or [`None`] when they backed out with Escape (which the caller
+/// treats like its decline option).
 ///
 /// `options` must not be empty. The question (if any) is written to the
 /// shell's history area, and also used as the box title around the list.
@@ -25,7 +26,7 @@ use super::shell::Shell;
 pub fn get_user_selection<S: AsRef<str>>(
     prompt: Option<String>,
     options: impl IntoIterator<Item = S>,
-) -> String {
+) -> Option<String> {
     let mut shell = match Shell::new() {
         Ok(shell) => shell,
         Err(err) => {
@@ -90,7 +91,7 @@ impl Element for Choice {
     }
 
     fn hint(&self) -> String {
-        "↑/↓ move · Enter select · Ctrl+C quit".into()
+        "↑/↓ move · Enter select · Esc back · Ctrl+C quit".into()
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
@@ -126,6 +127,9 @@ impl Element for Choice {
             KeyCode::Enter => {
                 return Some(ElementResult::Value(self.options[self.selected].clone()));
             }
+            // Backing out without choosing. The screen decides what that means
+            // (usually its "back" option).
+            KeyCode::Esc => return Some(ElementResult::Cancelled),
             _ => {}
         }
         None
@@ -178,6 +182,19 @@ mod tests {
         let mut choice = Choice::new(None, vec!["only".into()]);
         assert_eq!(choice.on_key(key(KeyCode::Char('x'))), None);
         assert_eq!(choice.selected, 0);
+    }
+
+    #[test]
+    fn escape_returns_cancelled() {
+        let mut choice = Choice::new(None, vec!["a".into(), "b".into()]);
+        assert_eq!(
+            choice.on_key(key(KeyCode::Esc)),
+            Some(ElementResult::Cancelled)
+        );
+        assert_eq!(
+            choice.selected, 0,
+            "Escape leaves the highlight where it was"
+        );
     }
 
     #[test]

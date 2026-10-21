@@ -30,34 +30,35 @@ pub(super) fn run(
                 Some(exercise.name.clone()),
                 ["info", "edit name", "edit description", "delete", "back"],
             )?
-            .as_str()
+            .as_deref()
         {
             // Read-only: print the exercise in the shared style and stay here.
-            "info" => {
+            Some("info") => {
                 super::log_exercise(shell, &exercise);
             }
             // Renaming reloads the loop under the new name so the prompt keeps
             // tracking the exercise.
-            "edit name" => {
+            Some("edit name") => {
                 if let Some(new_name) = edit_name(shell, conn, &exercise)? {
                     name = new_name;
                 }
             }
-            "edit description" => {
+            Some("edit description") => {
                 edit_description(shell, conn, &exercise)?;
             }
-            "delete" => {
+            Some("delete") => {
                 let sure = shell.ask(
                     Some(format!("Delete exercise '{}'?", exercise.name)),
                     ["Yes", "No"],
                 )?;
-                if sure == "Yes" {
+                if sure.as_deref() == Some("Yes") {
                     exercise.delete(conn)?;
                     shell.log(format!("deleted '{}'", exercise.name));
                     return Ok(Some(Menu::Exercises)); // it no longer exists
                 }
             }
-            _ => return Ok(Some(Menu::Exercises)), // "back"
+            // "back", or Escape.
+            _ => return Ok(Some(Menu::Exercises)),
         }
     }
 }

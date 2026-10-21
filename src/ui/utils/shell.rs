@@ -87,7 +87,9 @@ impl Shell {
 
     /// Ask a multiple-choice question within this session.
     ///
-    /// Runs a [`Choice`] element and returns the user's selection. Unlike
+    /// Runs a [`Choice`] element and returns the user's selection, or [`None`]
+    /// when they backed out with Escape (the caller treats that like its
+    /// "back" option, where there is one). Unlike
     /// [`super::choice::get_user_selection`], this keeps the same session (and
     /// history) across calls — the natural way to drive a sequence of
     /// questions, as the main menu does.
@@ -95,17 +97,15 @@ impl Shell {
         &mut self,
         prompt: Option<String>,
         options: impl IntoIterator<Item = S>,
-    ) -> Result<String, UiError> {
+    ) -> Result<Option<String>, UiError> {
         let options: Vec<String> = options.into_iter().map(|s| s.as_ref().to_owned()).collect();
         assert!(
             !options.is_empty(),
             "cannot ask a question with no options to choose from"
         );
         match self.run(&mut Choice::new(prompt, options))? {
-            ElementResult::Value(value) => Ok(value),
-            ElementResult::Cancelled => {
-                unreachable!("a Choice element has no Escape key")
-            }
+            ElementResult::Value(value) => Ok(Some(value)),
+            ElementResult::Cancelled => Ok(None),
         }
     }
 

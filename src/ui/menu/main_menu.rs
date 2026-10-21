@@ -1,7 +1,8 @@
 //! The main menu screen: the app's top level.
 //!
 //! Its options are "Exercises" and "Sessions" (descend into the respective
-//! screens) and "Exit" (leave the menus entirely).
+//! screens) and "Exit" (leave the menus entirely). There is no "back" from the
+//! top level, so Escape just re-asks the same question.
 
 use crate::ui::menu::Menu;
 use crate::ui::utils::{Shell, UiError};
@@ -12,9 +13,10 @@ pub(super) fn run(shell: &mut Shell) -> Result<Option<Menu>, UiError> {
         Some("Main menu".to_string()),
         ["Exercises", "Sessions", "Exit"],
     )?;
-    Ok(match choice.as_str() {
-        "Exercises" => Some(Menu::Exercises),
-        "Sessions" => Some(Menu::Sessions),
-        _ => None, // "Exit"
+    Ok(match choice.as_deref() {
+        Some("Exercises") => Some(Menu::Exercises),
+        Some("Sessions") => Some(Menu::Sessions),
+        Some("Exit") => None,
+        _ => Some(Menu::Main), // Escape: nothing to back out of here
     })
 }

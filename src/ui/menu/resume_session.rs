@@ -14,7 +14,7 @@ use super::{FreeformStart, Menu};
 
 /// Ask which unfinished session to resume, returning the freeform flow seeded
 /// with it — or the session screen when there is nothing to resume or the user
-/// backs out.
+/// backs out with Escape.
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     // `Session::all` already loads newest first, so the unfinished ones come
     // back most recent first too.
@@ -27,10 +27,13 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         return Ok(Some(Menu::Sessions));
     }
 
-    let chosen = shell.ask(
+    let Some(chosen) = shell.ask(
         Some("Resume session".to_string()),
         unfinished.iter().map(session_label).collect::<Vec<_>>(),
-    )?;
+    )?
+    else {
+        return Ok(Some(Menu::Sessions)); // Escape: backed out
+    };
     let session = unfinished
         .into_iter()
         .find(|s| session_label(s) == chosen)

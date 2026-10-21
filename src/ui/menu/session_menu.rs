@@ -10,9 +10,9 @@ pub(super) fn run(shell: &mut Shell) -> Result<Option<Menu>, UiError> {
         Some("Sessions".to_string()),
         ["begin freeform session", "resume session", "back"],
     )?;
-    Ok(match choice.as_str() {
-        "begin freeform session" => Some(Menu::FreeformSession(FreeformStart::New)),
-        "resume session" => Some(Menu::ResumeSession),
-        _ => Some(Menu::Main), // "back"
+    Ok(match choice.as_deref() {
+        Some("begin freeform session") => Some(Menu::FreeformSession(FreeformStart::New)),
+        Some("resume session") => Some(Menu::ResumeSession),
+        _ => Some(Menu::Main), // "back", or Escape
     })
 }

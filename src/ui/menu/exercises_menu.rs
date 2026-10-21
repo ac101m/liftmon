@@ -10,9 +10,9 @@ pub(super) fn run(shell: &mut Shell) -> Result<Option<Menu>, UiError> {
         Some("Exercises".to_string()),
         ["Add exercise", "List exercises", "Back"],
     )?;
-    Ok(match choice.as_str() {
-        "Add exercise" => Some(Menu::AddExercise),
-        "List exercises" => Some(Menu::SelectExercise),
-        _ => Some(Menu::Main), // "Back"
+    Ok(match choice.as_deref() {
+        Some("Add exercise") => Some(Menu::AddExercise),
+        Some("List exercises") => Some(Menu::SelectExercise),
+        _ => Some(Menu::Main), // "Back", or Escape
     })
 }
