@@ -196,8 +196,7 @@ impl Element for Picker {
         }
         let items: Vec<ListItem> = matches
             .iter()
-            .enumerate()
-            .map(|(i, name)| ListItem::new(format!("{}. {name}", i + 1)))
+            .map(|name| ListItem::new(format!(" {name}")))
             .collect();
         let list_area = Rect::new(
             inner.x,
@@ -443,8 +442,8 @@ mod tests {
         let mut buf = Buffer::empty(area);
         picker.render(area, &mut buf);
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
-        assert_eq!(row(2).trim_end(), "1. exercise 00");
-        assert_eq!(row(6).trim_end(), "5. exercise 04", "box fits five rows");
+        assert_eq!(row(2).trim_end(), " exercise 00");
+        assert_eq!(row(6).trim_end(), " exercise 04", "box fits five rows");
         assert!(row(7).chars().all(|c| c == '─'), "bottom rule");
 
         // March the highlight off the bottom edge; the list scrolls to keep
@@ -456,8 +455,8 @@ mod tests {
         let mut buf = Buffer::empty(area);
         picker.render(area, &mut buf);
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
-        assert_eq!(row(2).trim_end(), "2. exercise 01", "list scrolled");
-        assert_eq!(row(6).trim_end(), "6. exercise 05", "highlight in view");
+        assert_eq!(row(2).trim_end(), " exercise 01", "list scrolled");
+        assert_eq!(row(6).trim_end(), " exercise 05", "highlight in view");
     }
 
     #[test]
@@ -477,9 +476,9 @@ mod tests {
             "> type to filter",
             "an empty filter shows the prompt placeholder"
         );
-        assert!(row(2).trim_end().starts_with("1. bench press"));
-        assert!(row(3).trim_end().starts_with("2. deadlift"));
-        assert_eq!(row(5).trim_end(), "4. squat");
+        assert!(row(2).trim_end().starts_with(" bench press"));
+        assert!(row(3).trim_end().starts_with(" deadlift"));
+        assert_eq!(row(5).trim_end(), " squat");
 
         // The first match (selected) is reversed; the second is not.
         assert!(
@@ -518,7 +517,7 @@ mod tests {
 
         // Matches narrowed to the two 'bench' exercises.
         let row2: String = (0..40).map(|x| buf[(x, 2)].symbol()).collect();
-        assert!(row2.trim_end().starts_with("1. bench press"));
+        assert!(row2.trim_end().starts_with(" bench press"));
     }
 
     #[test]

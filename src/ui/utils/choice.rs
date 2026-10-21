@@ -1,4 +1,4 @@
-//! The multiple-choice element: a numbered list navigated with ↑/↓ and
+//! The multiple-choice element: a list navigated with ↑/↓ and
 //! confirmed with Enter.
 
 use crossterm::event::{KeyCode, KeyEvent};
@@ -99,8 +99,7 @@ impl Element for Choice {
         let items: Vec<ListItem> = self
             .options
             .iter()
-            .enumerate()
-            .map(|(i, option)| ListItem::new(format!("{}. {option}", i + 1)))
+            .map(|option| ListItem::new(format!(" {option}")))
             .collect();
         let title = self
             .title
@@ -199,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_numbered_options_with_the_selection_highlighted() {
+    fn renders_options_with_the_selection_highlighted() {
         let mut choice = Choice::new(
             Some("pick".into()),
             vec!["bench press".into(), "squat".into()],
@@ -211,8 +210,8 @@ mod tests {
         // Bracketed header on the top border row, led by one border glyph;
         // no side bars anywhere.
         assert!(RowText::at(&buf, 0).starts_with("─[pick]"));
-        assert!(RowText::at(&buf, 1).contains("1. bench press"));
-        assert!(RowText::at(&buf, 2).contains("2. squat"));
+        assert!(RowText::at(&buf, 1).contains(" bench press"));
+        assert!(RowText::at(&buf, 2).contains(" squat"));
         assert!(
             RowText::at(&buf, 5).chars().all(|c| c == '─'),
             "bottom edge is a plain rule, no corners"
