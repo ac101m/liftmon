@@ -5,13 +5,15 @@
 //! it) and an inner loop over the set entry plus the performance menu:
 //!
 //! ```text
-//! pick exercise ─► log sets ─► (next set | next exercise | pause session | end session)
+//! pick exercise ─► log sets ─► (next set | next exercise | exit session)
 //! ```
 //!
 //! * "next set" starts another set for the same exercise,
 //! * "next exercise" breaks back to the picker, moving on to the next
 //!   exercise,
-//! * "end session" records today as the end date.
+//! * "exit session" leaves the workout and returns to the session screen.
+//!   Sessions are never "ended" — there is no end date, so exiting records
+//!   nothing and the session can be resumed again later.
 //!
 //! A brand-new session's row is created lazily when the first exercise is
 //! picked, so backing out of the picker before anything was recorded leaves
@@ -93,7 +95,7 @@ pub(super) fn run(
                 match shell
                     .ask(
                         Some(exercise.name.clone()),
-                        ["next set", "next exercise", "end session"],
+                        ["next set", "next exercise", "exit session"],
                     )?
                     .as_deref()
                 {
@@ -101,13 +103,8 @@ pub(super) fn run(
                     Some("next set") => break,
                     // Break back to the picker for the next exercise.
                     Some("next exercise") => continue 'exercises,
-                    // "end session": the session is only ever None before the
-                    // first exercise, which this loop cannot have reached.
-                    Some("end session") => {
-                        session.as_mut().expect("started").end(conn, today())?;
-                        shell.log("Session ended");
-                        return Ok(Some(Menu::Sessions));
-                    }
+                    // "exit session": leave the workout, session intact.
+                    Some("exit session") => return Ok(Some(Menu::Sessions)),
                     // Escape: no back option here — re-ask the menu.
                     _ => {}
                 }

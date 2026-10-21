@@ -57,8 +57,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
         r"
         CREATE TABLE sessions (
             id         INTEGER PRIMARY KEY,
-            start_date TEXT NOT NULL,
-            end_date   TEXT
+            start_date TEXT NOT NULL
         );
 
         CREATE TABLE exercise_performances (
