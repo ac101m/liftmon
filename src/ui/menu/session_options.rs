@@ -7,8 +7,9 @@
 //! confirmation before a *resume* whose most recent activity (the latest set,
 //! or the session's own creation when nothing is logged yet) is more than 6
 //! hours ago, since that session is probably not the workout the user is
-//! actually mid-flow in — or back out to the session list. Sessions resumed
-//! within the window flow straight into their freeform flow.
+//! actually mid-flow in — delete it (after a Yes/No "are you sure", taking its
+//! performances and sets with it) — or back out to the session list. Sessions
+//! resumed within the window flow straight into their freeform flow.
 
 use std::collections::HashMap;
 
@@ -44,7 +45,12 @@ pub(super) fn run(
         match shell
             .ask(
                 Some(format_date(local_date(info.created_at))),
-                [begin_or_resume(info.performance_count), "summary", "back"],
+                [
+                    begin_or_resume(info.performance_count),
+                    "summary",
+                    "delete",
+                    "back",
+                ],
             )?
             .as_deref()
         {
@@ -70,6 +76,31 @@ pub(super) fn run(
                     return Ok(Some(Menu::SelectSession));
                 };
                 log_session(shell, conn, &session)?;
+            }
+            // Delete the session after a Yes/No "are you sure". Unlike an
+            // exercise there is nothing to refuse: a session's performances and
+            // sets belong to it, so the schema deletes them with the row (ON
+            // DELETE CASCADE) — and the list we return to no longer shows it.
+            Some("delete") => {
+                let sure = shell.ask(
+                    Some(format!(
+                        "Delete session from {}?",
+                        format_date(local_date(info.created_at))
+                    )),
+                    ["Yes", "No"],
+                )?;
+                if sure.as_deref() == Some("Yes") {
+                    let Some(session) = Session::find_by_id(conn, info.id)? else {
+                        shell.log("That session is no longer there");
+                        return Ok(Some(Menu::SelectSession));
+                    };
+                    session.delete(conn)?;
+                    shell.log(format!(
+                        "Deleted session from {}",
+                        format_date(local_date(info.created_at))
+                    ));
+                    return Ok(Some(Menu::SelectSession));
+                }
             }
             // "back", or Escape: return to the session list, as if the user
             // had never picked a session.

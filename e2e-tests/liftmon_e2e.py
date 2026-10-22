@@ -594,6 +594,58 @@ def esc_shortcut_path():
     print("ok   Esc = back on every back page; Esc cancels the set form and the delete confirm; flow recovers")
     print()
 
+def delete_session_path():
+    print("=== DELETE SESSION PATH: a session deletes with its history after a Yes; No keeps it ===")
+    seed_db()
+    con = sqlite3.connect(DB)
+    # Two sessions: an older one with a performance and a set (the doomed one)
+    # and an empty one that must survive. Both stamped a bit more than a whole
+    # number of days back, so their picker labels read a deterministic "N days
+    # ago".
+    doomed_at = datetime.now(timezone.utc) - timedelta(days=4, hours=1)
+    doomed_text = doomed_at.strftime("%Y-%m-%d %H:%M:%S+00:00")
+    doomed_label = doomed_at.astimezone().date().strftime("%Y/%m/%d")
+    survivor_at = datetime.now(timezone.utc) - timedelta(days=1, hours=1)
+    survivor_text = survivor_at.strftime("%Y-%m-%d %H:%M:%S+00:00")
+    survivor_label = survivor_at.astimezone().date().strftime("%Y/%m/%d")
+    con.execute("INSERT INTO sessions (created_at) VALUES (?)", (doomed_text,))
+    con.execute("INSERT INTO exercise_performances (session_id, exercise_id, created_at) VALUES (1, 1, ?)",
+                (doomed_text,))
+    con.execute("INSERT INTO sets (exercise_performance_id, exercise_id, created_at, weight_kg, reps, to_failure) "
+                "VALUES (1, 1, ?, 80.0, 6, 1)", (doomed_text,))
+    con.execute("INSERT INTO sessions (created_at) VALUES (?)", (survivor_text,))
+    con.commit(); con.close()
+
+    app = App()
+    app.send("\x1b[B\r")                                    # -> Sessions
+    app.send("\x1b[B\r")                                    # list sessions (index 1)
+    app.check("session picker (both listed)", "Select session", doomed_label, survivor_label)
+    app.send("\x1b[B\r")                                    # pick the doomed session (index 1)
+    app.check("doomed session options", "─[" + doomed_label + "]", "resume", "summary", "delete", "back")
+    app.send("\x1b[B\x1b[B\r")                              # delete (index 2)
+    app.check("delete confirm", "Delete session from " + doomed_label + "?", "Yes", "No")
+    app.send("\x1b[B\r")                                    # No: stays on the options
+    app.check("No keeps the session", "─[" + doomed_label + "]", "resume", "summary", "delete", "back")
+    app.send("\x1b[B\x1b[B\r")                              # delete again
+    app.check("delete confirm (again)", "Delete session from " + doomed_label + "?", "Yes", "No")
+    app.send("\r")                                          # Yes: delete it
+    app.check("deleted + back at the session list", "Deleted session from " + doomed_label,
+              "─[Select session]", "type to filter", "Esc back")
+    app.check("the survivor is still listed", survivor_label)
+    app.send("\x1b")                                        # Esc on the list = back to the session menu
+    app.check("back at session menu", "─[Sessions]", "list sessions")
+    app.close()
+
+    d = db()
+    print(f"  after delete: sessions = {d['sessions']}  performances = {d['performances']}  sets = {d['sets']}")
+    if len(d["sessions"]) != 1: raise SystemExit(f"FAIL: expected just the surviving session, got {d['sessions']}")
+    if d["sessions"][0][1] != survivor_text: raise SystemExit(f"FAIL: wrong session survived ({d['sessions'][0][1]})")
+    if d["performances"] or d["sets"]:
+        raise SystemExit("FAIL: deleting a session must cascade away its performances and sets")
+    if len(d["exercises"]) != 2: raise SystemExit("FAIL: exercises must survive session deletion")
+    print("ok   a session deletes with its performances/sets on Yes; No keeps it; the survivor and exercises remain")
+    print()
+
 def delete_path():
     print("=== DELETE PATH: a used exercise can't be deleted (with its session count), an unused one can ===")
     seed_db()
@@ -644,5 +696,6 @@ resume_path()
 stale_confirm_path()
 no_sessions_path()
 esc_shortcut_path()
+delete_session_path()
 delete_path()
 print("ALL SCENARIOS PASSED")

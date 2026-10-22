@@ -45,7 +45,6 @@ pub struct SessionInfo {
     pub last_activity_at: DateTime<Utc>,
 }
 
-#[allow(dead_code)] // delete waits on the session management UI
 impl Session {
     /// Insert a new session row and return the persisted entity, with no
     /// performances yet.
@@ -72,6 +71,7 @@ impl Session {
     }
 
     /// Load every session with its whole tree, most recent first.
+    #[allow(dead_code)] // the full-history loader — used by the tests; waits on a future list-all screen
     pub fn all(conn: &Connection) -> Result<Vec<Self>, DomainError> {
         tree(conn, None)
     }
