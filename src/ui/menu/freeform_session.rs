@@ -1,10 +1,11 @@
 //! The freeform-session screen: the whole workout flow, driven from one screen
 //! until the user pauses or ends it.
 //!
-//! Choosing "new session" (or resuming a previous one) lands here. A new
-//! session's row is created up front — `created_at` stamps the moment the user
-//! chose "new session" — so backing out of the picker leaves an empty session
-//! behind, which the resume list can pick up again. The flow is an outer loop
+//! A session lands here one way: from its options screen's "resume", whether
+//! it is brand new (created on the session screen, which drops it onto its
+//! options screen) or a continued one. A session's row — with `created_at`
+//! stamping the moment "new session" was chosen — already exists by the time
+//! this flow is reached; it only ever resumes one. The flow is an outer loop
 //! over exercises (pick one, log sets against it) and an inner loop over the
 //! set entry plus the performance menu:
 //!
@@ -15,11 +16,9 @@
 //! * "next set" starts another set for the same exercise,
 //! * "next exercise" breaks back to the picker, moving on to the next
 //!   exercise,
-//! * "exit session" leaves the workout and returns where the flow was
-//!   launched — the session screen for a brand-new session, the resumed
-//!   session's options screen for a resumed one. Sessions are never
-//!   "ended" — there is no end date, so exiting records nothing and the
-//!   session can be resumed again later.
+//! * "exit session" leaves the workout and returns to the session's options
+//!   screen. Sessions are never "ended" — there is no end date, so exiting
+//!   records nothing and the session can be resumed again later.
 //!
 //! Each moment a real-world event happens gets its `created_at` timestamp: the
 //! session when "new session" is chosen, a performance when its exercise is
@@ -34,33 +33,27 @@ use crate::domain::{Exercise, ExercisePerformance, Session, Set};
 
 use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
-use super::{FreeformStart, Menu};
+use super::Menu;
 
-/// Drive the session until the user leaves it, then return where the flow was
-/// launched from: a new session lands back on the session screen, a resumed
-/// one on its own options screen.
+/// Drive the session until the user leaves it, then land back on its options
+/// screen. The session must already exist — the session screen creates the row
+/// when "new session" is chosen, and this flow only ever resumes it.
 pub(super) fn run(
     shell: &mut Shell,
     conn: &Connection,
-    start: FreeformStart,
+    session_id: i64,
 ) -> Result<Option<Menu>, UiError> {
-    // A new session's row is created up front, stamping the moment the user
-    // chose "new session"; a resumed one loads its existing row.
-    let (session, return_to) = match start {
-        FreeformStart::New => (Session::create(conn, Utc::now())?, Menu::Sessions),
-        FreeformStart::Resume { session_id } => match Session::find_by_id(conn, session_id)? {
-            Some(session) => (session, Menu::SessionOptions { session_id }),
-            None => {
-                shell.log("That session is no longer there");
-                return Ok(Some(Menu::Sessions));
-            }
-        },
+    let Some(session) = Session::find_by_id(conn, session_id)? else {
+        shell.log("That session is no longer there");
+        return Ok(Some(Menu::Sessions));
     };
-    // A resumed session starts at its most recent exercise; the entry is
-    // consumed once, after which the flow behaves like a fresh one. An empty
-    // session (a new one the user backed out of before picking anything) has
-    // no last performance, so it falls into the pick flow and carries on
-    // adding to this same session.
+    // Leaving the flow — backing out of the picker, or exiting the session —
+    // lands back on this session's options screen.
+    let return_to = Menu::SessionOptions { session_id };
+    // A session starts at its most recent exercise; the entry is consumed
+    // once, after which the flow behaves like a fresh one. An empty session (a
+    // new one the user hasn't worked yet) has no last performance, so it falls
+    // into the pick flow and carries on adding to this same session.
     let mut current: Option<(Exercise, ExercisePerformance)> = match session.performances.last() {
         Some(performance) => {
             let Some(exercise) = Exercise::find_by_id(conn, performance.exercise_id)? else {
@@ -72,9 +65,9 @@ pub(super) fn run(
         None => None,
     };
     'exercises: loop {
-        // A resumed session lands on the seeded exercise's performance menu
-        // rather than straight into the weight form, so the user chooses
-        // whether to add a set, move on, pause, or end. Every later (picked)
+        // A session with a last exercise lands on that exercise's performance
+        // menu rather than straight into the weight form, so the user chooses
+        // whether to add a set, move on, or exit. Every later (picked)
         // exercise keeps asking a set first, as before.
         let (exercise, performance, mut menu_first) = match current.take() {
             Some(seeded) => (seeded.0, seeded.1, true),
@@ -104,8 +97,8 @@ pub(super) fn run(
                     Some("next set") => break,
                     // Break back to the picker for the next exercise.
                     Some("next exercise") => continue 'exercises,
-                    // "exit session": leave the workout, session intact; the
-                    // caller lands back where the flow was launched from.
+                    // "exit session": leave the workout, session intact, and
+                    // land back on this session's options screen.
                     Some("exit session") => return Ok(Some(return_to)),
                     // Escape: no back option here — re-ask the menu.
                     _ => {}

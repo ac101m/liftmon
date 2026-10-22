@@ -1,12 +1,14 @@
-//! The per-session screen: actions on the session the user just picked.
+//! The per-session screen: actions on the session the user just picked — or
+//! just started, since "new session" lands here with the freshly created row.
 //!
 //! The prompt is the session's start date, and the options show a summary of
-//! its logged exercises and sets, resume it — asking a Yes/No confirmation
-//! first when its most recent activity (the latest set, or the session's own
-//! creation when nothing is logged yet) is more than 6 hours ago, since that
-//! session is probably not the workout the user is actually mid-flow in — or
-//! back out to the session screen. A session resumed within the window flows
-//! straight into its freeform flow.
+//! its logged exercises and sets, begin it — the action reads "begin" until the
+//! session holds its first performance, "resume" after that — asking a Yes/No
+//! confirmation before a *resume* whose most recent activity (the latest set,
+//! or the session's own creation when nothing is logged yet) is more than 6
+//! hours ago, since that session is probably not the workout the user is
+//! actually mid-flow in — or back out to the session screen. Sessions resumed
+//! within the window flow straight into their freeform flow.
 
 use std::collections::HashMap;
 
@@ -18,8 +20,8 @@ use rusqlite::Connection;
 use crate::domain::{Exercise, Session, SessionInfo};
 use crate::ui::utils::{Shell, UiError};
 
+use super::Menu;
 use super::select_session::{format_date, local_date};
-use super::{FreeformStart, Menu};
 
 /// A session whose most recent activity is older than this needs a Yes/No
 /// confirmation before it is resumed.
@@ -35,22 +37,30 @@ pub(super) fn run(
         shell.log("That session is no longer there");
         return Ok(Some(Menu::Sessions));
     };
+    // A session with nothing performed yet reads "begin", not "resume" — the
+    // flow is the same either way; only the honest label differs.
+    let begin = info.performance_count == 0;
     loop {
         match shell
             .ask(
                 Some(format_date(local_date(info.created_at))),
-                ["resume", "summary", "back"],
+                [begin_or_resume(info.performance_count), "summary", "back"],
             )?
             .as_deref()
         {
-            Some("resume") => {
-                if confirm_if_stale(shell, &info)? {
-                    // A resume just continues the session — nothing needs to be
-                    // reset, and the freeform flow loads the full session
-                    // itself once it starts.
-                    return Ok(Some(Menu::FreeformSession(FreeformStart::Resume {
+            // "begin" (nothing performed yet) or "resume" both enter the
+            // freeform flow, which loads the session itself and falls into the
+            // pick flow for an empty one.
+            Some("begin") | Some("resume") => {
+                // Only a genuine resume can be of a stale session worth
+                // confirming; beginning an empty session is a fresh start and
+                // always flows straight in.
+                if begin || confirm_if_stale(shell, &info)? {
+                    // The freeform flow loads the full session itself once it
+                    // starts — nothing needs to be reset here.
+                    return Ok(Some(Menu::FreeformSession {
                         session_id: info.id,
-                    })));
+                    }));
                 }
             }
             // Read-only: print the session in the shared style and stay here.
@@ -115,6 +125,16 @@ fn summary_lines(session: &Session, names: &HashMap<i64, String>) -> Vec<Line<'s
     lines
 }
 
+/// The primary option's label for a session: "begin" while it holds no
+/// performances yet, "resume" once it does.
+fn begin_or_resume(performance_count: i64) -> &'static str {
+    if performance_count == 0 {
+        "begin"
+    } else {
+        "resume"
+    }
+}
+
 /// Ask the yes/no confirmation when this session's most recent activity is
 /// over `CONFIRM_AFTER` past — and report whether the resume should proceed.
 /// A session resumed within the window flows straight on.
@@ -143,7 +163,7 @@ fn needs_confirmation(info: &SessionInfo, now: DateTime<Utc>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{CONFIRM_AFTER, needs_confirmation, summary_lines};
+    use super::{CONFIRM_AFTER, begin_or_resume, needs_confirmation, summary_lines};
     use crate::domain::{ExercisePerformance, Session, SessionInfo, Set};
     use chrono::{DateTime, Local, TimeDelta, TimeZone, Utc};
     use ratatui::style::{Modifier, Style};
@@ -160,12 +180,13 @@ mod tests {
             .with_timezone(&Utc)
     }
 
-    /// A session on 2026-10-20 whose most recent activity was at `last_at`
-    /// (also its creation moment, like an empty session).
+    /// An empty session on 2026-10-20 whose most recent activity was at
+    /// `last_at` (also its creation moment, like a fresh session).
     fn info(last_at: DateTime<Utc>) -> SessionInfo {
         SessionInfo {
             id: 1,
             created_at: last_at,
+            performance_count: 0,
             last_activity_at: last_at,
         }
     }
@@ -285,5 +306,12 @@ mod tests {
         let now = dt(2026, 10, 21, 15, 0);
         let just_now = now - TimeDelta::minutes(1);
         assert!(!needs_confirmation(&info(just_now), now));
+    }
+
+    #[test]
+    fn a_session_reads_begin_until_it_has_a_performance() {
+        assert_eq!(begin_or_resume(0), "begin");
+        assert_eq!(begin_or_resume(1), "resume");
+        assert_eq!(begin_or_resume(4), "resume");
     }
 }

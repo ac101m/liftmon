@@ -49,21 +49,12 @@ pub(crate) enum Menu {
     /// options screen.
     SelectSession,
     /// The actions for one picked session, identified by its database row id.
+    /// A brand-new session lands here too: the session screen creates the row
+    /// and hands the user straight onto its options screen.
     SessionOptions { session_id: i64 },
     /// The freeform session flow: pick exercises and log sets until the user
-    /// ends it.
-    FreeformSession(FreeformStart),
-}
-
-/// How a freeform session begins.
-pub(crate) enum FreeformStart {
-    /// A brand-new session, created when the first exercise is picked.
-    New,
-    /// Continue a previous session, starting at its most recent exercise.
-    Resume {
-        /// The session to continue.
-        session_id: i64,
-    },
+    /// leaves, then land back on that session's options screen.
+    FreeformSession { session_id: i64 },
 }
 
 /// Print an exercise to the history area the way the screens present one: the
@@ -98,10 +89,10 @@ impl Menu {
             Menu::AddExercise => add_exercise::run(shell, conn),
             Menu::SelectExercise => select_exercise::run(shell, conn),
             Menu::ExerciseOptions { name } => exercise_options::run(shell, conn, name),
-            Menu::Sessions => session_menu::run(shell),
+            Menu::Sessions => session_menu::run(shell, conn),
             Menu::SelectSession => select_session::run(shell, conn),
             Menu::SessionOptions { session_id } => session_options::run(shell, conn, session_id),
-            Menu::FreeformSession(start) => freeform_session::run(shell, conn, start),
+            Menu::FreeformSession { session_id } => freeform_session::run(shell, conn, session_id),
         }
     }
 }

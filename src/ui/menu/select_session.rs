@@ -141,6 +141,7 @@ mod tests {
         SessionInfo {
             id: 1,
             created_at: last_at,
+            performance_count: 0,
             last_activity_at: last_at,
         }
     }

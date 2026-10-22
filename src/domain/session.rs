@@ -35,6 +35,10 @@ pub struct SessionInfo {
     pub id: i64,
     /// The moment the session was created (UTC).
     pub created_at: DateTime<Utc>,
+    /// How many exercises it holds performances for so far — 0 means a session
+    /// that has not been used yet (its options screen says "begin" rather than
+    /// "resume").
+    pub performance_count: i64,
     /// The moment of its most recent activity: the latest set's `created_at`,
     /// or the session's own `created_at` when nothing is logged yet. Never
     /// `None`, thanks to the fallback.
@@ -72,16 +76,17 @@ impl Session {
         tree(conn, None)
     }
 
-    /// Load one [`SessionInfo`] per session — its own columns plus the moment
-    /// of its most recent activity — most recent first. Unlike [`Session::all`],
-    /// this returns no performances/sets at all, so its cost tracks the number
-    /// of sessions.
+    /// Load one [`SessionInfo`] per session — its own columns plus how many
+    /// performances it holds and the moment of its most recent activity — most
+    /// recent first. Unlike [`Session::all`], this returns no performances/sets
+    /// at all, so its cost tracks the number of sessions.
     pub fn list_info(conn: &Connection) -> Result<Vec<SessionInfo>, DomainError> {
         info(conn, None)
     }
 
     /// Load the [`SessionInfo`] for the session with the given `id` — its own
-    /// columns plus the moment of its most recent activity — if one exists.
+    /// columns plus how many performances it holds and the moment of its most
+    /// recent activity — if one exists.
     pub fn info_by_id(conn: &Connection, id: i64) -> Result<Option<SessionInfo>, DomainError> {
         Ok(info(conn, Some(id))?.into_iter().next())
     }
@@ -103,14 +108,17 @@ impl Session {
     }
 }
 
-/// Load [`SessionInfo`] rows — optionally just the one with id `only`. The most
-/// recent activity is the latest set's `created_at` across the session (a
-/// correlated subquery, so this is one row per session, not per set), falling
-/// back to the session's own `created_at` when nothing is logged yet.
+/// Load [`SessionInfo`] rows — optionally just the one with id `only`. Each row
+/// carries the session's own columns plus its running summary: how many
+/// performances it holds (a correlated subquery), and its most recent activity
+/// — the latest set's `created_at` across the session (also a correlated
+/// subquery, so this stays one row per session, not per set), falling back to
+/// the session's own `created_at` when nothing is logged yet.
 /// [`Session::list_info`] and [`Session::info_by_id`] both go through here.
 fn info(conn: &Connection, only: Option<i64>) -> Result<Vec<SessionInfo>, DomainError> {
     let mut stmt = conn.prepare(
         "SELECT s.id, s.created_at,
+                (SELECT COUNT(*) FROM exercise_performances p WHERE p.session_id = s.id),
                 COALESCE((SELECT MAX(st.created_at)
                           FROM sets st
                           JOIN exercise_performances p ON p.id = st.exercise_performance_id
@@ -123,9 +131,10 @@ fn info(conn: &Connection, only: Option<i64>) -> Result<Vec<SessionInfo>, Domain
         Ok(SessionInfo {
             id: row.get(0)?,
             created_at: row.get(1)?,
+            performance_count: row.get(2)?,
             // Timestamps are stored as fixed-width UTC text (rusqlite's chrono
             // feature), so MAX(...) picks the most recent set.
-            last_activity_at: row.get(2)?,
+            last_activity_at: row.get(3)?,
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -429,6 +438,11 @@ mod tests {
         // Metadata only — no set data anywhere on the object.
         assert_eq!(infos[2].created_at, dt(2026, 10, 18, 18, 0));
 
+        // The performance count is the running number of exercises performed.
+        assert_eq!(infos[0].performance_count, 1); // fresh
+        assert_eq!(infos[1].performance_count, 2); // old
+        assert_eq!(infos[2].performance_count, 0); // empty
+
         // The last activity is the latest set's moment (09:15), not the 10:00
         // set-less performance; fresh's is its set at 07:35; the empty session
         // falls back to its creation time.
@@ -461,9 +475,11 @@ mod tests {
         let info = Session::info_by_id(&conn, session.id).unwrap().unwrap();
         assert_eq!(info.id, session.id);
         assert_eq!(info.created_at, dt(2026, 10, 20, 8, 0));
+        assert_eq!(info.performance_count, 1);
         assert_eq!(info.last_activity_at, dt(2026, 10, 20, 8, 10));
 
         let empty_info = Session::info_by_id(&conn, empty.id).unwrap().unwrap();
+        assert_eq!(empty_info.performance_count, 0);
         assert_eq!(empty_info.last_activity_at, dt(2026, 10, 18, 18, 0));
 
         assert!(Session::info_by_id(&conn, 999).unwrap().is_none());
