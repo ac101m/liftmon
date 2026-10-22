@@ -44,7 +44,7 @@ fn epley_e1rm(weight_kg: f64, reps: u32) -> f64 {
     weight_kg * (1.0 + reps as f64 / EPLEY_E1RM_REPS_SCALE)
 }
 
-#[allow(dead_code)] // create/best_set are used by the screens; for_performance/delete wait on the session list UI
+#[allow(dead_code)] // create/personal_bests are used by the screens; for_performance/delete wait on the session list UI
 impl Set {
     /// Insert a new set row, and return the persisted entity together with
     /// whether it is a personal best: its Epley e1RM strictly exceeds the best
@@ -131,35 +131,39 @@ impl Set {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// The current best set of an exercise — the one with the highest Epley
-    /// e1RM — with a deterministic tie-break when two sets rank equal (equal
-    /// value → heavier, then newer). [`None`] when the exercise has never been
-    /// performed.
-    pub fn best_set(conn: &Connection, exercise_id: i64) -> Result<Option<Self>, DomainError> {
-        match conn.query_row(
+    /// The exercise's personal bests — the sets that beat every strictly
+    /// earlier set's Epley e1RM at the time they were done — newest first, up
+    /// to `limit`. Because each new best must strictly beat all that came
+    /// before, they run in strictly rising e1RM order and the first is the
+    /// current best. (An exercise's first-ever set is always one.)
+    pub fn personal_bests(
+        conn: &Connection,
+        exercise_id: i64,
+        limit: usize,
+    ) -> Result<Vec<Self>, DomainError> {
+        let mut stmt = conn.prepare(
             "SELECT id, exercise_performance_id, exercise_id, created_at, weight_kg, reps, to_failure, epley_e1rm
-             FROM sets
-             WHERE exercise_id = ?1
-             ORDER BY epley_e1rm DESC, weight_kg DESC, created_at DESC, id DESC
-             LIMIT 1",
-            [exercise_id],
-            |row| {
-                Ok(Self {
-                    id: row.get(0)?,
-                    exercise_performance_id: row.get(1)?,
-                    exercise_id: row.get(2)?,
-                    created_at: row.get(3)?,
-                    weight_kg: row.get(4)?,
-                    reps: row.get(5)?,
-                    to_failure: row.get(6)?,
-                    epley_e1rm: row.get(7)?,
-                })
-            },
-        ) {
-            Ok(set) => Ok(Some(set)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(err) => Err(err.into()),
-        }
+             FROM sets s
+             WHERE s.exercise_id = ?1
+               AND s.epley_e1rm > COALESCE(
+                     (SELECT MAX(epley_e1rm) FROM sets s2
+                      WHERE s2.exercise_id = s.exercise_id AND s2.id < s.id), 0.0)
+             ORDER BY s.id DESC
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![exercise_id, limit as i64], |row| {
+            Ok(Self {
+                id: row.get(0)?,
+                exercise_performance_id: row.get(1)?,
+                exercise_id: row.get(2)?,
+                created_at: row.get(3)?,
+                weight_kg: row.get(4)?,
+                reps: row.get(5)?,
+                to_failure: row.get(6)?,
+                epley_e1rm: row.get(7)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     /// Remove this set's row. Errors with [`DomainError::MissingRow`] when the
@@ -490,24 +494,50 @@ mod tests {
     }
 
     #[test]
-    fn best_set_returns_the_highest_e1rm_with_tiebreak() {
+    fn personal_bests_lists_the_sets_that_beat_everything_before_newest_first() {
         let conn = test_db();
         let perf = seed_performance(&conn);
-        // 100×6 and 80×15 tie on e1RM (both 120): the heavier one must win.
-        Set::create(&conn, perf, 1, 80.0, 15, false, dt(2026, 10, 20, 9, 0)).unwrap();
-        Set::create(&conn, perf, 1, 100.0, 6, false, dt(2026, 10, 20, 9, 1)).unwrap();
-        Set::create(&conn, perf, 1, 50.0, 10, false, dt(2026, 10, 20, 9, 2)).unwrap();
-
-        let best = Set::best_set(&conn, 1).unwrap().expect("a best exists");
-        assert_eq!(
-            (best.weight_kg, best.reps),
+        // The same progression as the at-create flag test: of these six sets,
+        // the first (100×5), third (100×6) and fifth (110×5) each beat
+        // everything before them, so the reader must list exactly those —
+        // newest first — and stop at the limit.
+        for (w, r) in [
+            (100.0, 5),
+            (102.5, 3),
             (100.0, 6),
-            "tie breaks toward the heavier set"
-        );
-        assert_eq!(best.epley_e1rm, epley_e1rm(100.0, 6));
+            (60.0, 10),
+            (110.0, 5),
+            (100.0, 5),
+        ] {
+            Set::create(&conn, perf, 1, w, r, false, dt(2026, 10, 20, 9, 0)).unwrap();
+        }
 
-        // An exercise with no sets has no best.
-        assert!(Set::best_set(&conn, 999).unwrap().is_none());
+        let bests = Set::personal_bests(&conn, 1, 3).unwrap();
+        assert_eq!(
+            bests
+                .iter()
+                .map(|s| (s.weight_kg, s.reps))
+                .collect::<Vec<_>>(),
+            vec![(110.0, 5), (100.0, 6), (100.0, 5)],
+            "the last three personal bests, newest first"
+        );
+        assert_eq!(
+            bests.first().unwrap().epley_e1rm,
+            epley_e1rm(110.0, 5),
+            "the newest best carries the highest e1RM"
+        );
+
+        // The limit is respected: ask for two, get the newer two.
+        let two = Set::personal_bests(&conn, 1, 2).unwrap();
+        assert_eq!(
+            two.iter()
+                .map(|s| (s.weight_kg, s.reps))
+                .collect::<Vec<_>>(),
+            vec![(110.0, 5), (100.0, 6)]
+        );
+
+        // An exercise that has never been performed has no bests.
+        assert!(Set::personal_bests(&conn, 999, 3).unwrap().is_empty());
     }
 
     #[test]

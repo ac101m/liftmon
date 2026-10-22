@@ -203,6 +203,7 @@ def end_path():
     app.send("\r")                                          # begin (index 0)
     app.check("exercise picker", "Select exercise", "type to filter", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
+    app.check("moved to next exercise logged", "Moved to next exercise 'Bench press'")
     app.check("weight prompt", "─[Weight (kg)]", "e.g. 100")
     app.send("100\r")
     app.check("reps prompt", "─[Reps]", "e.g. 5")
@@ -219,6 +220,7 @@ def end_path():
     app.send("\x1b[B\r")                                    # next exercise
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
     app.send("\x1b[B\r")                                    # pick Squat
+    app.check("moved to Squat logged", "Moved to next exercise 'Squat'")
     app.check("weight prompt (squat)", "─[Weight (kg)]")
     app.send("60\r")
     app.send("10\r")                                        # reps
@@ -374,8 +376,10 @@ def resume_path():
     app.check("summary leaves the options menu up", "─[" + date.today().strftime("%Y/%m/%d") + "]",
               "resume", "summary", "back")
     app.send("\r")                                          # resume (index 0)
-    app.check("resumed on last exercise's menu (no confirm)", "─[Squat]",
-              "next set", "next exercise", "exit session")
+    app.check("resumed on last exercise's menu (no confirm)",
+              "Resumed freeform session from " + date.today().strftime("%Y/%m/%d"),
+              "Current exercise 'Squat'",
+              "─[Squat]", "next set", "next exercise", "exit session")
     app.send("\r")                                          # next set
     app.check("weight prompt (resumed)", "─[Weight (kg)]", "e.g. 100")
     app.send("70\r")                                        # weight
@@ -441,7 +445,11 @@ def stale_confirm_path():
     app.send("\r")                                          # resume again
     app.check("stale confirm prompt (again)", "Yes", "No")
     app.send("\r")                                          # Yes: confirm -> resume
-    app.check("resumed at its exercise", "─[Bench press]", "next set", "next exercise", "exit session")
+    # The resume lines use the session's start (creation) date, not today's.
+    app.check("resumed at its exercise",
+              "Resumed freeform session from " + created_label,
+              "Current exercise 'Bench press'",
+              "─[Bench press]", "next set", "next exercise", "exit session")
     app.close()
 
     d = db()
@@ -647,7 +655,7 @@ def delete_session_path():
     print()
 
 def personal_best_path():
-    print("=== PERSONAL BEST PATH: a set beating the exercise's prior Epley e1RM is a PB at set time; info shows the current best ===")
+    print("=== PERSONAL BEST PATH: a set beating the exercise's prior Epley e1RM is a PB at set time; info frames the last three personal bests ===")
     seed_db()
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
@@ -719,8 +727,11 @@ def personal_best_path():
     pbs = [i for i, v in enumerate(values) if v > max(values[:i] or [0.0])]
     if pbs != [0, 2, 3]: raise SystemExit(f"FAIL: expected sets 1, 3, 4 to be the personal bests, got {pbs}")
 
-    # A fresh app over the same DB: the exercise's info screen shows the current
-    # best — the highest e1RM among its sets, 110 × 5 — in weight × reps.
+    # A fresh app over the same DB: the exercise's info screen frames the
+    # exercise as a section — bold name, indented description, a "Personal
+    # bests:" list inside the same frame — newest first, date + weight × reps,
+    # no to-failure marker, no e1RM. All three PBs (110×5, 100×6, 100×5) were
+    # logged today.
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                          # -> Exercises
@@ -729,10 +740,12 @@ def personal_best_path():
     app.send("\r")                                          # pick Bench press
     app.check("exercise options", "─[Bench press]", "info", "delete")
     app.send("\r")                                          # info
-    app.check("info shows the current best", "Personal best: 110 kg × 5")
+    app.check("info frames the section with the last three personal bests",
+              "Personal bests:", "flat barbell press",
+              f"{date.today().strftime('%Y/%m/%d')}  110 kg × 5")
     app.close()
 
-    print("ok   PBs logged at set time, e1RM stored per set (1, 3, 4 beat the rest), and info shows the current best")
+    print("ok   PBs logged at set time, e1RM stored per set (1, 3, 4 beat the rest), and info frames the last three (110×5, 100×6, 100×5)")
     print()
 
 def delete_path():

@@ -57,18 +57,23 @@ pub(crate) enum Menu {
     FreeformSession { session_id: i64 },
 }
 
-/// Print an exercise to the history area the way the screens present one: the
-/// name bold on its own line, the description (if any) beneath it, grouped as
-/// one entry so the blank separator goes after them, not between them.
-pub(super) fn log_exercise(shell: &mut Shell, exercise: &Exercise) {
+/// The lines of an exercise's info section: the bold exercise name (with a
+/// trailing colon, like any section heading) over its indented description.
+pub(super) fn exercise_lines(exercise: &Exercise) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(vec![Span::styled(
-        exercise.name.clone(),
+        format!("{}:", exercise.name),
         Style::new().add_modifier(Modifier::BOLD),
     )])];
     if !exercise.description.is_empty() {
-        lines.push(Line::from(exercise.description.clone()));
+        lines.push(Line::from(format!("  {}", exercise.description)));
     }
-    shell.log_lines(lines);
+    lines
+}
+
+/// Print an exercise to the history area as a framed section: divider, name,
+/// indented description, divider.
+pub(super) fn log_exercise(shell: &mut Shell, exercise: &Exercise) {
+    shell.log_section(exercise_lines(exercise));
 }
 
 impl Menu {

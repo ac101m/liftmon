@@ -34,6 +34,7 @@ use crate::domain::{Exercise, ExercisePerformance, Session, Set};
 use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
+use super::select_session::{format_date, local_date};
 
 /// Drive the session until the user leaves it, then land back on its options
 /// screen. The session must already exist — the session screen creates the row
@@ -64,6 +65,18 @@ pub(super) fn run(
         }
         None => None,
     };
+    // A resume — the session already holds work, so it has a current exercise
+    // to continue — announces where the session started and which exercise the
+    // user is mid-flow in, as plain lines beneath one another. Beginning a
+    // brand-new session (nothing performed yet) reads as a fresh start and
+    // logs nothing.
+    if let Some((exercise, _)) = &current {
+        shell.log(format!(
+            "Resumed freeform session from {}",
+            format_date(local_date(session.created_at))
+        ));
+        shell.log(format!("Current exercise '{}'", exercise.name));
+    }
     'exercises: loop {
         // A session with a last exercise lands on that exercise's performance
         // menu rather than straight into the weight form, so the user chooses
@@ -137,7 +150,10 @@ fn begin_exercise(
         .find(|e| e.name == chosen)
         .expect("picked a listed exercise");
     let performance = ExercisePerformance::create(conn, session.id, exercise.id, Utc::now())?;
-    super::log_exercise(shell, &exercise);
+    // A picked exercise begins with a plain notice — not a framed section — so
+    // a session's log reads as a contiguous stream of set lines with a small
+    // marker where each exercise starts.
+    shell.log(format!("Moved to next exercise '{}'", exercise.name));
     Ok(Some((exercise, performance)))
 }
 

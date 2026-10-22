@@ -5,6 +5,8 @@
 //! sure"), or back out. Edits loop back onto this screen under the (possibly
 //! renamed) exercise, so several changes can be made before leaving.
 
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
 use crate::domain::{DomainError, Exercise, Set};
@@ -12,6 +14,7 @@ use crate::domain::{DomainError, Exercise, Set};
 use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
+use super::select_session::{format_date, local_date};
 
 /// Drive the per-exercise menu until the user backs out or deletes it. `name`
 /// is the exercise's unique name from the picker.
@@ -32,25 +35,16 @@ pub(super) fn run(
             )?
             .as_deref()
         {
-            // Read-only: print the exercise in the shared style, then its
-            // current best — the set with the highest Epley e1RM — in the same
-            // weight × reps wording sets are logged in. The e1RM itself never
-            // appears; only the best set's weight and reps do.
+            // Read-only: print the exercise as a framed section — divider,
+            // bold name with a trailing colon, indented description — with
+            // the last few personal bests (the sets, newest first, that beat
+            // every earlier set's e1RM) listed inside the same frame as local
+            // date + weight × reps. The e1RM itself never appears, and
+            // there's no to-failure marker.
             Some("info") => {
-                super::log_exercise(shell, &exercise);
-                match Set::best_set(conn, exercise.id)? {
-                    Some(best) => shell.log(format!(
-                        "Personal best: {} kg × {}{}",
-                        best.weight_kg,
-                        best.reps,
-                        if best.to_failure {
-                            " · to failure"
-                        } else {
-                            ""
-                        }
-                    )),
-                    None => shell.log("Personal best: none yet"),
-                }
+                let mut lines = super::exercise_lines(&exercise);
+                append_personal_bests(&mut lines, conn, &exercise)?;
+                shell.log_section(lines);
             }
             // Renaming reloads the loop under the new name so the prompt keeps
             // tracking the exercise.
@@ -92,6 +86,39 @@ pub(super) fn run(
             _ => return Ok(Some(Menu::Exercises)),
         }
     }
+}
+
+/// How many personal bests the info screen lists.
+const PERSONAL_BESTS_LIMIT: usize = 3;
+
+/// Append a bold `Personal bests:` heading and the exercise's last few
+/// personal bests — newest first, local date + weight × reps, no to-failure
+/// marker — to the tail of a section.
+pub(super) fn append_personal_bests(
+    lines: &mut Vec<Line<'static>>,
+    conn: &Connection,
+    exercise: &Exercise,
+) -> Result<(), UiError> {
+    let bests = Set::personal_bests(conn, exercise.id, PERSONAL_BESTS_LIMIT)?;
+    // Bold goes on the span, not the line, so it survives the history
+    // render's dimming pass (which patches, not merges, line styles).
+    lines.push(Line::from(vec![Span::styled(
+        "Personal bests:".to_string(),
+        Style::new().add_modifier(Modifier::BOLD),
+    )]));
+    if bests.is_empty() {
+        lines.push(Line::from("  none yet"));
+    } else {
+        for set in bests {
+            lines.push(Line::from(format!(
+                "  {}  {} kg × {}",
+                format_date(local_date(set.created_at)),
+                set.weight_kg,
+                set.reps,
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Ask for a new name and save it, retrying from what was typed when it turns

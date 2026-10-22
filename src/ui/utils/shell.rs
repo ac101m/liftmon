@@ -43,13 +43,22 @@ pub(crate) enum ReadOutcome {
     Cancelled { partial: String },
 }
 
+/// One row of the run's log: a line of text, or a horizontal rule used to
+/// frame a section (e.g. exercise info) across the history area's width.
+pub(crate) enum LogLine {
+    /// A normal, possibly styled and possibly wrapping, line.
+    Text(Line<'static>),
+    /// A full-width horizontal rule.
+    Rule,
+}
+
 /// A running terminal session.
 pub(crate) struct Shell {
     terminal: DefaultTerminal,
-    /// The run's log: one entry per `log` call, each a list of styled [`Line`]s
-    /// that render as a unit (e.g. a bold name over its description). Entries
-    /// are drawn with a blank row between them in the history area.
-    history: Vec<Vec<Line<'static>>>,
+    /// The run's log: a flat list of lines (and the odd rule), rendered newest
+    /// at the bottom with no blank rows between them. Sections — the framed
+    /// blocks — are pushed whole via [`Shell::log_section`].
+    history: Vec<LogLine>,
 }
 
 impl Shell {
@@ -72,17 +81,20 @@ impl Shell {
     }
 
     /// Append a single-line entry to the history area. Besides plain text,
-    /// callers can pass a [`Line`] with styled spans (e.g. a bold exercise
-    /// name).
+    /// callers can pass a [`Line`] with styled spans (e.g. a bold section
+    /// title). Lines sit directly beneath the one before them — only sections
+    /// are framed.
     pub(crate) fn log(&mut self, line: impl Into<Line<'static>>) {
-        self.history.push(vec![line.into()]);
+        self.history.push(LogLine::Text(line.into()));
     }
 
-    /// Append a multi-line entry to the history area, rendered as one unit
-    /// (e.g. a bold exercise name over its description) with a blank row
-    /// before the next entry.
-    pub(crate) fn log_lines(&mut self, lines: Vec<Line<'static>>) {
-        self.history.push(lines);
+    /// Begin a new section in the history area: `lines` framed by a full-width
+    /// horizontal rule above and below (e.g. exercise info — title, indented
+    /// description, and on the info screen a personal-bests list).
+    pub(crate) fn log_section(&mut self, lines: Vec<Line<'static>>) {
+        self.history.push(LogLine::Rule);
+        self.history.extend(lines.into_iter().map(LogLine::Text));
+        self.history.push(LogLine::Rule);
     }
 
     /// Ask a multiple-choice question within this session.
@@ -193,7 +205,7 @@ impl Drop for Shell {
 /// Renders one frame: history on top, the element below it, prompt bar last.
 /// Elements that want a caret (e.g. text input) point the terminal cursor at
 /// it, which the draw then shows there.
-fn render_frame(frame: &mut Frame<'_>, history: &[Vec<Line<'static>>], element: &mut dyn Element) {
+fn render_frame(frame: &mut Frame<'_>, history: &[LogLine], element: &mut dyn Element) {
     let [history_area, element_area, bar_area] = layout_areas(frame.area(), element);
     let buf = frame.buffer_mut();
 
@@ -230,48 +242,48 @@ fn layout_areas(area: Rect, element: &dyn Element) -> [Rect; 3] {
     [chunks[0], chunks[1], chunks[2]]
 }
 
-/// The log of past actions, newest at the bottom. Long lines wrap onto more
-/// rows at the area's width instead of being clipped. Each entry is a unit,
-/// with a blank row between entries.
-fn render_history(buf: &mut Buffer, area: Rect, history: &[Vec<Line<'static>>]) {
+/// The log of past actions, newest at the bottom, with no blank rows between
+/// lines: long lines wrap onto more rows at the area's width instead of being
+/// clipped, and a [`LogLine::Rule`] draws a full-width divider so sections
+/// (e.g. exercise info) frame themselves.
+fn render_history(buf: &mut Buffer, area: Rect, history: &[LogLine]) {
     if area.height == 0 || area.width == 0 || history.is_empty() {
         return;
     }
-    // Show the tail that fits: walk from the newest entry backwards, stopping
-    // once the next entry plus its blank separator would overflow the area
-    // (the "scrollback" is everything dropped in front). A wrapped line counts
-    // as the rows it occupies. Lines are collected newest-first, so each
-    // entry's own lines are gathered reversed too — and each wrapped line's
-    // pieces along with them — and the whole tail is flipped at the end.
+    // Show the tail that fits: walk from the newest line backwards, stopping
+    // once the next line would overflow the area (the "scrollback" is
+    // everything dropped in front). A wrapped line counts as the rows it
+    // occupies. Lines are collected newest-first, each wrapped line's pieces
+    // gathered reversed along with them, and the whole tail is flipped at the
+    // end.
     let mut rows: Vec<Line> = Vec::new();
     for entry in history.iter().rev() {
-        let separators = usize::from(!rows.is_empty()); // a blank between entries
-        let entry_rows: usize = entry
-            .iter()
-            .map(|line| wrap_line(line.clone(), area.width).len())
-            .sum();
-        if rows.len() + entry_rows + separators > area.height as usize {
+        let entry_rows = match entry {
+            LogLine::Text(line) => wrap_line(line.clone(), area.width).len(),
+            LogLine::Rule => 1,
+        };
+        if rows.len() + entry_rows > area.height as usize {
             break;
         }
-        if !rows.is_empty() {
-            rows.push(Line::from(""));
+        match entry {
+            LogLine::Text(line) => {
+                let mut wrapped = wrap_line(line.clone(), area.width);
+                wrapped.reverse();
+                rows.extend(wrapped);
+            }
+            LogLine::Rule => {
+                rows.push(Line::from("─".repeat(area.width as usize)));
+            }
         }
-        let mut entry_pieces: Vec<Line> = Vec::new();
-        for line in entry.iter().rev() {
-            let mut wrapped = wrap_line(line.clone(), area.width);
-            wrapped.reverse();
-            entry_pieces.extend(wrapped);
-        }
-        // Each entry keeps its own span styles (a bold name), dimmed as a base
-        // so plain entries read subdued while a styled heading still pops.
-        rows.extend(
-            entry_pieces
-                .into_iter()
-                .map(|line| line.style(Style::new().add_modifier(Modifier::DIM))),
-        );
     }
     rows.reverse();
-    List::new(rows).render(area, buf);
+    // Each line keeps its own span styles (a bold section title), dimmed as a
+    // base so plain lines read subdued while a styled heading still pops.
+    List::new(
+        rows.into_iter()
+            .map(|line| line.style(Style::new().add_modifier(Modifier::DIM))),
+    )
+    .render(area, buf);
 }
 
 /// Split `line` into as many lines as it needs to fit `columns` display
@@ -378,64 +390,67 @@ mod tests {
         assert_eq!(element.y, 20 - element.height - 1);
     }
 
-    /// Build `history` from single-line entries, one unit each.
-    fn entries(lines: impl IntoIterator<Item = Line<'static>>) -> Vec<Vec<Line<'static>>> {
-        lines.into_iter().map(|line| vec![line]).collect()
+    /// Build `history` from single-line entries.
+    fn entries(lines: impl IntoIterator<Item = Line<'static>>) -> Vec<LogLine> {
+        lines.into_iter().map(LogLine::Text).collect()
     }
 
     #[test]
-    fn history_puts_a_blank_row_between_entries() {
+    fn history_puts_lines_directly_beneath_each_other() {
         let history = entries(["first", "second"].map(Line::from));
         let mut buf = Buffer::empty(Rect::new(0, 0, 40, 3));
         render_history(&mut buf, Rect::new(0, 0, 40, 3), &history);
 
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0).trim_end(), "first");
-        assert_eq!(row(1).trim_end(), "", "blank row separates the entries");
-        assert_eq!(row(2).trim_end(), "second");
+        assert_eq!(row(1).trim_end(), "second", "no blank row between lines");
+        assert_eq!(row(2).trim_end(), "");
     }
 
     #[test]
-    fn history_keeps_a_multi_line_entry_contiguous() {
-        // A bold name over its description is one entry, so no blank splits
-        // them; the blank goes between entries.
+    fn history_renders_a_section_framed_by_rules() {
+        // A section (e.g. exercise info) is pushed as rule, lines, rule, so
+        // everything inside sits between two full-width dividers with no
+        // blanks within the block.
         let history = vec![
-            vec![Line::from("first")],
-            vec![Line::from("bench press"), Line::from("flat barbell press")],
+            LogLine::Rule,
+            LogLine::Text(Line::from("Bench press")),
+            LogLine::Text(Line::from("  flat barbell press")),
+            LogLine::Rule,
         ];
         let mut buf = Buffer::empty(Rect::new(0, 0, 40, 4));
         render_history(&mut buf, Rect::new(0, 0, 40, 4), &history);
 
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
-        assert_eq!(row(0).trim_end(), "first");
-        assert_eq!(row(1).trim_end(), "", "blank between the two entries");
-        assert_eq!(row(2).trim_end(), "bench press");
+        assert_eq!(row(0), "─".repeat(40), "divider spans the full width");
+        assert_eq!(row(1).trim_end(), "Bench press");
         assert_eq!(
-            row(3).trim_end(),
-            "flat barbell press",
-            "no blank inside a unit"
+            row(2).trim_end(),
+            "  flat barbell press",
+            "description sits directly beneath the name"
         );
+        assert_eq!(row(3), "─".repeat(40), "closing divider");
     }
 
     #[test]
-    fn history_scrolls_the_oldest_entries_off() {
-        // Three entries on a three-row screen: "first" gives up its row so the
-        // newest entries (blank-separated) sit at the bottom.
-        let history = entries(["first", "second", "third"].map(Line::from));
+    fn history_scrolls_the_oldest_lines_off() {
+        // Four lines on a three-row screen: "first" gives up its row so the
+        // newest lines sit at the bottom.
+        let history = entries(["first", "second", "third", "fourth"].map(Line::from));
         let mut buf = Buffer::empty(Rect::new(0, 0, 40, 3));
         render_history(&mut buf, Rect::new(0, 0, 40, 3), &history);
 
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0).trim_end(), "second");
-        assert_eq!(row(1).trim_end(), "");
-        assert_eq!(row(2).trim_end(), "third");
+        assert_eq!(row(1).trim_end(), "third");
+        assert_eq!(row(2).trim_end(), "fourth");
     }
 
     #[test]
     fn history_wraps_a_long_line_onto_more_rows() {
         // A 15-char description on a 5-wide log area wraps across three rows
         // instead of truncating past the fifth column.
-        let history = vec![vec![Line::from("0123456789abcde")]];
+        let history = vec![LogLine::Text(Line::from("0123456789abcde"))];
         let mut buf = Buffer::empty(Rect::new(0, 0, 5, 3));
         render_history(&mut buf, Rect::new(0, 0, 5, 3), &history);
 
@@ -451,26 +466,25 @@ mod tests {
 
     #[test]
     fn history_budget_counts_wrapped_rows() {
-        // "0123456789abcde" wraps to two rows at 10 cols, so on a three-row
-        // screen it leaves no room for the older entry — exactly as if it were
-        // two separate lines.
-        let history = vec![vec![Line::from("old")], vec![Line::from("0123456789abcde")]];
+        // With no blanks, "0123456789abcde"'s two wrapped rows at 10 cols sit
+        // directly beneath the older line, and all three rows are used.
+        let history = entries(["old", "0123456789abcde"].map(Line::from));
         let mut buf = Buffer::empty(Rect::new(0, 0, 10, 3));
         render_history(&mut buf, Rect::new(0, 0, 10, 3), &history);
 
         let row = |y: u16| (0..10).map(|x| buf[(x, y)].symbol()).collect::<String>();
-        assert_eq!(row(0), "0123456789");
-        assert_eq!(row(1).trim_end(), "abcde");
-        assert_eq!(row(2).trim_end(), "", "the older entry scrolled off");
+        assert_eq!(row(0).trim_end(), "old");
+        assert_eq!(row(1), "0123456789");
+        assert_eq!(row(2).trim_end(), "abcde");
     }
 
     #[test]
     fn wrapping_preserves_span_styles() {
         // A bold span that straddles a wrap boundary stays bold on both rows.
-        let history = vec![vec![Line::from(vec![Span::styled(
+        let history = vec![LogLine::Text(Line::from(vec![Span::styled(
             "abcdef",
             Modifier::BOLD,
-        )])]];
+        )]))];
         let mut buf = Buffer::empty(Rect::new(0, 0, 5, 2));
         render_history(&mut buf, Rect::new(0, 0, 5, 2), &history);
 

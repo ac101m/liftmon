@@ -109,16 +109,15 @@ pub(super) fn run(
     }
 }
 
-/// Print the session to the history area in the shared style — its start
-/// date, then each exercise with its sets beneath — grouped as one entry so
-/// the blank separator goes after them, not between them.
+/// Print the session to the history area as a framed section — its start
+/// date, then each exercise with its sets beneath — inside one divider pair.
 fn log_session(shell: &mut Shell, conn: &Connection, session: &Session) -> Result<(), UiError> {
     // One name lookup for the whole session, not a query per performance.
     let names: HashMap<i64, String> = Exercise::all(conn)?
         .into_iter()
         .map(|e| (e.id, e.name))
         .collect();
-    shell.log_lines(summary_lines(session, &names));
+    shell.log_section(summary_lines(session, &names));
     Ok(())
 }
 
