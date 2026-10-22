@@ -380,15 +380,15 @@ mod tests {
         input.render(area, &mut buf);
 
         let row = |y: u16| (0..25).map(|x| buf[(x, y)].symbol()).collect::<String>();
-        assert_eq!(row(1).trim_end(), "> e.g. 100");
+        assert_eq!(row(1).trim_end(), ">   e.g. 100");
         assert!(
-            buf[(2, 1)].style().add_modifier.contains(Modifier::DIM),
-            "the suggestion is dim so it doesn't read as typed input"
+            buf[(4, 1)].style().add_modifier.contains(Modifier::DIM),
+            "the suggestion is dim so it doesn't read as typed input — and it starts two columns past the caret so the block cursor doesn't cover it"
         );
         assert_eq!(
             input.cursor(),
             Some((2, 1)),
-            "caret sits right after the '> ' prompt"
+            "caret sits right after the '> ' prompt, clear of the suggestion"
         );
 
         // Typing replaces the suggestion; the prompt gutter stays.

@@ -201,17 +201,17 @@ def end_path():
     app.check("new session lands on its options", "─[" + date.today().strftime("%Y/%m/%d") + "]",
               "begin", "summary", "back")
     app.send("\r")                                          # begin (index 0)
-    app.check("exercise picker", "Select exercise", "> type to filter", " Bench press", " Squat")
+    app.check("exercise picker", "Select exercise", "type to filter", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
-    app.check("weight prompt", "─[Weight (kg)]", "> e.g. 100")
+    app.check("weight prompt", "─[Weight (kg)]", "e.g. 100")
     app.send("100\r")
-    app.check("reps prompt", "─[Reps]", "> e.g. 5")
+    app.check("reps prompt", "─[Reps]", "e.g. 5")
     app.send("5\r")
     app.check("to-failure prompt", "Taken to failure?", "Yes", "No")
     app.send("\r")                                          # Yes
     app.check("performance menu", "next set", "next exercise", "exit session")
     app.send("\r")                                          # next set
-    app.check("weight prompt (2nd set)", "─[Weight (kg)]", "> e.g. 100")
+    app.check("weight prompt (2nd set)", "─[Weight (kg)]", "e.g. 100")
     app.send("102.5\r")
     app.send("4\r")                                         # reps
     app.send("\x1b[B\r")                                    # to_failure: No
@@ -228,7 +228,7 @@ def end_path():
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + "]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
-    app.check("back at the session list", "─[Select session]", "> type to filter", "Esc back")
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                        # Esc on the list = back to the session menu
     app.check("back at session menu", "─[Sessions]", "new session", "back")
     app.close()
@@ -268,7 +268,7 @@ def leave_path():
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + "]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
-    app.check("back at the session list", "─[Select session]", "> type to filter", "Esc back")
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                        # Esc on the list = back to the session menu
     app.check("back at session menu", "─[Sessions]", "new session", "back")
     app.close()
@@ -295,7 +295,7 @@ def empty_path():
     app.check("hint + back at the session's options", "No exercises yet — add one first",
               "─[" + date.today().strftime("%Y/%m/%d") + "]", "begin", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
-    app.check("back at the session list", "─[Select session]", "> type to filter", "Esc back")
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                        # Esc on the list = back to the session menu
     app.check("back at session menu", "─[Sessions]", "new session", "back")
     app.close()
@@ -341,7 +341,7 @@ def resume_path():
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + "]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
-    app.check("back at the session list", "─[Select session]", "> type to filter", "Esc back")
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                        # Esc on the list = back to the session menu
     app.check("back at session menu", "─[Sessions]", "list sessions", "back")
     app.close()
@@ -377,7 +377,7 @@ def resume_path():
     app.check("resumed on last exercise's menu (no confirm)", "─[Squat]",
               "next set", "next exercise", "exit session")
     app.send("\r")                                          # next set
-    app.check("weight prompt (resumed)", "─[Weight (kg)]", "> e.g. 100")
+    app.check("weight prompt (resumed)", "─[Weight (kg)]", "e.g. 100")
     app.send("70\r")                                        # weight
     app.send("8\r")                                         # reps
     app.send("\r")                                          # to_failure: Yes
@@ -388,7 +388,7 @@ def resume_path():
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + "]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
-    app.check("back at the session list", "─[Select session]", "> type to filter", "Esc back")
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                        # Esc on the list = back to the session menu
     app.check("back at session menu", "─[Sessions]")
     app.close()
@@ -524,7 +524,7 @@ def esc_shortcut_path():
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + "]",
               "resume", "summary", "back")
     app.send("\x1b")                                    # Esc on options = back to the session list
-    app.check("back at the session list", "─[Select session]", "> type to filter", "Esc back")
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                    # Esc on the list = back to the session menu
     app.check("back at sessions menu", "─[Sessions]", "list sessions")
     app.close()
@@ -555,7 +555,7 @@ def esc_shortcut_path():
     app.send("\r")                                      # pick the session
     app.check("session options", "─[" + date.today().strftime("%Y/%m/%d") + "]", "resume", "back")
     app.send("\x1b")                                    # Esc on options = back to the session list
-    app.check("Esc leaves session options -> session list", "─[Select session]", "> type to filter", "Esc back")
+    app.check("Esc leaves session options -> session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                    # Esc on the list = back to the session menu
     app.check("Esc leaves session list", "─[Sessions]", "new session")
     app.send("\x1b[B\r")                                # list sessions (index 1) again
@@ -566,11 +566,11 @@ def esc_shortcut_path():
     app.send("\x1b")                                    # Esc on the menu: no back — re-asks
     app.check("still on performance menu", "next set", "next exercise", "exit session")
     app.send("\r")                                      # next set
-    app.check("weight prompt", "─[Weight (kg)]", "> e.g. 100")
+    app.check("weight prompt", "─[Weight (kg)]", "e.g. 100")
     app.send("\x1b")                                    # Esc at the weight form cancels the set
     app.check("set cancelled back to menu", "next set", "next exercise", "exit session")
     app.send("\r")                                      # next set again
-    app.check("weight prompt (2nd)", "─[Weight (kg)]", "> e.g. 100")
+    app.check("weight prompt (2nd)", "─[Weight (kg)]", "e.g. 100")
     app.send("60\r")                                    # weight
     app.send("8\r")                                     # reps
     app.send("\r")                                      # to_failure: Yes
@@ -580,7 +580,7 @@ def esc_shortcut_path():
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + "]",
               "resume", "summary", "back")
     app.send("\x1b")                                    # Esc on options = back to the session list
-    app.check("back at the session list", "─[Select session]", "> type to filter", "Esc back")
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                    # Esc on the list = back to the session menu
     app.check("back at sessions", "─[Sessions]")
     app.close()

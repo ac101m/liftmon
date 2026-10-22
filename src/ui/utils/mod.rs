@@ -75,20 +75,23 @@ pub(crate) enum ElementResult {
 /// filter and [`self::text_input`]'s entry): a two-column "> " gutter marking
 /// the row as a prompt, followed by the typed content, or the element's
 /// dimmed suggestion when the field is empty (an element without a suggestion
-/// then shows just the gutter). Pass `content` as [`None`] to show the
-/// empty-field row.
+/// then shows just the gutter). The suggestion starts two columns past where
+/// typed text would — the caret parks at the first text column (2) when the
+/// field is empty, so the hint is drawn clear of it; typed text still begins
+/// right after the gutter. Pass `content` as [`None`] to show the empty-field
+/// row.
 pub(crate) fn prompt_row(content: Option<String>, prompt: Option<&str>) -> Line<'static> {
-    let mut spans = vec![Span::raw("> ")];
     match content {
-        Some(text) => spans.push(Span::raw(text)),
-        None => {
-            if let Some(prompt) = prompt {
-                spans.push(Span::styled(
-                    prompt.to_owned(),
-                    Style::new().add_modifier(Modifier::DIM),
-                ));
-            }
-        }
+        Some(text) => Line::from(vec![Span::raw("> "), Span::raw(text)]),
+        None => match prompt {
+            // Two blank columns keep the dimmed hint out from under the block
+            // caret, which parks at column 2 in an empty field.
+            Some(prompt) => Line::from(vec![
+                Span::raw("> "),
+                Span::raw("  "),
+                Span::styled(prompt.to_owned(), Style::new().add_modifier(Modifier::DIM)),
+            ]),
+            None => Line::from(vec![Span::raw("> ")]),
+        },
     }
-    Line::from(spans)
 }

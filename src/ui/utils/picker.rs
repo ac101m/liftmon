@@ -473,8 +473,8 @@ mod tests {
         );
         assert_eq!(
             row(1).trim_end(),
-            "> type to filter",
-            "an empty filter shows the prompt placeholder"
+            ">   type to filter",
+            "an empty filter shows the prompt placeholder, clear of the caret"
         );
         assert!(row(2).trim_end().starts_with(" bench press"));
         assert!(row(3).trim_end().starts_with(" deadlift"));
@@ -528,10 +528,10 @@ mod tests {
         picker.render(area, &mut buf);
 
         let row1: String = (0..40).map(|x| buf[(x, 1)].symbol()).collect();
-        assert_eq!(row1.trim_end(), "> type to filter");
+        assert_eq!(row1.trim_end(), ">   type to filter");
         assert!(
-            buf[(2, 1)].style().add_modifier.contains(Modifier::DIM),
-            "the placeholder is dim so it doesn't read as typed input"
+            buf[(4, 1)].style().add_modifier.contains(Modifier::DIM),
+            "the placeholder is dim so it doesn't read as typed input — and it starts two columns past the caret"
         );
 
         // Typing replaces the placeholder; the prompt prefix stays.
