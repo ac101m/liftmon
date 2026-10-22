@@ -97,6 +97,20 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          deleted); the session and performance foreign keys ON DELETE CASCADE, so deleting a \
          session removes its performances and their sets (and a performance its sets).",
     ),
+    M::up(
+        r"
+        ALTER TABLE sets ADD COLUMN epley_e1rm REAL NOT NULL DEFAULT 0;
+        UPDATE sets SET epley_e1rm = weight_kg * (1.0 + reps / 30.0);
+        ",
+    )
+    .down("ALTER TABLE sets DROP COLUMN epley_e1rm;")
+    .comment(
+        "Each set's Epley estimated one-rep max (weight_kg * (1 + reps / 30)), stored so \
+         ordering needs no recompute. It ranks sets for personal bests and makes their \
+         at-the-time best status derivable (a set was a best when its value strictly exceeded \
+         the max of the strictly earlier sets of the same exercise), without a boolean flag. \
+         The `epley_` prefix leaves room for other estimators. Backfilled for existing sets.",
+    ),
 ];
 
 /// The migrations, ready to apply to a connection.

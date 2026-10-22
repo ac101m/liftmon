@@ -26,7 +26,7 @@ DB = "/tmp/liftmon.sqlite"
 os.chdir("/tmp")
 
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat"))):
-    """Rebuild the on-disk DB to the exact v3 schema (delete rules included)
+    """Rebuild the on-disk DB to the exact v4 schema (delete rules included)
     with the given exercises."""
     if os.path.exists(DB): os.unlink(DB)
     con = sqlite3.connect(DB)
@@ -43,12 +43,12 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         exercise_performance_id INTEGER NOT NULL REFERENCES exercise_performances(id) ON DELETE CASCADE,
         exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,
         created_at TEXT NOT NULL, weight_kg REAL NOT NULL, reps INTEGER NOT NULL,
-        to_failure INTEGER NOT NULL)""")
+        to_failure INTEGER NOT NULL, epley_e1rm REAL NOT NULL DEFAULT 0)""")
     con.execute("CREATE INDEX idx_performances_session ON exercise_performances(session_id)")
     con.execute("CREATE INDEX idx_sets_performance ON sets(exercise_performance_id)")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
-    con.execute("PRAGMA user_version = 3"); con.commit(); con.close()
+    con.execute("PRAGMA user_version = 4"); con.commit(); con.close()
 
 def stored_local_date(s):
     """Parse a stored created_at text (fmt '%F %T%.f%:z', e.g.
@@ -185,7 +185,7 @@ def db():
     out["performances"] = con.execute("""SELECT id, session_id, exercise_id, created_at
                                          FROM exercise_performances ORDER BY id""").fetchall()
     out["sets"] = con.execute("""SELECT id, exercise_performance_id, exercise_id, created_at,
-                                 weight_kg, reps, to_failure
+                                 weight_kg, reps, to_failure, epley_e1rm
                                  FROM sets ORDER BY id""").fetchall()
     out["exercises"] = con.execute("SELECT id, name FROM exercises ORDER BY id").fetchall()
     con.close(); return out
@@ -646,6 +646,95 @@ def delete_session_path():
     print("ok   a session deletes with its performances/sets on Yes; No keeps it; the survivor and exercises remain")
     print()
 
+def personal_best_path():
+    print("=== PERSONAL BEST PATH: a set beating the exercise's prior Epley e1RM is a PB at set time; info shows the current best ===")
+    seed_db()
+    app = App()
+    app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
+    app.send("\x1b[B\r")                                    # -> Sessions
+    app.check("session menu", "─[Sessions]", "new session", "back")
+    app.send("\r")                                          # new session
+    app.check("new session lands on its options", "─[" + date.today().strftime("%Y/%m/%d") + "]",
+              "begin", "summary", "delete", "back")
+    app.send("\r")                                          # begin (index 0)
+    app.check("exercise picker", "Select exercise", " Bench press", " Squat")
+    app.send("\r")                                          # pick Bench press
+    app.check("weight prompt", "─[Weight (kg)]", "e.g. 100")
+
+    # Set 1: 100 × 5 — the exercise's first set, so a personal best.
+    app.send("100\r")
+    app.check("reps prompt", "─[Reps]", "e.g. 5")
+    app.send("5\r")
+    app.check("to-failure prompt", "Taken to failure?", "Yes", "No")
+    app.send("\x1b[B\r")                                    # to_failure: No
+    app.check("first set is a personal best", "100 kg × 5 · New PR!", "next set")
+
+    # Set 2: 102.5 × 3 — heavier but a lower e1RM (112.75 < 116.67), so NOT a PB.
+    app.send("\r")                                          # next set
+    app.check("weight prompt (2nd set)", "─[Weight (kg)]")
+    app.send("102.5\r")
+    app.send("3\r")                                         # reps
+    app.send("\x1b[B\r")                                    # to_failure: No
+    app.check("102.5 kg × 3 logged", "102.5 kg × 3", "next set")
+    grid = app.grid()
+    if any("102.5 kg × 3 · New PR!" in row for row in grid):
+        raise SystemExit("FAIL: 102.5×3 ranks lower (e1RM 112.75) than the prior best 100×5 (e1RM 116.67), so it must not log a personal best")
+
+    # Set 3: 100 × 6 — same weight, more reps → e1RM 120, a new best.
+    app.send("\r")                                          # next set
+    app.send("100\r")                                       # weight
+    app.send("6\r")                                         # reps
+    app.send("\x1b[B\r")                                    # to_failure: No
+    app.check("100 kg × 6 is a personal best", "100 kg × 6 · New PR!", "next set")
+
+    # Set 4: 110 × 5 — e1RM 128.33, the best yet.
+    app.send("\r")                                          # next set
+    app.send("110\r")                                       # weight
+    app.send("5\r")                                         # reps
+    app.send("\x1b[B\r")                                    # to_failure: No
+    app.check("110 kg × 5 is a personal best", "110 kg × 5 · New PR!", "next set")
+
+    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + "]",
+              "resume", "summary", "delete", "back")
+    app.send("\x1b")                                        # Esc on options = back to the session list
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
+    app.send("\x1b")                                        # Esc on the list = back to the session menu
+    app.check("back at session menu", "─[Sessions]", "new session", "back")
+    app.close()
+
+    # Each set stores its own Epley e1RM, and the at-the-time personal-best
+    # property is derivable from it: a set that strictly beats every earlier
+    # set of the exercise (sets 1, 3, 4 here) was a best when it was done.
+    d = db()
+    print(f"  sets = {d['sets']}")
+    if len(d["sets"]) != 4: raise SystemExit(f"FAIL: expected 4 sets, got {len(d['sets'])}")
+    got = [(s[4], s[5], round(s[7], 2)) for s in d["sets"]]
+    want = [(100.0, 5, round(100.0 * (1 + 5/30), 2)),
+            (102.5, 3, round(102.5 * (1 + 3/30), 2)),
+            (100.0, 6, round(100.0 * (1 + 6/30), 2)),
+            (110.0, 5, round(110.0 * (1 + 5/30), 2))]
+    if got != want: raise SystemExit(f"FAIL: stored e1RM values {got} != {want}")
+    values = [s[7] for s in d["sets"]]
+    pbs = [i for i, v in enumerate(values) if v > max(values[:i] or [0.0])]
+    if pbs != [0, 2, 3]: raise SystemExit(f"FAIL: expected sets 1, 3, 4 to be the personal bests, got {pbs}")
+
+    # A fresh app over the same DB: the exercise's info screen shows the current
+    # best — the highest e1RM among its sets, 110 × 5 — in weight × reps.
+    app = App()
+    app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
+    app.send("\r")                                          # -> Exercises
+    app.check("exercise menu", "─[Exercises]", "Add exercise", "List exercises", "Back")
+    app.send("\x1b[B\r")                                    # List exercises
+    app.send("\r")                                          # pick Bench press
+    app.check("exercise options", "─[Bench press]", "info", "delete")
+    app.send("\r")                                          # info
+    app.check("info shows the current best", "Personal best: 110 kg × 5")
+    app.close()
+
+    print("ok   PBs logged at set time, e1RM stored per set (1, 3, 4 beat the rest), and info shows the current best")
+    print()
+
 def delete_path():
     print("=== DELETE PATH: a used exercise can't be deleted (with its session count), an unused one can ===")
     seed_db()
@@ -697,5 +786,6 @@ stale_confirm_path()
 no_sessions_path()
 esc_shortcut_path()
 delete_session_path()
+personal_best_path()
 delete_path()
 print("ALL SCENARIOS PASSED")

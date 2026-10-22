@@ -244,6 +244,7 @@ mod tests {
                             weight_kg: 100.0,
                             reps: 5,
                             to_failure: false,
+                            epley_e1rm: 100.0 * (1.0 + 5.0 / 30.0),
                         },
                         Set {
                             id: 2,
@@ -253,6 +254,7 @@ mod tests {
                             weight_kg: 102.5,
                             reps: 4,
                             to_failure: true,
+                            epley_e1rm: 102.5 * (1.0 + 4.0 / 30.0),
                         },
                     ],
                 },

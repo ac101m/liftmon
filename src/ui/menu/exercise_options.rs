@@ -7,7 +7,7 @@
 
 use rusqlite::Connection;
 
-use crate::domain::{DomainError, Exercise};
+use crate::domain::{DomainError, Exercise, Set};
 
 use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
@@ -32,9 +32,25 @@ pub(super) fn run(
             )?
             .as_deref()
         {
-            // Read-only: print the exercise in the shared style and stay here.
+            // Read-only: print the exercise in the shared style, then its
+            // current best — the set with the highest Epley e1RM — in the same
+            // weight × reps wording sets are logged in. The e1RM itself never
+            // appears; only the best set's weight and reps do.
             Some("info") => {
                 super::log_exercise(shell, &exercise);
+                match Set::best_set(conn, exercise.id)? {
+                    Some(best) => shell.log(format!(
+                        "Personal best: {} kg × {}{}",
+                        best.weight_kg,
+                        best.reps,
+                        if best.to_failure {
+                            " · to failure"
+                        } else {
+                            ""
+                        }
+                    )),
+                    None => shell.log("Personal best: none yet"),
+                }
             }
             // Renaming reloads the loop under the new name so the prompt keeps
             // tracking the exercise.

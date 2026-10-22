@@ -61,8 +61,11 @@ What happens on a run:
 The scenarios currently covered are the *path* functions at the bottom of the
 harness: starting/ending a session, leaving one mid-flow, the empty-exercise
 no-op path, resuming a session (with the 6-hour stale confirmation), the
-no-sessions path, the Escape-shortcut path, and the in-use-exercise delete
-path.
+no-sessions path, the Escape-shortcut path, deleting a session (with its
+history), the personal-best path (a set beating the exercise's prior Epley e1RM gets
+" · New PR!" appended to its own log line at set time, the e1RM is stored per
+set, and the exercise info screen shows the current best), and the
+in-use-exercise delete path.
 
 ## Notes for developers and agents
 

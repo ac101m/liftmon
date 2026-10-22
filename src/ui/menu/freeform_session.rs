@@ -161,7 +161,7 @@ fn ask_set(
         return Ok(());
     };
     let to_failure = to_failure == "Yes";
-    Set::create(
+    let (set, is_personal_best) = Set::create(
         conn,
         performance.id,
         exercise.id,
@@ -170,9 +170,15 @@ fn ask_set(
         to_failure,
         Utc::now(),
     )?;
+    // The set as the session log shows it — the e1RM behind the flag never
+    // appears; only the weight and reps do. A personal best rides at the end
+    // of the line rather than on its own.
     shell.log(format!(
-        "{weight_kg} kg × {reps}{}",
-        if to_failure { " · to failure" } else { "" }
+        "{} kg × {}{}{}",
+        set.weight_kg,
+        set.reps,
+        if set.to_failure { " · to failure" } else { "" },
+        if is_personal_best { " · New PR!" } else { "" }
     ));
     Ok(())
 }

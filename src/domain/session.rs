@@ -154,7 +154,7 @@ fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainErro
         "SELECT s.id, s.created_at,
                 p.id, p.session_id, p.exercise_id, p.created_at,
                 st.id, st.exercise_performance_id, st.exercise_id,
-                st.created_at, st.weight_kg, st.reps, st.to_failure
+                st.created_at, st.weight_kg, st.reps, st.to_failure, st.epley_e1rm
          FROM sessions s
          LEFT JOIN exercise_performances p ON p.session_id = s.id
          LEFT JOIN sets st ON st.exercise_performance_id = p.id
@@ -202,6 +202,7 @@ fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainErro
             weight_kg: row.get(10)?,
             reps: row.get(11)?,
             to_failure: row.get(12)?,
+            epley_e1rm: row.get(13)?,
         });
     }
     Ok(sessions)
@@ -335,7 +336,7 @@ mod tests {
         let session = Session::create(&conn, dt(2026, 10, 20, 8, 0)).unwrap();
         let p = ExercisePerformance::create(&conn, session.id, exercise.id, dt(2026, 10, 20, 8, 0))
             .unwrap();
-        let set = Set::create(
+        let (set, _) = Set::create(
             &conn,
             p.id,
             exercise.id,

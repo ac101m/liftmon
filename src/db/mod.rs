@@ -346,17 +346,17 @@ mod tests {
         v1.to_latest(&mut conn).unwrap();
         drop(conn);
 
-        // This build knows two more migrations (exercises, then the workout
-        // tables): opening the old file reports an upgradable schema — the case
-        // main/UI prompts on.
+        // This build knows three more migrations (exercises, the workout
+        // tables, then the epley_e1rm column): opening the old file reports an
+        // upgradable schema — the case main/UI prompts on.
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 1, to: 3 }
+            DbStatus::Upgradeable { from: 1, to: 4 }
         );
 
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 2);
+        assert_eq!(outcome.applied, 3);
         let backup = outcome
             .backup
             .expect("upgrading an old file must back it up");
@@ -387,16 +387,69 @@ mod tests {
     }
 
     #[test]
+    fn upgrading_v3_file_backfills_the_new_epley_e1rm_column() {
+        let scratch = Scratch::new("v3-before-v4.sqlite");
+
+        // Build a v3 file the way a pre-e1RM build would have left it: the real
+        // first three migrations, then a workout with two sets. The v4
+        // migration must backfill their `epley_e1rm` from weight and reps.
+        let v3 = Migrations::from_slice(&super::migrations::MIGRATION_DEFS[..3]);
+        let mut conn = Connection::open(&scratch.path).unwrap();
+        v3.to_latest(&mut conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO exercises (name, description) VALUES ('bench press', '');
+             INSERT INTO sessions (created_at) VALUES ('2026-10-20 09:00:00+00:00');
+             INSERT INTO exercise_performances (session_id, exercise_id, created_at)
+                 VALUES (1, 1, '2026-10-20 09:00:00+00:00');
+             INSERT INTO sets
+                 (exercise_performance_id, exercise_id, created_at, weight_kg, reps, to_failure)
+                 VALUES (1, 1, '2026-10-20 09:00:00+00:00', 100.0, 5, 0);
+             INSERT INTO sets
+                 (exercise_performance_id, exercise_id, created_at, weight_kg, reps, to_failure)
+                 VALUES (1, 1, '2026-10-20 09:05:00+00:00', 102.5, 3, 1);",
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut db = Database::open(&scratch.path).unwrap();
+        assert_eq!(
+            db.status().unwrap(),
+            DbStatus::Upgradeable { from: 3, to: 4 }
+        );
+        let outcome = db.upgrade().unwrap();
+        assert_eq!(outcome.applied, 1);
+
+        // Every pre-existing set now carries its e1RM, computed with the same
+        // Epley formula the app writes on new inserts.
+        let rows: Vec<(f64, i64, f64)> = db
+            .connection()
+            .prepare("SELECT weight_kg, reps, epley_e1rm FROM sets ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                (100.0, 5, 100.0 * (1.0 + 5.0 / 30.0)),
+                (102.5, 3, 102.5 * (1.0 + 3.0 / 30.0)),
+            ]
+        );
+    }
+
+    #[test]
     fn newer_database_is_rejected_as_too_new() {
         let scratch = Scratch::new("future.sqlite");
 
-        // A future build knew four migrations, one more than this build, so
-        // the file is left at a schema version we don't understand (v4).
+        // A future build knew five migrations, one more than this build, so
+        // the file is left at a schema version we don't understand (v5).
         let future_defs = [
             M::up("CREATE TABLE a (x INTEGER);"),
             M::up("CREATE TABLE b (x INTEGER);"),
             M::up("CREATE TABLE c (x INTEGER);"),
             M::up("CREATE TABLE d (x INTEGER);"),
+            M::up("CREATE TABLE e (x INTEGER);"),
         ];
         let future = Migrations::from_slice(&future_defs);
         let mut conn = Connection::open(&scratch.path).unwrap();
@@ -404,7 +457,7 @@ mod tests {
         drop(conn);
 
         let mut db = Database::open(&scratch.path).unwrap();
-        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 4 });
+        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 5 });
         assert!(db.is_from_future().unwrap());
         assert!(
             matches!(db.upgrade(), Err(DbError::TooNew { .. })),
