@@ -1,12 +1,12 @@
 //! The "list sessions" screen: pick a session with the filter box below;
 //! selecting one opens its per-session options screen.
 //!
-//! Each entry is named by the day of its most recent activity and how long
-//! ago, e.g. `"2026/10/20 · (3 hours ago)"`. The list is built from the
-//! lightweight [`SessionInfo`] rows rather than full sessions — one row per
-//! session, no performances/sets tree — so listing a long history stays cheap.
-//! Selecting one hands the session to [`super::session_options`], which can
-//! resume it (with the 6-hour last-activity check) or back out.
+//! Each entry is named by the day the session was created and how long ago,
+//! e.g. `"2026/10/20 · (3 hours ago)"`. The list is built from the lightweight
+//! [`SessionInfo`] rows rather than full sessions — one row per session, no
+//! performances/sets tree — so listing a long history stays cheap. Selecting
+//! one hands the session to [`super::session_options`], which can begin or
+//! resume it (with the 6-hour confirm on stale resumes) or back out.
 
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeDelta, Utc};
 use rusqlite::Connection;
@@ -46,12 +46,14 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     }))
 }
 
-/// The choice-list label for a session: the day of its most recent activity
-/// and how long ago, e.g. `"2026/10/20 · (3 hours ago)"`. Every session has a
-/// last-activity moment — the latest set, or the session's own creation when
-/// nothing is logged yet — so there is no bare-date fallback.
+/// The choice-list label for a session: the day it was created and how long
+/// ago, e.g. `"2026/10/20 · (3 hours ago)"`. Every session has a creation
+/// moment, so there is no bare-date fallback. Anchoring on creation keeps the
+/// picker about *when the session started* — clearer than dating it by the
+/// last set, which the user has no reason to track — while the 6-hour resume
+/// confirm (in [`super::session_options`]) still looks at the last activity.
 fn session_label(info: &SessionInfo, now: NaiveDateTime) -> String {
-    let at = info.last_activity_at.with_timezone(&Local);
+    let at = info.created_at.with_timezone(&Local);
     format!(
         "{} · ({})",
         format_date(at.date_naive()),
@@ -159,7 +161,7 @@ mod tests {
                 format_date(hours_ago.with_timezone(&Local).date_naive())
             )
         );
-        // The date is the last activity's day, not today's.
+        // The date is the session's creation day, not today's.
         let days_ago = now - TimeDelta::days(15);
         assert_eq!(
             session_label(&info(days_ago), now_local),
@@ -176,6 +178,29 @@ mod tests {
             format!(
                 "{} · (just now)",
                 format_date(just_created.with_timezone(&Local).date_naive())
+            )
+        );
+    }
+
+    #[test]
+    fn label_reads_session_creation_not_last_activity() {
+        let now = dt(2026, 10, 21, 15, 0);
+        let now_local = now.with_timezone(&Local).naive_local();
+        // Created three days back, exercised an hour ago: the label names the
+        // creation moment — the picker is about when the session started, not
+        // when it was last worked.
+        let created = now - TimeDelta::days(3);
+        let info = SessionInfo {
+            id: 1,
+            created_at: created,
+            performance_count: 2,
+            last_activity_at: now - TimeDelta::hours(1),
+        };
+        assert_eq!(
+            session_label(&info, now_local),
+            format!(
+                "{} · (3 days ago)",
+                format_date(created.with_timezone(&Local).date_naive())
             )
         );
     }
