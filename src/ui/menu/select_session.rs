@@ -1,14 +1,14 @@
 //! The "list sessions" screen: pick a session with the filter box below;
 //! selecting one opens its per-session options screen.
 //!
-//! Each entry is named by the day its most recent exercise happened and how
-//! long ago, e.g. `"2026/10/20 · (3 hours ago)"`. The list is built from the
-//! lightweight [`SessionInfo`] rows rather than full sessions — no `sets`
-//! join, one row per session — so listing a long history stays cheap.
+//! Each entry is named by the day of its most recent activity and how long
+//! ago, e.g. `"2026/10/20 · (3 hours ago)"`. The list is built from the
+//! lightweight [`SessionInfo`] rows rather than full sessions — one row per
+//! session, no performances/sets tree — so listing a long history stays cheap.
 //! Selecting one hands the session to [`super::session_options`], which can
-//! resume it (with the 6-hour last-active check) or back out.
+//! resume it (with the 6-hour last-activity check) or back out.
 
-use chrono::{Local, NaiveDate, NaiveDateTime, TimeDelta};
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeDelta, Utc};
 use rusqlite::Connection;
 
 use crate::domain::{Session, SessionInfo};
@@ -46,15 +46,24 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     }))
 }
 
-/// The choice-list label for a session: the day its most recent exercise
-/// happened and how long ago, e.g. `"2026/10/20 · (3 hours ago)"`.
+/// The choice-list label for a session: the day of its most recent activity
+/// and how long ago, e.g. `"2026/10/20 · (3 hours ago)"`. Every session has a
+/// last-activity moment — the latest set, or the session's own creation when
+/// nothing is logged yet — so there is no bare-date fallback.
 fn session_label(info: &SessionInfo, now: NaiveDateTime) -> String {
-    match info.last_exercise_at {
-        Some(at) => format!("{} · ({})", format_date(at.date()), time_ago(at, now)),
-        // A session with nothing logged yet has no moment to name; its start
-        // date stands in.
-        None => format_date(info.start_date),
-    }
+    let at = info.last_activity_at.with_timezone(&Local);
+    format!(
+        "{} · ({})",
+        format_date(at.date_naive()),
+        time_ago(at.naive_local(), now)
+    )
+}
+
+/// The local calendar date of a UTC instant, for showing moments date-only on
+/// the session screens. Shared with [`super::session_options`] so a session
+/// reads the same everywhere.
+pub(super) fn local_date(dt: DateTime<Utc>) -> NaiveDate {
+    dt.with_timezone(&Local).date_naive()
 }
 
 /// A date the session screens show one as, e.g. `2026/10/20`. Shared with
@@ -104,9 +113,9 @@ fn plural(word: &str, n: i64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{session_label, time_ago};
+    use super::{format_date, session_label, time_ago};
     use crate::domain::SessionInfo;
-    use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
+    use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, TimeZone, Utc};
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
@@ -116,31 +125,58 @@ mod tests {
         date(y, m, d).and_time(NaiveTime::from_hms_opt(h, min, 0).unwrap())
     }
 
-    /// A session on 2026-10-20 whose most recent exercise was at `last_at`.
-    fn info(last_at: Option<NaiveDateTime>) -> SessionInfo {
+    /// A UTC instant built from a local wall clock, so its local date is
+    /// exactly `y/m/d` no matter where the tests run.
+    fn dt(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
+        Local
+            .with_ymd_and_hms(y, m, d, h, min, 0)
+            .single()
+            .expect("unambiguous local time")
+            .with_timezone(&Utc)
+    }
+
+    /// A session whose most recent activity was at `last_at` (its own creation
+    /// moment, like an empty session).
+    fn info(last_at: DateTime<Utc>) -> SessionInfo {
         SessionInfo {
             id: 1,
-            start_date: date(2026, 10, 20),
-            last_exercise_at: last_at,
+            created_at: last_at,
+            last_activity_at: last_at,
         }
     }
 
     #[test]
     fn label_shows_the_date_and_how_long_ago() {
-        let now = date_time(2026, 10, 21, 15, 0);
+        let now = dt(2026, 10, 21, 15, 0);
+        // The screen passes `Local::now().naive_local()`; the tests match it.
+        let now_local = now.with_timezone(&Local).naive_local();
         let hours_ago = now - TimeDelta::hours(11); // same day
         assert_eq!(
-            session_label(&info(Some(hours_ago)), now),
-            "2026/10/21 · (11 hours ago)"
+            session_label(&info(hours_ago), now_local),
+            format!(
+                "{} · (11 hours ago)",
+                format_date(hours_ago.with_timezone(&Local).date_naive())
+            )
         );
-        // The date is the last exercise's day, not today's.
+        // The date is the last activity's day, not today's.
         let days_ago = now - TimeDelta::days(15);
         assert_eq!(
-            session_label(&info(Some(days_ago)), now),
-            "2026/10/06 · (15 days ago)"
+            session_label(&info(days_ago), now_local),
+            format!(
+                "{} · (15 days ago)",
+                format_date(days_ago.with_timezone(&Local).date_naive())
+            )
         );
-        // Nothing logged yet: just the start date, same format.
-        assert_eq!(session_label(&info(None), now), "2026/10/20");
+        // Nothing logged yet (a fresh session): still date + relative time,
+        // reading its creation moment.
+        let just_created = now - TimeDelta::seconds(30);
+        assert_eq!(
+            session_label(&info(just_created), now_local),
+            format!(
+                "{} · (just now)",
+                format_date(just_created.with_timezone(&Local).date_naive())
+            )
+        );
     }
 
     #[test]

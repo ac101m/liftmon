@@ -199,7 +199,7 @@ mod tests {
     use super::*;
     use crate::db::apply_schema;
     use crate::domain::{ExercisePerformance, Session};
-    use chrono::{NaiveDate, NaiveTime};
+    use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 
     /// An in-memory database with the full schema applied.
     fn test_db() -> Connection {
@@ -211,6 +211,13 @@ mod tests {
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
+
+    /// A UTC instant from a fixed wall-clock date and time.
+    fn dt(y: i32, m: u32, d: u32, h: u32, mi: u32) -> DateTime<Utc> {
+        date(y, m, d)
+            .and_time(NaiveTime::from_hms_opt(h, mi, 0).unwrap())
+            .and_utc()
     }
 
     #[test]
@@ -367,15 +374,9 @@ mod tests {
     fn delete_refuses_an_exercise_that_is_still_used() {
         let conn = test_db();
         let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
-        let session = Session::create(&conn, date(2026, 10, 20)).unwrap();
-        ExercisePerformance::create(
-            &conn,
-            session.id,
-            exercise.id,
-            date(2026, 10, 20),
-            NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
-        )
-        .unwrap();
+        let session = Session::create(&conn, dt(2026, 10, 20, 9, 0)).unwrap();
+        ExercisePerformance::create(&conn, session.id, exercise.id, dt(2026, 10, 20, 9, 0))
+            .unwrap();
 
         assert!(matches!(
             exercise.delete(&conn),
@@ -393,32 +394,11 @@ mod tests {
 
         // One session with a single performance, another with two: two distinct
         // sessions have this exercise logged.
-        let first = Session::create(&conn, date(2026, 10, 19)).unwrap();
-        ExercisePerformance::create(
-            &conn,
-            first.id,
-            exercise.id,
-            date(2026, 10, 19),
-            NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
-        )
-        .unwrap();
-        let second = Session::create(&conn, date(2026, 10, 20)).unwrap();
-        ExercisePerformance::create(
-            &conn,
-            second.id,
-            exercise.id,
-            date(2026, 10, 20),
-            NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
-        )
-        .unwrap();
-        ExercisePerformance::create(
-            &conn,
-            second.id,
-            exercise.id,
-            date(2026, 10, 20),
-            NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
-        )
-        .unwrap();
+        let first = Session::create(&conn, dt(2026, 10, 19, 9, 0)).unwrap();
+        ExercisePerformance::create(&conn, first.id, exercise.id, dt(2026, 10, 19, 9, 0)).unwrap();
+        let second = Session::create(&conn, dt(2026, 10, 20, 8, 0)).unwrap();
+        ExercisePerformance::create(&conn, second.id, exercise.id, dt(2026, 10, 20, 8, 0)).unwrap();
+        ExercisePerformance::create(&conn, second.id, exercise.id, dt(2026, 10, 20, 9, 0)).unwrap();
 
         assert_eq!(exercise.used_in_sessions(&conn).unwrap(), 2);
         assert_eq!(unused.used_in_sessions(&conn).unwrap(), 0);

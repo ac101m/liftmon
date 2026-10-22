@@ -1,43 +1,44 @@
 //! Sessions — a workout session, made up of exercise performances.
 
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{DateTime, Utc};
 use rusqlite::{Connection, params};
 
 use crate::domain::DomainError;
 use crate::domain::exercise_performance::ExercisePerformance;
 use crate::domain::set::Set;
 
-/// A workout session: the day it started and the performances logged during
-/// it. Backed by the `sessions` table (migration v3).
+/// A workout session: when it started and the performances logged during it.
+/// Backed by the `sessions` table (migration v3).
 ///
 /// Sessions have no terminal state — there is no end date, so a session is
 /// always resumable. The resume screen treats every session the same, warning
-/// only when its most recent exercise is long past ([`crate::ui::menu::resume_session`]).
+/// only when its most recent activity is long past ([`crate::ui::menu::session_options`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Session {
     /// Database row id; assigned by [`Session::create`].
     pub id: i64,
-    /// The day the session started.
-    pub start_date: NaiveDate,
+    /// The moment the session was created — when the user started it (UTC).
+    pub created_at: DateTime<Utc>,
     /// The performances logged during the session, in date/time order. Empty
     /// in a freshly created entity; the loaders populate it.
     pub performances: Vec<ExercisePerformance>,
 }
 
 /// The resume screen's lightweight view of a session: its own row's columns
-/// plus the moment of its most recent exercise — but not the performances/sets
-/// tree. Loaded by [`Session::list_info`] as one grouped query that never
-/// joins `sets`, so listing a long history costs one row per session rather
-/// than one row per set.
+/// plus the moment of its most recent activity — but not the performances/sets
+/// tree. Loaded by [`Session::list_info`] as one query that never joins `sets`
+/// wholesale, so listing a long history costs one row per session rather than
+/// one row per set.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionInfo {
     /// Database row id.
     pub id: i64,
-    /// The day the session started.
-    pub start_date: NaiveDate,
-    /// The date and time of its most recent exercise. [`None`] for a session
-    /// with nothing logged yet.
-    pub last_exercise_at: Option<NaiveDateTime>,
+    /// The moment the session was created (UTC).
+    pub created_at: DateTime<Utc>,
+    /// The moment of its most recent activity: the latest set's `created_at`,
+    /// or the session's own `created_at` when nothing is logged yet. Never
+    /// `None`, thanks to the fallback.
+    pub last_activity_at: DateTime<Utc>,
 }
 
 #[allow(dead_code)] // delete waits on the session management UI
@@ -45,17 +46,17 @@ impl Session {
     /// Insert a new session row and return the persisted entity, with no
     /// performances yet.
     ///
-    /// The date is passed in rather than read from the clock, keeping the
-    /// domain deterministic — the caller (the UI) supplies "today".
-    pub fn create(conn: &Connection, start_date: NaiveDate) -> Result<Self, DomainError> {
+    /// The instant is passed in rather than read from the clock, keeping the
+    /// domain deterministic — the caller (the UI) supplies "now".
+    pub fn create(conn: &Connection, created_at: DateTime<Utc>) -> Result<Self, DomainError> {
         conn.execute(
-            "INSERT INTO sessions (start_date) VALUES (?1)",
-            params![start_date],
+            "INSERT INTO sessions (created_at) VALUES (?1)",
+            params![created_at],
         )?;
 
         Ok(Self {
             id: conn.last_insert_rowid(),
-            start_date,
+            created_at,
             performances: Vec::new(),
         })
     }
@@ -71,16 +72,16 @@ impl Session {
         tree(conn, None)
     }
 
-    /// Load one [`SessionInfo`] per session — its own columns plus the
-    /// date/time of its most recent exercise — most recent first. Unlike
-    /// [`Session::all`], this never joins `sets` (and returns no set data at
-    /// all), so its cost tracks the number of sessions.
+    /// Load one [`SessionInfo`] per session — its own columns plus the moment
+    /// of its most recent activity — most recent first. Unlike [`Session::all`],
+    /// this returns no performances/sets at all, so its cost tracks the number
+    /// of sessions.
     pub fn list_info(conn: &Connection) -> Result<Vec<SessionInfo>, DomainError> {
         info(conn, None)
     }
 
     /// Load the [`SessionInfo`] for the session with the given `id` — its own
-    /// columns plus the moment of its most recent exercise — if one exists.
+    /// columns plus the moment of its most recent activity — if one exists.
     pub fn info_by_id(conn: &Connection, id: i64) -> Result<Option<SessionInfo>, DomainError> {
         Ok(info(conn, Some(id))?.into_iter().next())
     }
@@ -102,31 +103,29 @@ impl Session {
     }
 }
 
-/// Load [`SessionInfo`] rows — optionally just the one with id `only` — as
-/// one grouped query that never joins `sets`. [`Session::list_info`] and
-/// [`Session::info_by_id`] both go through here.
+/// Load [`SessionInfo`] rows — optionally just the one with id `only`. The most
+/// recent activity is the latest set's `created_at` across the session (a
+/// correlated subquery, so this is one row per session, not per set), falling
+/// back to the session's own `created_at` when nothing is logged yet.
+/// [`Session::list_info`] and [`Session::info_by_id`] both go through here.
 fn info(conn: &Connection, only: Option<i64>) -> Result<Vec<SessionInfo>, DomainError> {
     let mut stmt = conn.prepare(
-        "SELECT s.id, s.start_date,
-                MAX(p.date || 'T' || p.time_of_day)
+        "SELECT s.id, s.created_at,
+                COALESCE((SELECT MAX(st.created_at)
+                          FROM sets st
+                          JOIN exercise_performances p ON p.id = st.exercise_performance_id
+                          WHERE p.session_id = s.id), s.created_at)
          FROM sessions s
-         LEFT JOIN exercise_performances p ON p.session_id = s.id
          WHERE (?1 IS NULL OR s.id = ?1)
-         GROUP BY s.id
-         ORDER BY s.start_date DESC, s.id DESC",
+         ORDER BY s.created_at DESC, s.id DESC",
     )?;
     let rows = stmt.query_map(params![only], |row| {
-        let last_at: Option<String> = row.get(2)?;
         Ok(SessionInfo {
             id: row.get(0)?,
-            start_date: row.get(1)?,
-            // The date/time stamps are stored as fixed-width ISO text
-            // (with a fractional-seconds suffix when non-zero), so the
-            // concatenation sorts chronologically and MAX(...) picks the
-            // most recent exercise.
-            last_exercise_at: last_at.as_deref().and_then(|stamp| {
-                NaiveDateTime::parse_from_str(stamp, "%Y-%m-%dT%H:%M:%S%.f").ok()
-            }),
+            created_at: row.get(1)?,
+            // Timestamps are stored as fixed-width UTC text (rusqlite's chrono
+            // feature), so MAX(...) picks the most recent set.
+            last_activity_at: row.get(2)?,
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -143,15 +142,15 @@ fn info(conn: &Connection, only: Option<i64>) -> Result<Vec<SessionInfo>, Domain
 /// costs exactly one query, however large it is.
 fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainError> {
     let mut stmt = conn.prepare(
-        "SELECT s.id, s.start_date,
-                p.id, p.session_id, p.exercise_id, p.date, p.time_of_day,
+        "SELECT s.id, s.created_at,
+                p.id, p.session_id, p.exercise_id, p.created_at,
                 st.id, st.exercise_performance_id, st.exercise_id,
-                st.weight_kg, st.reps, st.to_failure
+                st.created_at, st.weight_kg, st.reps, st.to_failure
          FROM sessions s
          LEFT JOIN exercise_performances p ON p.session_id = s.id
          LEFT JOIN sets st ON st.exercise_performance_id = p.id
          WHERE (?1 IS NULL OR s.id = ?1)
-         ORDER BY s.start_date DESC, s.id DESC, p.date, p.time_of_day, p.id, st.id",
+         ORDER BY s.created_at DESC, s.id DESC, p.created_at, p.id, st.created_at, st.id",
     )?;
     let mut rows = stmt.query(params![only])?;
 
@@ -161,7 +160,7 @@ fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainErro
         if sessions.last().is_none_or(|s| s.id != session_id) {
             sessions.push(Session {
                 id: session_id,
-                start_date: row.get(1)?,
+                created_at: row.get(1)?,
                 performances: Vec::new(),
             });
         }
@@ -178,19 +177,19 @@ fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainErro
                 id: performance_id,
                 session_id: row.get(3)?,
                 exercise_id: row.get(4)?,
-                date: row.get(5)?,
-                time_of_day: row.get(6)?,
+                created_at: row.get(5)?,
                 sets: Vec::new(),
             });
         }
-        let Some(set_id) = row.get::<_, Option<i64>>(7)? else {
+        let Some(set_id) = row.get::<_, Option<i64>>(6)? else {
             continue; // this performance has no sets
         };
         let performance = session.performances.last_mut().unwrap();
         performance.sets.push(Set {
             id: set_id,
-            exercise_performance_id: row.get(8)?,
-            exercise_id: row.get(9)?,
+            exercise_performance_id: row.get(7)?,
+            exercise_id: row.get(8)?,
+            created_at: row.get(9)?,
             weight_kg: row.get(10)?,
             reps: row.get(11)?,
             to_failure: row.get(12)?,
@@ -204,7 +203,7 @@ mod tests {
     use super::*;
     use crate::db::apply_schema;
     use crate::domain::{Exercise, ExercisePerformance, Set};
-    use chrono::NaiveTime;
+    use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 
     /// An in-memory database with the full schema applied and foreign keys
     /// enforced, mirroring [`crate::db::Database`].
@@ -223,24 +222,29 @@ mod tests {
         NaiveTime::from_hms_opt(h, m, 0).unwrap()
     }
 
+    /// A UTC instant from a fixed wall-clock date and time.
+    fn dt(y: i32, m: u32, d: u32, h: u32, mi: u32) -> DateTime<Utc> {
+        date(y, m, d).and_time(time(h, mi)).and_utc()
+    }
+
     #[test]
     fn create_inserts_row_and_leaves_performances_empty() {
         let conn = test_db();
-        let session = Session::create(&conn, date(2026, 10, 20)).unwrap();
+        let session = Session::create(&conn, dt(2026, 10, 20, 9, 0)).unwrap();
 
         assert!(session.id > 0);
-        assert_eq!(session.start_date, date(2026, 10, 20));
+        assert_eq!(session.created_at, dt(2026, 10, 20, 9, 0));
         assert!(session.performances.is_empty());
 
         // ...and the row is really there.
-        let start_date: NaiveDate = conn
+        let created_at: DateTime<Utc> = conn
             .query_row(
-                "SELECT start_date FROM sessions WHERE id = ?1",
+                "SELECT created_at FROM sessions WHERE id = ?1",
                 [session.id],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(start_date, date(2026, 10, 20));
+        assert_eq!(created_at, dt(2026, 10, 20, 9, 0));
     }
 
     #[test]
@@ -250,26 +254,44 @@ mod tests {
 
         // Older session: two performances — the first with three sets, the
         // second (later in the day) with none.
-        let old = Session::create(&conn, date(2026, 10, 19)).unwrap();
-        let p1 =
-            ExercisePerformance::create(&conn, old.id, exercise.id, date(2026, 10, 19), time(9, 0))
-                .unwrap();
-        Set::create(&conn, p1.id, exercise.id, 100.0, 5, true).unwrap();
-        Set::create(&conn, p1.id, exercise.id, 102.5, 4, true).unwrap();
-        Set::create(&conn, p1.id, exercise.id, 105.0, 3, true).unwrap();
-        ExercisePerformance::create(&conn, old.id, exercise.id, date(2026, 10, 19), time(10, 0))
+        let old = Session::create(&conn, dt(2026, 10, 19, 8, 0)).unwrap();
+        let p1 = ExercisePerformance::create(&conn, old.id, exercise.id, dt(2026, 10, 19, 9, 0))
             .unwrap();
-
-        // Newer session: one performance with no sets.
-        let fresh = Session::create(&conn, date(2026, 10, 20)).unwrap();
-        ExercisePerformance::create(
+        Set::create(
             &conn,
-            fresh.id,
+            p1.id,
             exercise.id,
-            date(2026, 10, 20),
-            time(7, 30),
+            100.0,
+            5,
+            true,
+            dt(2026, 10, 19, 9, 5),
         )
         .unwrap();
+        Set::create(
+            &conn,
+            p1.id,
+            exercise.id,
+            102.5,
+            4,
+            true,
+            dt(2026, 10, 19, 9, 10),
+        )
+        .unwrap();
+        Set::create(
+            &conn,
+            p1.id,
+            exercise.id,
+            105.0,
+            3,
+            true,
+            dt(2026, 10, 19, 9, 15),
+        )
+        .unwrap();
+        ExercisePerformance::create(&conn, old.id, exercise.id, dt(2026, 10, 19, 10, 0)).unwrap();
+
+        // Newer session: one performance with no sets.
+        let fresh = Session::create(&conn, dt(2026, 10, 20, 7, 0)).unwrap();
+        ExercisePerformance::create(&conn, fresh.id, exercise.id, dt(2026, 10, 20, 7, 30)).unwrap();
 
         let all = Session::all(&conn).unwrap();
         assert_eq!(all.len(), 2);
@@ -282,12 +304,12 @@ mod tests {
 
         // The old session: two performances, sets intact and ordered.
         assert_eq!(all[1].performances.len(), 2);
-        assert_eq!(all[1].performances[0].time_of_day, time(9, 0));
+        assert_eq!(all[1].performances[0].created_at, dt(2026, 10, 19, 9, 0));
         assert_eq!(all[1].performances[0].sets.len(), 3);
         assert_eq!(all[1].performances[0].sets[0].reps, 5);
         assert_eq!(all[1].performances[0].sets[2].weight_kg, 105.0);
         assert!(all[1].performances[0].sets[1].to_failure);
-        assert_eq!(all[1].performances[1].time_of_day, time(10, 0));
+        assert_eq!(all[1].performances[1].created_at, dt(2026, 10, 19, 10, 0));
         assert!(all[1].performances[1].sets.is_empty());
     }
 
@@ -301,20 +323,23 @@ mod tests {
     fn find_by_id_returns_the_session_with_its_tree_or_none() {
         let conn = test_db();
         let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
-        let session = Session::create(&conn, date(2026, 10, 20)).unwrap();
-        let p = ExercisePerformance::create(
+        let session = Session::create(&conn, dt(2026, 10, 20, 8, 0)).unwrap();
+        let p = ExercisePerformance::create(&conn, session.id, exercise.id, dt(2026, 10, 20, 8, 0))
+            .unwrap();
+        let set = Set::create(
             &conn,
-            session.id,
+            p.id,
             exercise.id,
-            date(2026, 10, 20),
-            time(8, 0),
+            100.0,
+            5,
+            true,
+            dt(2026, 10, 20, 8, 5),
         )
         .unwrap();
-        let set = Set::create(&conn, p.id, exercise.id, 100.0, 5, true).unwrap();
 
         let loaded = Session::find_by_id(&conn, session.id).unwrap().unwrap();
         assert_eq!(loaded.id, session.id);
-        assert_eq!(loaded.start_date, date(2026, 10, 20));
+        assert_eq!(loaded.created_at, dt(2026, 10, 20, 8, 0));
         assert_eq!(loaded.performances.len(), 1);
         assert_eq!(loaded.performances[0].sets[0].id, set.id);
 
@@ -324,7 +349,7 @@ mod tests {
     #[test]
     fn find_by_id_handles_a_session_with_no_performances() {
         let conn = test_db();
-        let session = Session::create(&conn, date(2026, 10, 20)).unwrap();
+        let session = Session::create(&conn, dt(2026, 10, 20, 8, 0)).unwrap();
 
         let loaded = Session::find_by_id(&conn, session.id).unwrap().unwrap();
         assert_eq!(loaded.id, session.id);
@@ -332,36 +357,66 @@ mod tests {
     }
 
     #[test]
-    fn list_info_returns_metadata_and_most_recent_exercise_without_sets() {
+    fn list_info_returns_metadata_and_most_recent_activity_without_sets() {
         let conn = test_db();
         let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
 
         // Older session: two performances (09:00 then 10:00), the first laden
-        // with sets that the info view must not surface.
-        let old = Session::create(&conn, date(2026, 10, 19)).unwrap();
-        let p1 =
-            ExercisePerformance::create(&conn, old.id, exercise.id, date(2026, 10, 19), time(9, 0))
-                .unwrap();
-        Set::create(&conn, p1.id, exercise.id, 100.0, 5, true).unwrap();
-        Set::create(&conn, p1.id, exercise.id, 102.5, 4, true).unwrap();
-        Set::create(&conn, p1.id, exercise.id, 105.0, 3, true).unwrap();
-        ExercisePerformance::create(&conn, old.id, exercise.id, date(2026, 10, 19), time(10, 0))
+        // with sets that the info view must not surface. The last activity is
+        // the latest *set* (09:15), not the later set-less performance (10:00).
+        let old = Session::create(&conn, dt(2026, 10, 19, 8, 0)).unwrap();
+        let p1 = ExercisePerformance::create(&conn, old.id, exercise.id, dt(2026, 10, 19, 9, 0))
             .unwrap();
-
-        // Newer session: one performance, one set.
-        let fresh = Session::create(&conn, date(2026, 10, 20)).unwrap();
-        let p2 = ExercisePerformance::create(
+        Set::create(
             &conn,
-            fresh.id,
+            p1.id,
             exercise.id,
-            date(2026, 10, 20),
-            time(7, 30),
+            100.0,
+            5,
+            true,
+            dt(2026, 10, 19, 9, 5),
         )
         .unwrap();
-        Set::create(&conn, p2.id, exercise.id, 60.0, 10, false).unwrap();
+        Set::create(
+            &conn,
+            p1.id,
+            exercise.id,
+            102.5,
+            4,
+            true,
+            dt(2026, 10, 19, 9, 10),
+        )
+        .unwrap();
+        Set::create(
+            &conn,
+            p1.id,
+            exercise.id,
+            105.0,
+            3,
+            true,
+            dt(2026, 10, 19, 9, 15),
+        )
+        .unwrap();
+        ExercisePerformance::create(&conn, old.id, exercise.id, dt(2026, 10, 19, 10, 0)).unwrap();
 
-        // A third session with nothing logged at all.
-        let empty = Session::create(&conn, date(2026, 10, 18)).unwrap();
+        // Newer session: one performance, one set.
+        let fresh = Session::create(&conn, dt(2026, 10, 20, 7, 0)).unwrap();
+        let p2 = ExercisePerformance::create(&conn, fresh.id, exercise.id, dt(2026, 10, 20, 7, 30))
+            .unwrap();
+        Set::create(
+            &conn,
+            p2.id,
+            exercise.id,
+            60.0,
+            10,
+            false,
+            dt(2026, 10, 20, 7, 35),
+        )
+        .unwrap();
+
+        // A third session with nothing logged at all: its last activity falls
+        // back to its own creation moment.
+        let empty = Session::create(&conn, dt(2026, 10, 18, 18, 0)).unwrap();
 
         let infos = Session::list_info(&conn).unwrap();
         assert_eq!(infos.len(), 3);
@@ -372,46 +427,44 @@ mod tests {
         assert_eq!(infos[2].id, empty.id);
 
         // Metadata only — no set data anywhere on the object.
-        assert_eq!(infos[2].start_date, date(2026, 10, 18));
+        assert_eq!(infos[2].created_at, dt(2026, 10, 18, 18, 0));
 
-        // The most recent exercise's moment — the later 10:00, not 09:00.
-        assert_eq!(
-            infos[1].last_exercise_at,
-            Some(date(2026, 10, 19).and_time(time(10, 0)))
-        );
-        assert_eq!(
-            infos[0].last_exercise_at,
-            Some(date(2026, 10, 20).and_time(time(7, 30)))
-        );
-        assert_eq!(infos[2].last_exercise_at, None);
+        // The last activity is the latest set's moment (09:15), not the 10:00
+        // set-less performance; fresh's is its set at 07:35; the empty session
+        // falls back to its creation time.
+        assert_eq!(infos[1].last_activity_at, dt(2026, 10, 19, 9, 15));
+        assert_eq!(infos[0].last_activity_at, dt(2026, 10, 20, 7, 35));
+        assert_eq!(infos[2].last_activity_at, dt(2026, 10, 18, 18, 0));
     }
 
     #[test]
     fn info_by_id_returns_metadata_for_a_session_or_none() {
         let conn = test_db();
         let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
-        let session = Session::create(&conn, date(2026, 10, 20)).unwrap();
-        ExercisePerformance::create(
+        let session = Session::create(&conn, dt(2026, 10, 20, 8, 0)).unwrap();
+        let p = ExercisePerformance::create(&conn, session.id, exercise.id, dt(2026, 10, 20, 8, 0))
+            .unwrap();
+        Set::create(
             &conn,
-            session.id,
+            p.id,
             exercise.id,
-            date(2026, 10, 20),
-            time(8, 0),
+            60.0,
+            10,
+            false,
+            dt(2026, 10, 20, 8, 10),
         )
         .unwrap();
-        // A second session with nothing logged has no last-exercise moment.
-        let empty = Session::create(&conn, date(2026, 10, 18)).unwrap();
+        // A second session with nothing logged has no set to name; its last
+        // activity is its own creation moment.
+        let empty = Session::create(&conn, dt(2026, 10, 18, 18, 0)).unwrap();
 
         let info = Session::info_by_id(&conn, session.id).unwrap().unwrap();
         assert_eq!(info.id, session.id);
-        assert_eq!(info.start_date, date(2026, 10, 20));
-        assert_eq!(
-            info.last_exercise_at,
-            Some(date(2026, 10, 20).and_time(time(8, 0)))
-        );
+        assert_eq!(info.created_at, dt(2026, 10, 20, 8, 0));
+        assert_eq!(info.last_activity_at, dt(2026, 10, 20, 8, 10));
 
         let empty_info = Session::info_by_id(&conn, empty.id).unwrap().unwrap();
-        assert_eq!(empty_info.last_exercise_at, None);
+        assert_eq!(empty_info.last_activity_at, dt(2026, 10, 18, 18, 0));
 
         assert!(Session::info_by_id(&conn, 999).unwrap().is_none());
     }
@@ -420,25 +473,22 @@ mod tests {
     fn delete_removes_performances_sets_and_the_session() {
         let conn = test_db();
         let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
-        let doomed = Session::create(&conn, date(2026, 10, 19)).unwrap();
-        let p = ExercisePerformance::create(
+        let doomed = Session::create(&conn, dt(2026, 10, 19, 8, 0)).unwrap();
+        let p = ExercisePerformance::create(&conn, doomed.id, exercise.id, dt(2026, 10, 19, 9, 0))
+            .unwrap();
+        Set::create(
             &conn,
-            doomed.id,
+            p.id,
             exercise.id,
-            date(2026, 10, 19),
-            time(9, 0),
+            100.0,
+            5,
+            true,
+            dt(2026, 10, 19, 9, 5),
         )
         .unwrap();
-        Set::create(&conn, p.id, exercise.id, 100.0, 5, true).unwrap();
-        let survivor = Session::create(&conn, date(2026, 10, 20)).unwrap();
-        ExercisePerformance::create(
-            &conn,
-            survivor.id,
-            exercise.id,
-            date(2026, 10, 20),
-            time(8, 0),
-        )
-        .unwrap();
+        let survivor = Session::create(&conn, dt(2026, 10, 20, 8, 0)).unwrap();
+        ExercisePerformance::create(&conn, survivor.id, exercise.id, dt(2026, 10, 20, 8, 0))
+            .unwrap();
 
         doomed.delete(&conn).unwrap();
 
@@ -467,7 +517,7 @@ mod tests {
         let conn = test_db();
         let ghost = Session {
             id: 999,
-            start_date: date(2026, 10, 20),
+            created_at: dt(2026, 10, 20, 8, 0),
             performances: Vec::new(),
         };
         assert!(matches!(

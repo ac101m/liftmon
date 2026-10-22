@@ -57,21 +57,21 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
         r"
         CREATE TABLE sessions (
             id         INTEGER PRIMARY KEY,
-            start_date TEXT NOT NULL
+            created_at TEXT NOT NULL
         );
 
         CREATE TABLE exercise_performances (
             id          INTEGER PRIMARY KEY,
             session_id  INTEGER NOT NULL REFERENCES sessions(id)     ON DELETE CASCADE,
             exercise_id INTEGER NOT NULL REFERENCES exercises(id)     ON DELETE RESTRICT,
-            date        TEXT NOT NULL,
-            time_of_day TEXT NOT NULL
+            created_at  TEXT NOT NULL
         );
 
         CREATE TABLE sets (
             id                      INTEGER PRIMARY KEY,
             exercise_performance_id INTEGER NOT NULL REFERENCES exercise_performances(id) ON DELETE CASCADE,
             exercise_id             INTEGER NOT NULL REFERENCES exercises(id)              ON DELETE RESTRICT,
+            created_at              TEXT NOT NULL,
             weight_kg               REAL NOT NULL,
             reps                    INTEGER NOT NULL,
             to_failure              INTEGER NOT NULL
@@ -90,10 +90,12 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
         ",
     )
     .comment(
-        "Sessions, exercise performances and sets — the workout-record domain. The exercise_id \
-         foreign keys are ON DELETE RESTRICT (an exercise in any workout can't be deleted); the \
-         session and performance foreign keys ON DELETE CASCADE, so deleting a session removes \
-         its performances and their sets (and a performance its sets).",
+        "Sessions, exercise performances and sets — the workout-record domain. Every table \
+         carries `created_at`, the timezone-aware (UTC) moment it was created: a session when \
+         it started, a performance when its exercise was picked, a set when it was logged. The \
+         exercise_id foreign keys are ON DELETE RESTRICT (an exercise in any workout can't be \
+         deleted); the session and performance foreign keys ON DELETE CASCADE, so deleting a \
+         session removes its performances and their sets (and a performance its sets).",
     ),
 ];
 

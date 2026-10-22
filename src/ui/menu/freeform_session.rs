@@ -1,8 +1,12 @@
 //! The freeform-session screen: the whole workout flow, driven from one screen
 //! until the user pauses or ends it.
 //!
-//! Choosing "new session" (or resuming a previous one) lands here. The flow is an outer loop over exercises (pick one, log sets against
-//! it) and an inner loop over the set entry plus the performance menu:
+//! Choosing "new session" (or resuming a previous one) lands here. A new
+//! session's row is created up front — `created_at` stamps the moment the user
+//! chose "new session" — so backing out of the picker leaves an empty session
+//! behind, which the resume list can pick up again. The flow is an outer loop
+//! over exercises (pick one, log sets against it) and an inner loop over the
+//! set entry plus the performance menu:
 //!
 //! ```text
 //! pick exercise ─► log sets ─► (next set | next exercise | exit session)
@@ -17,15 +21,13 @@
 //!   "ended" — there is no end date, so exiting records nothing and the
 //!   session can be resumed again later.
 //!
-//! A brand-new session's row is created lazily when the first exercise is
-//! picked, so backing out of the picker before anything was recorded leaves
-//! nothing behind. A resumed session skips the picker on entry and lands on
-//! the performance menu for its most recent exercise, so the user decides
-//! whether to add another set, move on, or end. An exercise performance
-//! is created for every picked exercise, and a set row for every completed set
-//! (Escape anywhere in the set form cancels that set).
+//! Each moment a real-world event happens gets its `created_at` timestamp: the
+//! session when "new session" is chosen, a performance when its exercise is
+//! picked, and a set when it is logged. An exercise performance is created for
+//! every picked exercise, and a set row for every completed set (Escape
+//! anywhere in the set form cancels that set).
 
-use chrono::{Local, NaiveDate, NaiveTime};
+use chrono::Utc;
 use rusqlite::Connection;
 
 use crate::domain::{Exercise, ExercisePerformance, Session, Set};
@@ -42,13 +44,12 @@ pub(super) fn run(
     conn: &Connection,
     start: FreeformStart,
 ) -> Result<Option<Menu>, UiError> {
-    // A brand-new session is created on the first exercise picked, so an
-    // abandoned attempt leaves no empty session behind; a resumed one loads
-    // up front.
-    let (mut session, return_to) = match start {
-        FreeformStart::New => (None, Menu::Sessions),
+    // A new session's row is created up front, stamping the moment the user
+    // chose "new session"; a resumed one loads its existing row.
+    let (session, return_to) = match start {
+        FreeformStart::New => (Session::create(conn, Utc::now())?, Menu::Sessions),
         FreeformStart::Resume { session_id } => match Session::find_by_id(conn, session_id)? {
-            Some(session) => (Some(session), Menu::SessionOptions { session_id }),
+            Some(session) => (session, Menu::SessionOptions { session_id }),
             None => {
                 shell.log("That session is no longer there");
                 return Ok(Some(Menu::Sessions));
@@ -56,22 +57,19 @@ pub(super) fn run(
         },
     };
     // A resumed session starts at its most recent exercise; the entry is
-    // consumed once, after which the flow behaves like a fresh one.
-    let mut current: Option<(Exercise, ExercisePerformance)> = match &session {
+    // consumed once, after which the flow behaves like a fresh one. An empty
+    // session (a new one the user backed out of before picking anything) has
+    // no last performance, so it falls into the pick flow and carries on
+    // adding to this same session.
+    let mut current: Option<(Exercise, ExercisePerformance)> = match session.performances.last() {
+        Some(performance) => {
+            let Some(exercise) = Exercise::find_by_id(conn, performance.exercise_id)? else {
+                shell.log("That exercise is no longer there");
+                return Ok(Some(return_to));
+            };
+            Some((exercise, performance.clone()))
+        }
         None => None,
-        Some(session) => match session.performances.last() {
-            Some(performance) => {
-                let Some(exercise) = Exercise::find_by_id(conn, performance.exercise_id)? else {
-                    shell.log("That exercise is no longer there");
-                    return Ok(Some(return_to));
-                };
-                Some((exercise, performance.clone()))
-            }
-            // An open session with nothing logged yet; not reachable from the
-            // resume list today, but fall back to the pick flow, which carries
-            // on adding to this same session.
-            None => None,
-        },
     };
     'exercises: loop {
         // A resumed session lands on the seeded exercise's performance menu
@@ -81,7 +79,7 @@ pub(super) fn run(
         let (exercise, performance, mut menu_first) = match current.take() {
             Some(seeded) => (seeded.0, seeded.1, true),
             None => {
-                let Some(pair) = begin_exercise(shell, conn, &mut session)? else {
+                let Some(pair) = begin_exercise(shell, conn, &session)? else {
                     return Ok(Some(return_to)); // backed out of the picker
                 };
                 (pair.0, pair.1, false)
@@ -117,14 +115,14 @@ pub(super) fn run(
     }
 }
 
-/// Pick the next exercise and start a performance for it, creating the session
-/// on the way in when this is the first exercise. `None` means the user backed
+/// Pick the next exercise and start a performance for it — its `created_at`
+/// stamps the moment the exercise was selected. `None` means the user backed
 /// out of the picker (or there is nothing to pick), and the caller returns to
-/// the session screen.
+/// where the flow was launched from.
 fn begin_exercise(
     shell: &mut Shell,
     conn: &Connection,
-    session: &mut Option<Session>,
+    session: &Session,
 ) -> Result<Option<(Exercise, ExercisePerformance)>, UiError> {
     let exercises = Exercise::all(conn)?;
     if exercises.is_empty() {
@@ -145,21 +143,15 @@ fn begin_exercise(
         .into_iter()
         .find(|e| e.name == chosen)
         .expect("picked a listed exercise");
-    let session = match session {
-        Some(session) => session,
-        None => {
-            *session = Some(Session::create(conn, today())?);
-            session.as_mut().expect("just created")
-        }
-    };
-    let performance = ExercisePerformance::create(conn, session.id, exercise.id, today(), now())?;
+    let performance = ExercisePerformance::create(conn, session.id, exercise.id, Utc::now())?;
     super::log_exercise(shell, &exercise);
     Ok(Some((exercise, performance)))
 }
 
 /// Ask for one set — weight, then rep count, then a Yes/No on whether it was
-/// taken to failure — and record it. Escape anywhere in the set form cancels
-/// the set (nothing is created) and the caller shows the performance menu.
+/// taken to failure — and record it with `created_at` stamped when it is
+/// logged. Escape anywhere in the set form cancels the set (nothing is
+/// created) and the caller shows the performance menu.
 fn ask_set(
     shell: &mut Shell,
     conn: &Connection,
@@ -183,6 +175,7 @@ fn ask_set(
         weight_kg,
         reps,
         to_failure,
+        Utc::now(),
     )?;
     shell.log(format!(
         "{weight_kg} kg × {reps}{}",
@@ -251,16 +244,6 @@ fn parse_reps(raw: &str) -> Option<u32> {
         Ok(reps) if reps > 0 => Some(reps),
         _ => None,
     }
-}
-
-/// Today's date — the session's start/end dates and each performance's date.
-fn today() -> NaiveDate {
-    Local::now().date_naive()
-}
-
-/// The current time of day, when a performance is recorded.
-fn now() -> NaiveTime {
-    Local::now().time()
 }
 
 #[cfg(test)]
