@@ -7,10 +7,11 @@
 //!
 //! Each screen's behaviour lives in its own file — see [`self::main_menu`],
 //! [`self::exercises_menu`], [`self::session_menu`], [`self::freeform_session`],
-//! [`self::resume_session`], [`self::add_exercise`], [`self::select_exercise`]
-//! and [`self::exercise_options`] — so this file stays a thin dispatcher as
-//! more menus are added. The screens are built on the reusable element
-//! framework in [`super::utils`] (the shell, the input elements, errors).
+//! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
+//! [`self::select_exercise`] and [`self::exercise_options`] — so this file
+//! stays a thin dispatcher as more menus are added. The screens are built on
+//! the reusable element framework in [`super::utils`] (the shell, the input
+//! elements, errors).
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -24,9 +25,10 @@ mod exercise_options;
 mod exercises_menu;
 mod freeform_session;
 mod main_menu;
-mod resume_session;
 mod select_exercise;
+mod select_session;
 mod session_menu;
+mod session_options;
 
 /// The current screen in the app's menu hierarchy.
 pub(crate) enum Menu {
@@ -41,10 +43,13 @@ pub(crate) enum Menu {
     /// The actions for one picked exercise, named by its unique name so the
     /// prompt updates after a rename.
     ExerciseOptions { name: String },
-    /// The session screen (Begin freeform session / Resume session / Back).
+    /// The session screen (New session / List sessions / Back).
     Sessions,
-    /// The pick-a-session-to-resume screen, then on into its freeform flow.
-    ResumeSession,
+    /// The pick-a-session screen: list sessions, then into that session's
+    /// options screen.
+    SelectSession,
+    /// The actions for one picked session, identified by its database row id.
+    SessionOptions { session_id: i64 },
     /// The freeform session flow: pick exercises and log sets until the user
     /// ends it.
     FreeformSession(FreeformStart),
@@ -94,7 +99,8 @@ impl Menu {
             Menu::SelectExercise => select_exercise::run(shell, conn),
             Menu::ExerciseOptions { name } => exercise_options::run(shell, conn, name),
             Menu::Sessions => session_menu::run(shell),
-            Menu::ResumeSession => resume_session::run(shell, conn),
+            Menu::SelectSession => select_session::run(shell, conn),
+            Menu::SessionOptions { session_id } => session_options::run(shell, conn, session_id),
             Menu::FreeformSession(start) => freeform_session::run(shell, conn, start),
         }
     }

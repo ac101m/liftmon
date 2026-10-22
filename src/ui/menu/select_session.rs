@@ -1,17 +1,12 @@
-//! The resume-session screen: pick a session to carry on with.
+//! The "list sessions" screen: pick a session with the filter box below;
+//! selecting one opens its per-session options screen.
 //!
-//! Sessions have no "ended" state — every session is a continuing workout that
-//! can be picked back up at any time. A session whose most recent exercise was
-//! more than 6 hours ago is probably not the workout the user is actually
-//! mid-flow in, so picking one asks for a Yes/No confirmation first.
-//!
-//! The list is a plain choice list (no filter, unlike the exercise picker),
-//! ordered most recent first, each entry named by the date and when its most
-//! recent exercise happened, e.g. `"2026/10/20 · (3 hours ago)"`. It is built
-//! from the lightweight [`SessionInfo`] rows rather than full sessions — no
-//! `sets` join, one row per session — so listing a long history stays cheap.
-//! Selecting one hands the session to the freeform flow, which resumes at the
-//! most recent exercise.
+//! Each entry is named by the day its most recent exercise happened and how
+//! long ago, e.g. `"2026/10/20 · (3 hours ago)"`. The list is built from the
+//! lightweight [`SessionInfo`] rows rather than full sessions — no `sets`
+//! join, one row per session — so listing a long history stays cheap.
+//! Selecting one hands the session to [`super::session_options`], which can
+//! resume it (with the 6-hour last-active check) or back out.
 
 use chrono::{Local, NaiveDate, NaiveDateTime, TimeDelta};
 use rusqlite::Connection;
@@ -19,66 +14,36 @@ use rusqlite::Connection;
 use crate::domain::{Session, SessionInfo};
 use crate::ui::utils::{Shell, UiError};
 
-use super::{FreeformStart, Menu};
+use super::Menu;
 
-/// A session whose last exercise is older than this needs a Yes/No
-/// confirmation before it is resumed.
-const CONFIRM_AFTER: TimeDelta = TimeDelta::hours(6);
-
-/// Ask which session to resume, handing the freeform flow the chosen one — or
-/// the session screen when there is nothing to resume or the user backs out
-/// with Escape.
+/// Ask the user to pick a session, landing on its options screen. Escape backs
+/// out with nothing happening.
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     // `Session::list_info` orders newest first too, so the list comes back
     // most recent first.
     let sessions = Session::list_info(conn)?;
     if sessions.is_empty() {
-        shell.log("No sessions to resume yet");
+        shell.log("No sessions yet — start one first");
         return Ok(Some(Menu::Sessions));
     }
-    // One "now" for the whole screen visit, so every label reads the same and
-    // the confirm check keys off the same moment.
+    // One "now" for the whole screen visit, so every label reads the same.
     let now = Local::now().naive_local();
-
-    loop {
-        let Some(chosen) = shell.ask(
-            Some("Resume session".to_string()),
-            sessions
-                .iter()
-                .map(|s| session_label(s, now))
-                .collect::<Vec<_>>(),
-        )?
-        else {
-            return Ok(Some(Menu::Sessions)); // Escape: backed out
-        };
-        let session = sessions
-            .iter()
-            .find(|s| session_label(s, now) == chosen)
-            .expect("picked a listed session");
-
-        // A session idle for over 6 hours probably belongs to an earlier
-        // workout — check before resuming it. A session resumed within
-        // `CONFIRM_AFTER` flows straight on.
-        if needs_confirmation(session, now) {
-            shell.log("That session's last exercise was over 6 hours ago.");
-            let sure = shell.ask(
-                Some(format!(
-                    "Resume session from {}?",
-                    format_date(session.start_date)
-                )),
-                ["Yes", "No"],
-            )?;
-            if sure.as_deref() != Some("Yes") {
-                continue; // re-ask the list
-            }
-        }
-
-        // A resume just continues the session — nothing needs to be reset, and
-        // the freeform flow loads the full session itself once it starts.
-        return Ok(Some(Menu::FreeformSession(FreeformStart::Resume {
-            session_id: session.id,
-        })));
-    }
+    let labels: Vec<String> = sessions.iter().map(|s| session_label(s, now)).collect();
+    let Some(chosen) = shell.pick(
+        Some("Select session".to_string()),
+        Some("type to filter".to_string()),
+        labels,
+    )?
+    else {
+        return Ok(Some(Menu::Sessions)); // Escape: backed out
+    };
+    let session = sessions
+        .iter()
+        .find(|s| session_label(s, now) == chosen)
+        .expect("picked a listed session");
+    Ok(Some(Menu::SessionOptions {
+        session_id: session.id,
+    }))
 }
 
 /// The choice-list label for a session: the day its most recent exercise
@@ -92,8 +57,9 @@ fn session_label(info: &SessionInfo, now: NaiveDateTime) -> String {
     }
 }
 
-/// A date the way the session list shows one, e.g. `2026/10/20`.
-fn format_date(date: NaiveDate) -> String {
+/// A date the session screens show one as, e.g. `2026/10/20`. Shared with
+/// [`super::session_options`] so a session reads the same everywhere.
+pub(super) fn format_date(date: NaiveDate) -> String {
     date.format("%Y/%m/%d").to_string()
 }
 
@@ -136,18 +102,9 @@ fn plural(word: &str, n: i64) -> String {
     }
 }
 
-/// Whether resuming this session at `now` warrants a confirmation: its most
-/// recent exercise was logged more than [`CONFIRM_AFTER`] before `now`. A
-/// session with nothing logged yet has no last exercise, so it never needs
-/// one.
-fn needs_confirmation(info: &SessionInfo, now: NaiveDateTime) -> bool {
-    info.last_exercise_at
-        .is_some_and(|last| now.signed_duration_since(last) > CONFIRM_AFTER)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{CONFIRM_AFTER, needs_confirmation, session_label, time_ago};
+    use super::{session_label, time_ago};
     use crate::domain::SessionInfo;
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
 
@@ -201,25 +158,5 @@ mod tests {
         assert_eq!(time_ago(now - TimeDelta::days(300), now), "10 months ago");
         assert_eq!(time_ago(now - TimeDelta::days(400), now), "1 year ago");
         assert_eq!(time_ago(now - TimeDelta::days(800), now), "2 years ago");
-    }
-
-    #[test]
-    fn confirmation_needed_when_past_six_hours() {
-        let now = date_time(2026, 10, 21, 15, 0);
-        let recent = date_time(2026, 10, 21, 9, 30);
-        let stale = date_time(2026, 10, 20, 12, 0);
-
-        assert!(!needs_confirmation(&info(Some(recent)), now));
-        assert!(needs_confirmation(&info(Some(stale)), now));
-
-        // Exactly six hours is not "over" six hours.
-        let borderline = now - CONFIRM_AFTER;
-        assert!(!needs_confirmation(&info(Some(borderline)), now));
-    }
-
-    #[test]
-    fn session_with_no_last_exercise_never_needs_confirmation() {
-        let now = date_time(2026, 10, 21, 15, 0);
-        assert!(!needs_confirmation(&info(None), now));
     }
 }

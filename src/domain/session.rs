@@ -76,29 +76,13 @@ impl Session {
     /// [`Session::all`], this never joins `sets` (and returns no set data at
     /// all), so its cost tracks the number of sessions.
     pub fn list_info(conn: &Connection) -> Result<Vec<SessionInfo>, DomainError> {
-        let mut stmt = conn.prepare(
-            "SELECT s.id, s.start_date,
-                    MAX(p.date || 'T' || p.time_of_day)
-             FROM sessions s
-             LEFT JOIN exercise_performances p ON p.session_id = s.id
-             GROUP BY s.id
-             ORDER BY s.start_date DESC, s.id DESC",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            let last_at: Option<String> = row.get(2)?;
-            Ok(SessionInfo {
-                id: row.get(0)?,
-                start_date: row.get(1)?,
-                // The date/time stamps are stored as fixed-width ISO text
-                // (with a fractional-seconds suffix when non-zero), so the
-                // concatenation sorts chronologically and MAX(...) picks the
-                // most recent exercise.
-                last_exercise_at: last_at.as_deref().and_then(|stamp| {
-                    NaiveDateTime::parse_from_str(stamp, "%Y-%m-%dT%H:%M:%S%.f").ok()
-                }),
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        info(conn, None)
+    }
+
+    /// Load the [`SessionInfo`] for the session with the given `id` — its own
+    /// columns plus the moment of its most recent exercise — if one exists.
+    pub fn info_by_id(conn: &Connection, id: i64) -> Result<Option<SessionInfo>, DomainError> {
+        Ok(info(conn, Some(id))?.into_iter().next())
     }
 
     /// Remove this session and everything under it — its performances and
@@ -116,6 +100,36 @@ impl Session {
         }
         Ok(())
     }
+}
+
+/// Load [`SessionInfo`] rows — optionally just the one with id `only` — as
+/// one grouped query that never joins `sets`. [`Session::list_info`] and
+/// [`Session::info_by_id`] both go through here.
+fn info(conn: &Connection, only: Option<i64>) -> Result<Vec<SessionInfo>, DomainError> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.start_date,
+                MAX(p.date || 'T' || p.time_of_day)
+         FROM sessions s
+         LEFT JOIN exercise_performances p ON p.session_id = s.id
+         WHERE (?1 IS NULL OR s.id = ?1)
+         GROUP BY s.id
+         ORDER BY s.start_date DESC, s.id DESC",
+    )?;
+    let rows = stmt.query_map(params![only], |row| {
+        let last_at: Option<String> = row.get(2)?;
+        Ok(SessionInfo {
+            id: row.get(0)?,
+            start_date: row.get(1)?,
+            // The date/time stamps are stored as fixed-width ISO text
+            // (with a fractional-seconds suffix when non-zero), so the
+            // concatenation sorts chronologically and MAX(...) picks the
+            // most recent exercise.
+            last_exercise_at: last_at.as_deref().and_then(|stamp| {
+                NaiveDateTime::parse_from_str(stamp, "%Y-%m-%dT%H:%M:%S%.f").ok()
+            }),
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 /// Load sessions — optionally just the one with id `only` — with their whole
@@ -370,6 +384,36 @@ mod tests {
             Some(date(2026, 10, 20).and_time(time(7, 30)))
         );
         assert_eq!(infos[2].last_exercise_at, None);
+    }
+
+    #[test]
+    fn info_by_id_returns_metadata_for_a_session_or_none() {
+        let conn = test_db();
+        let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
+        let session = Session::create(&conn, date(2026, 10, 20)).unwrap();
+        ExercisePerformance::create(
+            &conn,
+            session.id,
+            exercise.id,
+            date(2026, 10, 20),
+            time(8, 0),
+        )
+        .unwrap();
+        // A second session with nothing logged has no last-exercise moment.
+        let empty = Session::create(&conn, date(2026, 10, 18)).unwrap();
+
+        let info = Session::info_by_id(&conn, session.id).unwrap().unwrap();
+        assert_eq!(info.id, session.id);
+        assert_eq!(info.start_date, date(2026, 10, 20));
+        assert_eq!(
+            info.last_exercise_at,
+            Some(date(2026, 10, 20).and_time(time(8, 0)))
+        );
+
+        let empty_info = Session::info_by_id(&conn, empty.id).unwrap().unwrap();
+        assert_eq!(empty_info.last_exercise_at, None);
+
+        assert!(Session::info_by_id(&conn, 999).unwrap().is_none());
     }
 
     #[test]
