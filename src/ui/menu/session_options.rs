@@ -7,7 +7,7 @@
 //! confirmation before a *resume* whose most recent activity (the latest set,
 //! or the session's own creation when nothing is logged yet) is more than 6
 //! hours ago, since that session is probably not the workout the user is
-//! actually mid-flow in — or back out to the session screen. Sessions resumed
+//! actually mid-flow in — or back out to the session list. Sessions resumed
 //! within the window flow straight into their freeform flow.
 
 use std::collections::HashMap;
@@ -35,7 +35,7 @@ pub(super) fn run(
 ) -> Result<Option<Menu>, UiError> {
     let Some(info) = Session::info_by_id(conn, session_id)? else {
         shell.log("That session is no longer there");
-        return Ok(Some(Menu::Sessions));
+        return Ok(Some(Menu::SelectSession));
     };
     // A session with nothing performed yet reads "begin", not "resume" — the
     // flow is the same either way; only the honest label differs.
@@ -67,12 +67,13 @@ pub(super) fn run(
             Some("summary") => {
                 let Some(session) = Session::find_by_id(conn, info.id)? else {
                     shell.log("That session is no longer there");
-                    return Ok(Some(Menu::Sessions));
+                    return Ok(Some(Menu::SelectSession));
                 };
                 log_session(shell, conn, &session)?;
             }
-            // "back", or Escape.
-            _ => return Ok(Some(Menu::Sessions)),
+            // "back", or Escape: return to the session list, as if the user
+            // had never picked a session.
+            _ => return Ok(Some(Menu::SelectSession)),
         }
     }
 }

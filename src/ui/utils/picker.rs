@@ -154,7 +154,7 @@ impl Element for Picker {
     }
 
     fn hint(&self) -> String {
-        "↑/↓ move · Enter select · Esc cancel · Ctrl+C quit".into()
+        "↑/↓ move · Enter select · Esc back · Ctrl+C quit".into()
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
