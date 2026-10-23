@@ -23,6 +23,7 @@ use crate::domain::{Exercise, Session, SessionInfo};
 use crate::ui::utils::{Shell, UiError};
 
 use super::Menu;
+use super::difficulty_style;
 use super::select_session::{FREEFORM_LABEL, format_date, local_date};
 
 /// A session whose most recent activity is older than this needs a Yes/No
@@ -129,8 +130,9 @@ fn log_session(shell: &mut Shell, conn: &Connection, session: &Session) -> Resul
 /// The summary's display lines for a session: its kind and start date, then
 /// each exercise's name with its sets indented beneath — framed as a section
 /// by [`log_session`]. The title and every exercise name are bold; the sets
-/// read `100 kg × 5 · to failure`, the same shape the freeform screen logs a
-/// completed set in — plain when not taken to failure. [`None`] exercises
+/// read `100 kg × 5 · easy`, `· hard`, `· failure`, the same shape the
+/// freeform screen logs a completed set in — the difficulty marker coloured
+/// green for easy, yellow for hard, red for a failed set. [`None`] exercises
 /// (not reachable today: the schema blocks deleting an exercised exercise)
 /// fall back to a placeholder name.
 fn summary_lines(session: &Session, names: &HashMap<i64, String>) -> Vec<Line<'static>> {
@@ -151,12 +153,10 @@ fn summary_lines(session: &Session, names: &HashMap<i64, String>) -> Vec<Line<'s
             bold,
         )]));
         for set in &performance.sets {
-            lines.push(Line::from(format!(
-                "  {} kg × {}{}",
-                set.weight_kg,
-                set.reps,
-                if set.to_failure { " · to failure" } else { "" }
-            )));
+            lines.push(Line::from(vec![
+                Span::raw(format!("  {} kg × {} · ", set.weight_kg, set.reps)),
+                Span::styled(set.difficulty.as_str(), difficulty_style(set.difficulty)),
+            ]));
         }
     }
     lines
@@ -201,9 +201,9 @@ fn needs_confirmation(info: &SessionInfo, now: DateTime<Utc>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{CONFIRM_AFTER, begin_or_resume, needs_confirmation, summary_lines};
-    use crate::domain::{ExercisePerformance, Session, SessionInfo, Set};
+    use crate::domain::{Difficulty, ExercisePerformance, Session, SessionInfo, Set};
     use chrono::{DateTime, Local, TimeDelta, TimeZone, Utc};
-    use ratatui::style::{Modifier, Style};
+    use ratatui::style::{Color, Modifier, Style};
     use ratatui::text::Line;
     use std::collections::HashMap;
 
@@ -229,7 +229,7 @@ mod tests {
     }
 
     /// A two-performance session, hand-built to dodge the database: Bench
-    /// press (a plain set then a to-failure one), then a set-less Squat.
+    /// press (an easy set then a hard one), then a set-less Squat.
     fn session() -> Session {
         Session {
             id: 1,
@@ -248,7 +248,7 @@ mod tests {
                             created_at: dt(2026, 10, 20, 9, 5),
                             weight_kg: 100.0,
                             reps: 5,
-                            to_failure: false,
+                            difficulty: Difficulty::Easy,
                             epley_e1rm: 100.0 * (1.0 + 5.0 / 30.0),
                         },
                         Set {
@@ -258,7 +258,7 @@ mod tests {
                             created_at: dt(2026, 10, 20, 9, 10),
                             weight_kg: 102.5,
                             reps: 4,
-                            to_failure: true,
+                            difficulty: Difficulty::Hard,
                             epley_e1rm: 102.5 * (1.0 + 4.0 / 30.0),
                         },
                     ],
@@ -300,16 +300,21 @@ mod tests {
             [
                 "Freeform session on 2026/10/20",
                 "Bench press",
-                "  100 kg × 5",
-                "  102.5 kg × 4 · to failure",
+                "  100 kg × 5 · easy",
+                "  102.5 kg × 4 · hard",
                 "Squat",
             ]
         );
-        // The title and every exercise name are bold; the sets are plain.
+        // The title and every exercise name are bold; the set lines' weight
+        // and reps are plain while the difficulty marker is coloured — easy
+        // green, hard yellow. (Failure red is exercised by the other paths' e2e
+        // runs; the helper maps it in one match.)
         let bold = Style::new().add_modifier(Modifier::BOLD);
         assert_eq!(lines[0].spans[0].style, bold);
         assert_eq!(lines[1].spans[0].style, bold);
         assert_eq!(lines[2].spans[0].style, Style::new());
+        assert_eq!(lines[2].spans[1].style, Style::new().fg(Color::Green));
+        assert_eq!(lines[3].spans[1].style, Style::new().fg(Color::Yellow));
         assert_eq!(lines[4].spans[0].style, bold);
     }
 

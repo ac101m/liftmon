@@ -43,7 +43,7 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         exercise_performance_id INTEGER NOT NULL REFERENCES exercise_performances(id) ON DELETE CASCADE,
         exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,
         created_at TEXT NOT NULL, weight_kg REAL NOT NULL, reps INTEGER NOT NULL,
-        to_failure INTEGER NOT NULL, epley_e1rm REAL NOT NULL DEFAULT 0)""")
+        difficulty TEXT NOT NULL CHECK (difficulty IN ('easy','hard','failure')), epley_e1rm REAL NOT NULL DEFAULT 0)""")
     con.execute("CREATE INDEX idx_performances_session ON exercise_performances(session_id)")
     con.execute("CREATE INDEX idx_sets_performance ON sets(exercise_performance_id)")
     for name, desc in exercises:
@@ -185,7 +185,7 @@ def db():
     out["performances"] = con.execute("""SELECT id, session_id, exercise_id, created_at
                                          FROM exercise_performances ORDER BY id""").fetchall()
     out["sets"] = con.execute("""SELECT id, exercise_performance_id, exercise_id, created_at,
-                                 weight_kg, reps, to_failure, epley_e1rm
+                                 weight_kg, reps, difficulty, epley_e1rm
                                  FROM sets ORDER BY id""").fetchall()
     out["exercises"] = con.execute("SELECT id, name FROM exercises ORDER BY id").fetchall()
     con.close(); return out
@@ -208,14 +208,14 @@ def end_path():
     app.send("100\r")
     app.check("reps prompt", "─[Reps]", "e.g. 5")
     app.send("5\r")
-    app.check("to-failure prompt", "Taken to failure?", "Yes", "No")
-    app.send("\r")                                          # Yes
+    app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
+    app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu", "next set", "next exercise", "exit session")
     app.send("\r")                                          # next set
     app.check("weight prompt (2nd set)", "─[Weight (kg)]", "e.g. 100")
     app.send("102.5\r")
     app.send("4\r")                                         # reps
-    app.send("\x1b[B\r")                                    # to_failure: No
+    app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("performance menu (again)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
@@ -224,7 +224,7 @@ def end_path():
     app.check("weight prompt (squat)", "─[Weight (kg)]")
     app.send("60\r")
     app.send("10\r")                                        # reps
-    app.send("\r")                                          # to_failure: Yes
+    app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu (squat)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
@@ -245,7 +245,7 @@ def end_path():
     if len(d["performances"]) != 2: raise SystemExit(f"FAIL: expected 2 performances, got {len(d['performances'])}")
     if len(d["sets"]) != 3: raise SystemExit(f"FAIL: expected 3 sets, got {len(d['sets'])}")
     got = [(s[4], s[5], s[6]) for s in d["sets"]]
-    want = [(100.0, 5, 1), (102.5, 4, 0), (60.0, 10, 1)]
+    want = [(100.0, 5, "failure"), (102.5, 4, "hard"), (60.0, 10, "failure")]
     if got != want: raise SystemExit(f"FAIL: set rows {got} != {want}")
     print("ok   exit path wrote one session + 2 performances + 3 sets with correct values")
     print()
@@ -262,7 +262,7 @@ def leave_path():
     app.send("\r")                                          # pick Bench press
     app.send("100\r")                                       # weight
     app.send("5\r")                                         # reps
-    app.send("\r")                                          # to_failure: Yes
+    app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
@@ -328,14 +328,14 @@ def resume_path():
     app.send("\r")                                          # pick Bench press
     app.send("100\r")                                       # weight
     app.send("5\r")                                         # reps
-    app.send("\r")                                          # to_failure: Yes
+    app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu (bench)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
     app.send("\x1b[B\r")                                    # pick Squat
     app.send("60\r")                                        # weight
     app.send("10\r")                                        # reps
-    app.send("\r")                                          # to_failure: Yes
+    app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu (squat)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
     app.check("exercise picker (3rd)", "Select exercise", " Bench press", " Squat")
@@ -372,7 +372,7 @@ def resume_path():
     # Read-only: the summary prints the session into the history area and
     # leaves the options menu up.
     app.check("session summary", "Freeform session on " + date.today().strftime("%Y/%m/%d"),
-              "Bench press", "100 kg × 5 · to failure", "Squat", "60 kg × 10 · to failure")
+              "Bench press", "100 kg × 5 · failure", "Squat", "60 kg × 10 · failure")
     app.check("summary leaves the options menu up", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\r")                                          # resume (index 0)
@@ -384,7 +384,7 @@ def resume_path():
     app.check("weight prompt (resumed)", "─[Weight (kg)]", "e.g. 100")
     app.send("70\r")                                        # weight
     app.send("8\r")                                         # reps
-    app.send("\r")                                          # to_failure: Yes
+    app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu (resumed)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
     # Exiting a resumed workout returns to that session's options screen, not
@@ -407,7 +407,7 @@ def resume_path():
     if len(d["sets"]) != 3: raise SystemExit(f"FAIL: expected 3 sets after resume, got {len(d['sets'])}")
     third = d["sets"][2]
     if third[1] != squat_perf: raise SystemExit(f"FAIL: third set attached to {third[1]}, expected squat performance {squat_perf}")
-    if (third[4], third[5], third[6]) != (70.0, 8, 1): raise SystemExit(f"FAIL: third set values {third[4:]}")
+    if (third[4], third[5], third[6]) != (70.0, 8, "failure"): raise SystemExit(f"FAIL: third set values {third[4:]}")
     print("ok   resume continued the same session at the LAST exercise (no confirm within 6h), then exited it")
     print()
 
@@ -427,7 +427,7 @@ def stale_confirm_path():
     last_set_text = last_set_at.strftime("%Y-%m-%d %H:%M:%S+00:00")
     con.execute("INSERT INTO sessions (created_at) VALUES (?)", (created_text,))
     con.execute("INSERT INTO exercise_performances (session_id, exercise_id, created_at) VALUES (1, 1, ?)", (last_set_text,))
-    con.execute("INSERT INTO sets (exercise_performance_id, exercise_id, created_at, weight_kg, reps, to_failure) VALUES (1, 1, ?, 100.0, 5, 1)", (last_set_text,))
+    con.execute("INSERT INTO sets (exercise_performance_id, exercise_id, created_at, weight_kg, reps, difficulty) VALUES (1, 1, ?, 100.0, 5, 'failure')", (last_set_text,))
     con.commit(); con.close()
 
     app = App()
@@ -510,7 +510,7 @@ def esc_shortcut_path():
     app.send("\x1b")                                    # Esc = back to main menu
     app.check("back at main", "─[Main menu]")
 
-    # Freeform set form: Esc on the Yes/No cancels the set; the performance
+    # Freeform set form: Esc on the difficulty ask cancels the set; the performance
     # menu has no back option, so Esc just stays on it; escaping the exercise
     # picker returns to the session's options screen.
     app.send("\x1b[B\r")                                # -> Sessions
@@ -521,7 +521,7 @@ def esc_shortcut_path():
     app.send("\r")                                      # pick Bench press
     app.send("100\r")                                   # weight
     app.send("5\r")                                     # reps
-    app.check("to-failure prompt", "Taken to failure?", "Yes", "No")
+    app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
     app.send("\x1b")                                    # Esc cancels the set
     app.check("set cancelled", "next set", "next exercise", "exit session")
     app.send("\x1b")                                    # Esc is a no-op here
@@ -541,7 +541,7 @@ def esc_shortcut_path():
     print(f"  after cancel+leave: exercises = {d['exercises']}  sessions = {d['sessions']}  sets = {d['sets']}")
     if len(d["exercises"]) != 2: raise SystemExit("FAIL: Esc on the delete confirm must not delete")
     if len(d["sessions"]) != 1: raise SystemExit("FAIL: escaping the picker must keep exactly one session")
-    if len(d["sets"]) != 0: raise SystemExit("FAIL: Esc at the Yes/No must cancel the set")
+    if len(d["sets"]) != 0: raise SystemExit("FAIL: Esc at the difficulty ask must cancel the set")
 
     # Session picker: Escape leaves back to the session menu.
     app = App()
@@ -582,7 +582,7 @@ def esc_shortcut_path():
     app.check("weight prompt (2nd)", "─[Weight (kg)]", "e.g. 100")
     app.send("60\r")                                    # weight
     app.send("8\r")                                     # reps
-    app.send("\r")                                      # to_failure: Yes
+    app.send("\x1b[B\x1b[B\r")                          # difficulty: failure
     app.check("performance menu", "next set", "next exercise", "exit session")
     app.send("\x1b[B\x1b[B\r")                          # exit session (index 2)
     # Exiting the resumed workout lands back on that session's options screen.
@@ -598,7 +598,7 @@ def esc_shortcut_path():
     print(f"  final: sessions = {d['sessions']}  performances = {d['performances']}  sets = {d['sets']}")
     (sid, created_at), = d["sessions"]
     if len(d["sets"]) != 1: raise SystemExit(f"FAIL: expected exactly 1 set, got {len(d['sets'])}")
-    if (d["sets"][0][4], d["sets"][0][5], d["sets"][0][6]) != (60.0, 8, 1):
+    if (d["sets"][0][4], d["sets"][0][5], d["sets"][0][6]) != (60.0, 8, "failure"):
         raise SystemExit(f"FAIL: set values {d['sets'][0][4:]}")
     print("ok   Esc = back on every back page; Esc cancels the set form and the delete confirm; flow recovers")
     print()
@@ -620,8 +620,8 @@ def delete_session_path():
     con.execute("INSERT INTO sessions (created_at) VALUES (?)", (doomed_text,))
     con.execute("INSERT INTO exercise_performances (session_id, exercise_id, created_at) VALUES (1, 1, ?)",
                 (doomed_text,))
-    con.execute("INSERT INTO sets (exercise_performance_id, exercise_id, created_at, weight_kg, reps, to_failure) "
-                "VALUES (1, 1, ?, 80.0, 6, 1)", (doomed_text,))
+    con.execute("INSERT INTO sets (exercise_performance_id, exercise_id, created_at, weight_kg, reps, difficulty) "
+                "VALUES (1, 1, ?, 80.0, 6, 'failure')", (doomed_text,))
     con.execute("INSERT INTO sessions (created_at) VALUES (?)", (survivor_text,))
     con.commit(); con.close()
 
@@ -674,17 +674,17 @@ def personal_best_path():
     app.send("100\r")
     app.check("reps prompt", "─[Reps]", "e.g. 5")
     app.send("5\r")
-    app.check("to-failure prompt", "Taken to failure?", "Yes", "No")
-    app.send("\x1b[B\r")                                    # to_failure: No
-    app.check("first set is a personal best", "100 kg × 5 · New PR!", "next set")
+    app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
+    app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
+    app.check("first set is a personal best", "100 kg × 5 · hard · New PR!", "next set")
 
     # Set 2: 102.5 × 3 — heavier but a lower e1RM (112.75 < 116.67), so NOT a PB.
     app.send("\r")                                          # next set
     app.check("weight prompt (2nd set)", "─[Weight (kg)]")
     app.send("102.5\r")
     app.send("3\r")                                         # reps
-    app.send("\x1b[B\r")                                    # to_failure: No
-    app.check("102.5 kg × 3 logged", "102.5 kg × 3", "next set")
+    app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
+    app.check("102.5 kg × 3 logged", "102.5 kg × 3 · hard", "next set")
     grid = app.grid()
     if any("102.5 kg × 3 · New PR!" in row for row in grid):
         raise SystemExit("FAIL: 102.5×3 ranks lower (e1RM 112.75) than the prior best 100×5 (e1RM 116.67), so it must not log a personal best")
@@ -693,15 +693,15 @@ def personal_best_path():
     app.send("\r")                                          # next set
     app.send("100\r")                                       # weight
     app.send("6\r")                                         # reps
-    app.send("\x1b[B\r")                                    # to_failure: No
-    app.check("100 kg × 6 is a personal best", "100 kg × 6 · New PR!", "next set")
+    app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
+    app.check("100 kg × 6 is a personal best", "100 kg × 6 · hard · New PR!", "next set")
 
     # Set 4: 110 × 5 — e1RM 128.33, the best yet.
     app.send("\r")                                          # next set
     app.send("110\r")                                       # weight
     app.send("5\r")                                         # reps
-    app.send("\x1b[B\r")                                    # to_failure: No
-    app.check("110 kg × 5 is a personal best", "110 kg × 5 · New PR!", "next set")
+    app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
+    app.check("110 kg × 5 is a personal best", "110 kg × 5 · hard · New PR!", "next set")
 
     app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
@@ -731,7 +731,7 @@ def personal_best_path():
     # A fresh app over the same DB: the exercise's info screen frames the
     # exercise as a section — bold name, indented description, a "Personal
     # bests:" list inside the same frame — newest first, date + weight × reps,
-    # no to-failure marker, no e1RM. All three PBs (110×5, 100×6, 100×5) were
+    # no difficulty marker, no e1RM. All three PBs (110×5, 100×6, 100×5) were
     # logged today.
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
@@ -755,7 +755,7 @@ def delete_path():
     con = sqlite3.connect(DB)
     con.execute("INSERT INTO sessions (created_at) VALUES ('2026-10-19 09:00:00+00:00')")
     con.execute("INSERT INTO exercise_performances (session_id, exercise_id, created_at) VALUES (1, 1, '2026-10-19 09:00:00+00:00')")
-    con.execute("INSERT INTO sets (exercise_performance_id, exercise_id, created_at, weight_kg, reps, to_failure) VALUES (1, 1, '2026-10-19 09:00:00+00:00', 100.0, 5, 1)")
+    con.execute("INSERT INTO sets (exercise_performance_id, exercise_id, created_at, weight_kg, reps, difficulty) VALUES (1, 1, '2026-10-19 09:00:00+00:00', 100.0, 5, 'failure')")
     con.commit(); con.close()
 
     app = App()

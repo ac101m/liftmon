@@ -13,11 +13,11 @@
 //! the reusable element framework in [`super::utils`] (the shell, the input
 //! elements, errors).
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
-use crate::domain::Exercise;
+use crate::domain::{Difficulty, Exercise};
 use crate::ui::utils::{Shell, UiError};
 
 mod add_exercise;
@@ -74,6 +74,19 @@ pub(super) fn exercise_lines(exercise: &Exercise) -> Vec<Line<'static>> {
 /// indented description, divider.
 pub(super) fn log_exercise(shell: &mut Shell, exercise: &Exercise) {
     shell.log_section(exercise_lines(exercise));
+}
+
+/// The foreground colour a set's difficulty marker reads as: green for easy,
+/// yellow for hard, red for a failed set. Placed on the difficulty span so it
+/// survives the history's line-level dimming (span styles ride on top of it) —
+/// used by the session summary and the freeform session's set-completion lines.
+pub(super) fn difficulty_style(difficulty: Difficulty) -> Style {
+    let colour = match difficulty {
+        Difficulty::Easy => Color::Green,
+        Difficulty::Hard => Color::Yellow,
+        Difficulty::Failure => Color::Red,
+    };
+    Style::new().fg(colour)
 }
 
 impl Menu {

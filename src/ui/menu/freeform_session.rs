@@ -27,13 +27,15 @@
 //! anywhere in the set form cancels that set).
 
 use chrono::Utc;
+use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
-use crate::domain::{Exercise, ExercisePerformance, Session, Set};
+use crate::domain::{Difficulty, Exercise, ExercisePerformance, Session, Set};
 
 use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
+use super::difficulty_style;
 use super::select_session::{format_date, local_date};
 
 /// Drive the session until the user leaves it, then land back on its options
@@ -157,10 +159,10 @@ fn begin_exercise(
     Ok(Some((exercise, performance)))
 }
 
-/// Ask for one set — weight, then rep count, then a Yes/No on whether it was
-/// taken to failure — and record it with `created_at` stamped when it is
-/// logged. Escape anywhere in the set form cancels the set (nothing is
-/// created) and the caller shows the performance menu.
+/// Ask for one set — weight, then rep count, then how tough it was — and
+/// record it with `created_at` stamped when it is logged. Escape anywhere in
+/// the set form cancels the set (nothing is created) and the caller shows the
+/// performance menu.
 fn ask_set(
     shell: &mut Shell,
     conn: &Connection,
@@ -173,29 +175,36 @@ fn ask_set(
     let Some(reps) = ask_reps(shell)? else {
         return Ok(());
     };
-    let Some(to_failure) = shell.ask(Some("Taken to failure?".to_string()), ["Yes", "No"])? else {
+    let Some(choice) = shell.ask(
+        Some("How tough was that?".to_string()),
+        Difficulty::ALL.map(Difficulty::menu_label),
+    )?
+    else {
         return Ok(());
     };
-    let to_failure = to_failure == "Yes";
+    let difficulty = Difficulty::from_label(&choice);
     let (set, is_personal_best) = Set::create(
         conn,
         performance.id,
         exercise.id,
         weight_kg,
         reps,
-        to_failure,
+        difficulty,
         Utc::now(),
     )?;
-    // The set as the session log shows it — the e1RM behind the flag never
-    // appears; only the weight and reps do. A personal best rides at the end
-    // of the line rather than on its own.
-    shell.log(format!(
-        "{} kg × {}{}{}",
-        set.weight_kg,
-        set.reps,
-        if set.to_failure { " · to failure" } else { "" },
-        if is_personal_best { " · New PR!" } else { "" }
-    ));
+    // The set as the session log shows it — the e1RM behind a personal best
+    // never appears; only the weight, reps and how tough it was do, the
+    // difficulty marker coloured (green easy, yellow hard, red failure) like
+    // the session summary's. A personal best rides at the end of the line
+    // rather than on its own.
+    let mut spans = vec![
+        Span::raw(format!("{} kg × {} · ", set.weight_kg, set.reps)),
+        Span::styled(set.difficulty.as_str(), difficulty_style(set.difficulty)),
+    ];
+    if is_personal_best {
+        spans.push(Span::raw(" · New PR!"));
+    }
+    shell.log(Line::from(spans));
     Ok(())
 }
 

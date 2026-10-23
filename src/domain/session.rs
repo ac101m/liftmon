@@ -154,7 +154,7 @@ fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainErro
         "SELECT s.id, s.created_at,
                 p.id, p.session_id, p.exercise_id, p.created_at,
                 st.id, st.exercise_performance_id, st.exercise_id,
-                st.created_at, st.weight_kg, st.reps, st.to_failure, st.epley_e1rm
+                st.created_at, st.weight_kg, st.reps, st.difficulty, st.epley_e1rm
          FROM sessions s
          LEFT JOIN exercise_performances p ON p.session_id = s.id
          LEFT JOIN sets st ON st.exercise_performance_id = p.id
@@ -201,7 +201,7 @@ fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainErro
             created_at: row.get(9)?,
             weight_kg: row.get(10)?,
             reps: row.get(11)?,
-            to_failure: row.get(12)?,
+            difficulty: row.get(12)?,
             epley_e1rm: row.get(13)?,
         });
     }
@@ -212,7 +212,7 @@ fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainErro
 mod tests {
     use super::*;
     use crate::db::apply_schema;
-    use crate::domain::{Exercise, ExercisePerformance, Set};
+    use crate::domain::{Difficulty, Exercise, ExercisePerformance, Set};
     use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 
     /// An in-memory database with the full schema applied and foreign keys
@@ -273,7 +273,7 @@ mod tests {
             exercise.id,
             100.0,
             5,
-            true,
+            Difficulty::Failure,
             dt(2026, 10, 19, 9, 5),
         )
         .unwrap();
@@ -283,7 +283,7 @@ mod tests {
             exercise.id,
             102.5,
             4,
-            true,
+            Difficulty::Failure,
             dt(2026, 10, 19, 9, 10),
         )
         .unwrap();
@@ -293,7 +293,7 @@ mod tests {
             exercise.id,
             105.0,
             3,
-            true,
+            Difficulty::Failure,
             dt(2026, 10, 19, 9, 15),
         )
         .unwrap();
@@ -318,7 +318,7 @@ mod tests {
         assert_eq!(all[1].performances[0].sets.len(), 3);
         assert_eq!(all[1].performances[0].sets[0].reps, 5);
         assert_eq!(all[1].performances[0].sets[2].weight_kg, 105.0);
-        assert!(all[1].performances[0].sets[1].to_failure);
+        assert!(all[1].performances[0].sets[1].difficulty == Difficulty::Failure);
         assert_eq!(all[1].performances[1].created_at, dt(2026, 10, 19, 10, 0));
         assert!(all[1].performances[1].sets.is_empty());
     }
@@ -342,7 +342,7 @@ mod tests {
             exercise.id,
             100.0,
             5,
-            true,
+            Difficulty::Failure,
             dt(2026, 10, 20, 8, 5),
         )
         .unwrap();
@@ -383,7 +383,7 @@ mod tests {
             exercise.id,
             100.0,
             5,
-            true,
+            Difficulty::Failure,
             dt(2026, 10, 19, 9, 5),
         )
         .unwrap();
@@ -393,7 +393,7 @@ mod tests {
             exercise.id,
             102.5,
             4,
-            true,
+            Difficulty::Failure,
             dt(2026, 10, 19, 9, 10),
         )
         .unwrap();
@@ -403,7 +403,7 @@ mod tests {
             exercise.id,
             105.0,
             3,
-            true,
+            Difficulty::Failure,
             dt(2026, 10, 19, 9, 15),
         )
         .unwrap();
@@ -419,7 +419,7 @@ mod tests {
             exercise.id,
             60.0,
             10,
-            false,
+            Difficulty::Easy,
             dt(2026, 10, 20, 7, 35),
         )
         .unwrap();
@@ -465,7 +465,7 @@ mod tests {
             exercise.id,
             60.0,
             10,
-            false,
+            Difficulty::Easy,
             dt(2026, 10, 20, 8, 10),
         )
         .unwrap();
@@ -499,7 +499,7 @@ mod tests {
             exercise.id,
             100.0,
             5,
-            true,
+            Difficulty::Failure,
             dt(2026, 10, 19, 9, 5),
         )
         .unwrap();

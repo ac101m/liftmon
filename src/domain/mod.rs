@@ -32,4 +32,4 @@ pub use self::exercise::Exercise;
 // The workout entities are the public surface for the session screens.
 pub use self::exercise_performance::ExercisePerformance;
 pub use self::session::{Session, SessionInfo};
-pub use self::set::Set;
+pub use self::set::{Difficulty, Set};

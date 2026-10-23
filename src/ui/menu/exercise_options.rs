@@ -39,8 +39,8 @@ pub(super) fn run(
             // bold name with a trailing colon, indented description — with
             // the last few personal bests (the sets, newest first, that beat
             // every earlier set's e1RM) listed inside the same frame as local
-            // date + weight × reps. The e1RM itself never appears, and
-            // there's no to-failure marker.
+            // date + weight × reps. The e1RM itself never appears, and there's
+            // no difficulty marker.
             Some("info") => {
                 let mut lines = super::exercise_lines(&exercise);
                 append_personal_bests(&mut lines, conn, &exercise)?;
@@ -92,7 +92,7 @@ pub(super) fn run(
 const PERSONAL_BESTS_LIMIT: usize = 3;
 
 /// Append a bold `Personal bests:` heading and the exercise's last few
-/// personal bests — newest first, local date + weight × reps, no to-failure
+/// personal bests — newest first, local date + weight × reps, no difficulty
 /// marker — to the tail of a section.
 pub(super) fn append_personal_bests(
     lines: &mut Vec<Line<'static>>,

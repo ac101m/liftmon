@@ -101,7 +101,7 @@ impl ExercisePerformance {
 mod tests {
     use super::*;
     use crate::db::apply_schema;
-    use crate::domain::{Exercise, Session, Set};
+    use crate::domain::{Difficulty, Exercise, Session, Set};
     use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 
     /// An in-memory database with the full schema applied and foreign keys
@@ -194,7 +194,7 @@ mod tests {
             exercise_id,
             90.0,
             8,
-            false,
+            Difficulty::Easy,
             dt(2026, 10, 20, 9, 5),
         )
         .unwrap();
@@ -204,7 +204,7 @@ mod tests {
             exercise_id,
             95.0,
             6,
-            true,
+            Difficulty::Failure,
             dt(2026, 10, 20, 9, 10),
         )
         .unwrap();
@@ -217,9 +217,9 @@ mod tests {
         assert_eq!(loaded.created_at, dt(2026, 10, 20, 9, 0));
         assert_eq!(loaded.sets.len(), 2);
         assert_eq!(loaded.sets[0].reps, 8);
-        assert!(!loaded.sets[0].to_failure);
+        assert_eq!(loaded.sets[0].difficulty, Difficulty::Easy);
         assert_eq!(loaded.sets[1].weight_kg, 95.0);
-        assert!(loaded.sets[1].to_failure);
+        assert_eq!(loaded.sets[1].difficulty, Difficulty::Failure);
     }
 
     #[test]
@@ -241,7 +241,7 @@ mod tests {
             exercise_id,
             90.0,
             8,
-            false,
+            Difficulty::Easy,
             dt(2026, 10, 20, 9, 5),
         )
         .unwrap();

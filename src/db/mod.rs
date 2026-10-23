@@ -402,11 +402,11 @@ mod tests {
              INSERT INTO exercise_performances (session_id, exercise_id, created_at)
                  VALUES (1, 1, '2026-10-20 09:00:00+00:00');
              INSERT INTO sets
-                 (exercise_performance_id, exercise_id, created_at, weight_kg, reps, to_failure)
-                 VALUES (1, 1, '2026-10-20 09:00:00+00:00', 100.0, 5, 0);
+                 (exercise_performance_id, exercise_id, created_at, weight_kg, reps, difficulty)
+                 VALUES (1, 1, '2026-10-20 09:00:00+00:00', 100.0, 5, 'easy');
              INSERT INTO sets
-                 (exercise_performance_id, exercise_id, created_at, weight_kg, reps, to_failure)
-                 VALUES (1, 1, '2026-10-20 09:05:00+00:00', 102.5, 3, 1);",
+                 (exercise_performance_id, exercise_id, created_at, weight_kg, reps, difficulty)
+                 VALUES (1, 1, '2026-10-20 09:05:00+00:00', 102.5, 3, 'failure');",
         )
         .unwrap();
         drop(conn);

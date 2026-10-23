@@ -54,7 +54,7 @@ What happens on a run:
    asserts on the replayed grid, not the raw stream).
 3. It then inspects the database — sessions, exercise performances, sets,
    exercises — to confirm the right rows were written with the right values
-   (weights, reps, to-failure flags, the moment-stamps, delete rules).
+   (weights, reps, difficulty levels, the moment-stamps, delete rules).
 4. Success prints **`ALL SCENARIOS PASSED`** and exits 0. A failed assertion
    prints `FAIL <scenario>` with a screen dump and exits 1.
 

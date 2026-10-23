@@ -74,7 +74,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
             created_at              TEXT NOT NULL,
             weight_kg               REAL NOT NULL,
             reps                    INTEGER NOT NULL,
-            to_failure              INTEGER NOT NULL
+            difficulty              TEXT NOT NULL CHECK (difficulty IN ('easy','hard','failure'))
         );
 
         -- FK columns the session-tree query joins on.
