@@ -5,6 +5,7 @@
 //! sure"), or back out. Edits loop back onto this screen under the (possibly
 //! renamed) exercise, so several changes can be made before leaving.
 
+use chrono::Local;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use rusqlite::Connection;
@@ -14,7 +15,7 @@ use crate::domain::{DomainError, Exercise, Set};
 use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
-use super::select_session::{format_date, local_date};
+use super::select_session::{format_date, local_date, time_ago};
 
 /// Drive the per-exercise menu until the user backs out or deletes it. `name`
 /// is the exercise's unique name from the picker.
@@ -38,9 +39,9 @@ pub(super) fn run(
             // Read-only: print the exercise as a framed section — divider,
             // bold name with a trailing colon, indented description — with
             // the last few personal bests (the sets, newest first, that beat
-            // every earlier set's e1RM) listed inside the same frame as local
-            // date + weight × reps. The e1RM itself never appears, and there's
-            // no difficulty marker.
+            // every earlier set's e1RM) listed inside the same frame as weight
+            // × reps, when the record was set, and how long ago that was. The
+            // e1RM itself never appears, and there's no difficulty marker.
             Some("info") => {
                 let mut lines = super::exercise_lines(&exercise);
                 append_personal_bests(&mut lines, conn, &exercise)?;
@@ -92,14 +93,18 @@ pub(super) fn run(
 const PERSONAL_BESTS_LIMIT: usize = 3;
 
 /// Append a bold `Personal bests:` heading and the exercise's last few
-/// personal bests — newest first, local date + weight × reps, no difficulty
-/// marker — to the tail of a section.
+/// personal bests — newest first, weight × reps with when the record was set
+/// (its local date, and how long ago that was), no difficulty marker — to the
+/// tail of a section.
 pub(super) fn append_personal_bests(
     lines: &mut Vec<Line<'static>>,
     conn: &Connection,
     exercise: &Exercise,
 ) -> Result<(), UiError> {
     let bests = Set::personal_bests(conn, exercise.id, PERSONAL_BESTS_LIMIT)?;
+    // One "now", re-used for every line, so a slow render can't skew the ages
+    // against each other.
+    let now = Local::now().naive_local();
     // Bold goes on the span, not the line, so it survives the history
     // render's dimming pass (which patches, not merges, line styles).
     lines.push(Line::from(vec![Span::styled(
@@ -111,10 +116,11 @@ pub(super) fn append_personal_bests(
     } else {
         for set in bests {
             lines.push(Line::from(format!(
-                "  {}  {} kg × {}",
-                format_date(local_date(set.created_at)),
+                "  {} kg × {} · set on {} ({})",
                 set.weight_kg,
                 set.reps,
+                format_date(local_date(set.created_at)),
+                time_ago(set.created_at.with_timezone(&Local).naive_local(), now),
             )));
         }
     }

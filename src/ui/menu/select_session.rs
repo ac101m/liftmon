@@ -89,8 +89,10 @@ pub(super) fn format_date(date: NaiveDate) -> String {
 /// How long ago `last` was, relative to `now`, in human terms: `"just now"`,
 /// `"2 minutes ago"`, `"7 hours ago"`, `"15 days ago"`, `"4 months ago"`,
 /// `"2 years ago"`. The unit grows coarser the further back it goes; anything
-/// under a minute is just "just now".
-fn time_ago(last: NaiveDateTime, now: NaiveDateTime) -> String {
+/// under a minute is just "just now". Shared with [`super::exercise_options`]
+/// so a personal-best line can say when its record was set, the same way the
+/// session list dates its sessions.
+pub(super) fn time_ago(last: NaiveDateTime, now: NaiveDateTime) -> String {
     let since = now.signed_duration_since(last);
     if since < TimeDelta::minutes(1) {
         return "just now".to_string();

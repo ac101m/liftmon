@@ -730,9 +730,9 @@ def personal_best_path():
 
     # A fresh app over the same DB: the exercise's info screen frames the
     # exercise as a section — bold name, indented description, a "Personal
-    # bests:" list inside the same frame — newest first, date + weight × reps,
-    # no difficulty marker, no e1RM. All three PBs (110×5, 100×6, 100×5) were
-    # logged today.
+    # bests:" list inside the same frame — newest first, weight × reps · set
+    # on date (seconds ago, so "just now"), no difficulty marker, no e1RM.
+    # All three PBs (110×5, 100×6, 100×5) were logged today.
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                          # -> Exercises
@@ -743,7 +743,7 @@ def personal_best_path():
     app.send("\r")                                          # info
     app.check("info frames the section with the last three personal bests",
               "Personal bests:", "flat barbell press",
-              f"{date.today().strftime('%Y/%m/%d')}  110 kg × 5")
+              f"110 kg × 5 · set on {date.today().strftime('%Y/%m/%d')} (just now)")
     app.close()
 
     print("ok   PBs logged at set time, e1RM stored per set (1, 3, 4 beat the rest), and info frames the last three (110×5, 100×6, 100×5)")
