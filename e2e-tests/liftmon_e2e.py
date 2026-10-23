@@ -13,7 +13,7 @@ actually get verified. Run `cargo build` first, then:
 Success prints "ALL SCENARIOS PASSED" and exits 0. See e2e-tests/README.md.
 """
 
-import os, pty, re, select, sqlite3, subprocess, threading, time, fcntl, termios, struct, sys
+import os, pty, re, secrets, select, sqlite3, subprocess, threading, time, fcntl, termios, struct, sys
 from datetime import date, datetime, timedelta, timezone
 
 # The debug binary this drives, resolved from this file's own location so the
@@ -21,10 +21,23 @@ from datetime import date, datetime, timedelta, timezone
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.path.join(REPO_ROOT, "target", "debug", "liftmon")
 # Scratch space: the DB is disposable and rebuilt from scratch at every run.
-# The app is spawned with $LIFTMON_DB_PATH pointing at it (see App.__init__),
-# so its writes always land in our scratch file, never anywhere a real workout
-# DB could be — and the harness can run from any cwd, not just /tmp.
-DB = "/tmp/liftmon.sqlite"
+# The file is named RANDOMLY per run, never a fixed path, so the suite cannot
+# predictably target — and wipe — a database that isn't its own. If the
+# randomly-chosen name already exists, that is the lockout: some other process
+# is using a database at that path (or a crashed run left one), and the suite
+# halts with an error instead of deleting it. The app is spawned with
+# $LIFTMON_DB_PATH pointing at it (see App.__init__), so its writes always land
+# in our scratch file — and the harness can run from any cwd, not just /tmp.
+DB = f"/tmp/liftmon-e2e-{secrets.token_hex(8)}.sqlite"
+if os.path.exists(DB):
+    raise SystemExit(
+        f"FAIL: refusing to run — a database already exists at {DB}\n"
+        "      The e2e scratch DB is named randomly per run, so nothing in this run\n"
+        "      created that file. It is either a leftover from a crashed e2e run\n"
+        "      (safe to delete and re-run) or — the case this lockout exists for —\n"
+        "      another process's real database at this path (leave it alone).\n"
+        "      Investigate, clear the path, then re-run."
+    )
 os.chdir("/tmp")
 
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat"))):
@@ -820,3 +833,10 @@ personal_best_path()
 delete_path()
 missing_env_path()
 print("ALL SCENARIOS PASSED")
+# A successful run removes its own scratch DB, so nothing accumulates in /tmp
+# and the lockout above can never trip on this run's file. A failing or crashed
+# run exits before this line, leaving the DB in place for post-mortem.
+try:
+    os.unlink(DB)
+except FileNotFoundError:
+    pass
