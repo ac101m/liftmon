@@ -10,6 +10,9 @@
 # The wrapper defaults the database to ~/.liftmon/db.sqlite, so only an
 # installed liftmon ever touches that file; a raw source build still refuses
 # to start until LIFTMON_DB_PATH is set.
+# If the release binary's `--version` reports a snapshot build (the version
+# string contains "snapshot", case-insensitively — e.g. "1.0.0-SNAPSHOT"),
+# install.sh asks before installing it.
 #
 # Build first as your own user (root usually has no cargo), then install as
 # root:
@@ -27,6 +30,27 @@ if [ ! -f "${release}" ]; then
     echo "release binary not found at ${release} — build it first: cargo build --release" >&2
     exit 1
 fi
+
+# Refuse to silently install a snapshot build: when the binary's --version says
+# it is one, ask first. A version we cannot read (e.g. a binary built before
+# the CLI existed, so `--version` fails) also refuses to install rather than
+# guessing. Reads as a decline on EOF, so a non-interactive run never installs
+# a snapshot without an explicit yes.
+version="$("${release}" --version 2>/dev/null)" || {
+    echo "could not read the release binary's version (\"${release} --version\" failed) — build it first: cargo build --release" >&2
+    exit 1
+}
+case "$(printf '%s' "$version" | tr '[:upper:]' '[:lower:]')" in
+    *snapshot*)
+        printf "%s is a snapshot build (version '%s'). Install it anyway? [y/N] " \
+            "${release}" "$version" >&2
+        read ans || ans=
+        if [ "$ans" != y ] && [ "$ans" != Y ]; then
+            echo "aborting; install a non-snapshot release binary instead" >&2
+            exit 1
+        fi
+        ;;
+esac
 
 BIN_DIR="${BIN_DIR:-/usr/local/bin}"
 
