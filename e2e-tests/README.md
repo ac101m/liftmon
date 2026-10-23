@@ -67,8 +67,10 @@ no-sessions path, the Escape-shortcut path, deleting a session (with its
 history), the personal-best path (a set beating the exercise's prior Epley e1RM gets
 " · New PR!" appended to its own log line at set time, the e1RM is stored per
 set, and the exercise info screen frames the exercise with rules and lists its
-last three personal bests as weight × reps with when each record was set), and
-the in-use-exercise delete path.
+last three personal bests as weight × reps with when each record was set), the
+in-use-exercise delete path, and the command-line path (`--version` prints the
+version Cargo.toml declares — the build version — and `-h`/`--help` print the
+usage, all without `LIFTMON_DB_PATH` set; unknown flags are usage errors).
 
 ## Notes for developers and agents
 

@@ -810,6 +810,42 @@ def delete_path():
     print("ok   a used exercise is refused with its session count; an unused one is deleted; history untouched")
     print()
 
+def cargo_pkg_version():
+    """The version Cargo.toml declares. `liftmon --version` is wired to
+    CARGO_PKG_VERSION at compile time, so the harness asserts exact parity."""
+    with open(os.path.join(REPO_ROOT, "Cargo.toml")) as f:
+        m = re.search(r"^version = \"([^\"]+)\"", f.read(), re.M)
+    if not m:
+        raise SystemExit("FAIL: could not find a version line in Cargo.toml")
+    return m.group(1)
+
+def cli_path():
+    print("=== CLI PATH: --version prints the build version; -h/--help print usage, all without LIFTMON_DB_PATH ===")
+    # The flags must work before any database work, so run without the env var.
+    env = {k: v for k, v in os.environ.items() if k != "LIFTMON_DB_PATH"}
+    proc = subprocess.run([BIN, "--version"], cwd="/tmp", env=env,
+                          capture_output=True, text=True, timeout=10)
+    version = cargo_pkg_version()
+    if proc.returncode != 0 or proc.stdout.strip() != version:
+        raise SystemExit(f"FAIL: --version printed {proc.stdout.strip()!r} (exit {proc.returncode}); expected {version!r}\nstderr: {proc.stderr!r}")
+    print(f"ok   --version prints {version!r}")
+    for flag in ("-h", "--help"):
+        proc = subprocess.run([BIN, flag], cwd="/tmp", env=env,
+                              capture_output=True, text=True, timeout=10)
+        if proc.returncode != 0:
+            raise SystemExit(f"FAIL: {flag} exited {proc.returncode}\nstdout: {proc.stdout!r}\nstderr: {proc.stderr!r}")
+        if "Usage:" not in proc.stdout or "--version" not in proc.stdout:
+            raise SystemExit(f"FAIL: {flag} printed a usage without 'Usage:'/'--version':\n{proc.stdout!r}")
+    print("ok   -h/--help print the usage and exit 0")
+    # An unknown flag is a usage error (exit 1) — the TUI only launches on a
+    # valid, empty invocation.
+    proc = subprocess.run([BIN, "--nonexistent"], cwd="/tmp", env=env,
+                          capture_output=True, text=True, timeout=10)
+    if proc.returncode == 0:
+        raise SystemExit("FAIL: an unknown flag must be a usage error, not a launch")
+    print("ok   unknown flags are a usage error (exit 1)")
+    print()
+
 def missing_env_path():
     print("=== MISSING ENV PATH: without LIFTMON_DB_PATH the app refuses to start ===")
     env = {k: v for k, v in os.environ.items() if k != "LIFTMON_DB_PATH"}
@@ -831,6 +867,7 @@ esc_shortcut_path()
 delete_session_path()
 personal_best_path()
 delete_path()
+cli_path()
 missing_env_path()
 print("ALL SCENARIOS PASSED")
 # A successful run removes its own scratch DB, so nothing accumulates in /tmp

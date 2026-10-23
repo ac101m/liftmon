@@ -11,6 +11,8 @@ from the comfort of an SSH session.
 - Stores workout session histories in an on-disk sqlite database (default 
   path is `~/.liftmon/db.sqlite`, but can be customised by setting
   `LIFTMON_DB_PATH` to any path of your choosing.
+- A small command line: `liftmon --help` and `liftmon --version` (the build
+  version) work before any database is opened. No other options exist yet.
 
 ## Installation
 

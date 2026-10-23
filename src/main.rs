@@ -5,6 +5,23 @@ mod ui;
 use std::process::ExitCode;
 
 use db::{Database, DbStatus};
+use docopt::Docopt;
+
+/// docopt usage. Only the program name is valid for now; `-h/--help` and
+/// `--version` are handled and printed entirely by docopt (`[options]` makes
+/// the Options-section flags part of the pattern). Anything else — more
+/// options, extra args — is a usage error until the CLI grows.
+const USAGE: &str = "
+[liftmon]
+A terminal based workout tracker.
+
+Usage:
+  liftmon [options]
+
+Options:
+  -h, --help     Show this help screen.
+  --version      Show version information.
+";
 
 /// Opens the database file named by the `LIFTMON_DB_PATH` environment
 /// variable (refusing to start when it is not set, so the app never silently
@@ -12,6 +29,16 @@ use db::{Database, DbStatus};
 /// migration/backup flow. The interactive upgrade choice goes through the UI
 /// module.
 fn main() -> ExitCode {
+    // Parse the command line before any database work: --help/--version must
+    // work even without LIFTMON_DB_PATH set. docopt prints the usage or the
+    // version and exits on its own; any other invocation falls through to the
+    // TUI below.
+    Docopt::new(USAGE)
+        .unwrap_or_else(|e| e.exit())
+        .version(Some(env!("CARGO_PKG_VERSION").to_string()))
+        .parse()
+        .unwrap_or_else(|e| e.exit());
+
     let mut database = match Database::open_from_env() {
         Ok(db) => db,
         Err(err) => return fail(format!("{err}")),
