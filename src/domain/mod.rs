@@ -14,10 +14,10 @@
 //! Entities that contain others — a [`Session`] holds its
 //! [`ExercisePerformance`]s, each of which holds its [`Set`]s — carry those
 //! children as fields on the struct, populated by the loaders. The session
-//! loaders fetch a whole tree in one query (see [`Session::all`]) so no N+1;
-//! a freshly created entity comes back with empty children, and reloading via
-//! the loader gives the current view. When only the list matters — the resume
-//! screen — the lightweight [`SessionInfo`] rows avoid the tree entirely (see
+//! loaders fetch a whole tree in one query so no N+1; a freshly created entity
+//! comes back with empty children, and reloading via the loader gives the
+//! current view. When only the list matters — the resume screen — the
+//! lightweight [`SessionInfo`] rows avoid the tree entirely (see
 //! [`Session::list_info`]).
 
 mod error;

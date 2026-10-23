@@ -28,8 +28,7 @@ pub enum DomainError {
         name: String,
     },
 
-    /// `save` could not find the row for this entity.
-    #[allow(dead_code)] // raised by Exercise::save, not yet called outside tests
+    /// `save`/`delete` could not find the row for this entity.
     #[error("no {kind} with id {id} exists")]
     MissingRow {
         /// The kind of entity, e.g. "exercise".

@@ -99,7 +99,6 @@ pub struct Set {
     /// the internal scalar that ranks sets and decides personal bests. Stored
     /// so ordering needs no recompute, but the UI always surfaces weight and
     /// reps, never this number.
-    #[allow(dead_code)] // set, read back and ORDER BY'd by SQL; the UI shows weight and reps
     pub epley_e1rm: f64,
 }
 
@@ -113,7 +112,6 @@ fn epley_e1rm(weight_kg: f64, reps: u32) -> f64 {
     weight_kg * (1.0 + reps as f64 / EPLEY_E1RM_REPS_SCALE)
 }
 
-#[allow(dead_code)] // create/personal_bests are used by the screens; for_performance/delete wait on the session list UI
 impl Set {
     /// Insert a new set row, and return the persisted entity together with
     /// whether it is a personal best: its Epley e1RM strictly exceeds the best
@@ -174,32 +172,6 @@ impl Set {
         ))
     }
 
-    /// Load every set of the given performance, in insertion order.
-    pub fn for_performance(
-        conn: &Connection,
-        exercise_performance_id: i64,
-    ) -> Result<Vec<Self>, DomainError> {
-        let mut stmt = conn.prepare(
-            "SELECT id, exercise_performance_id, exercise_id, created_at, weight_kg, reps, difficulty, epley_e1rm
-             FROM sets
-             WHERE exercise_performance_id = ?1
-             ORDER BY id",
-        )?;
-        let rows = stmt.query_map(params![exercise_performance_id], |row| {
-            Ok(Self {
-                id: row.get(0)?,
-                exercise_performance_id: row.get(1)?,
-                exercise_id: row.get(2)?,
-                created_at: row.get(3)?,
-                weight_kg: row.get(4)?,
-                reps: row.get(5)?,
-                difficulty: row.get(6)?,
-                epley_e1rm: row.get(7)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    }
-
     /// The exercise's personal bests — the sets that beat every strictly
     /// earlier set's Epley e1RM at the time they were done — newest first, up
     /// to `limit`. Because each new best must strictly beat all that came
@@ -233,19 +205,6 @@ impl Set {
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    }
-
-    /// Remove this set's row. Errors with [`DomainError::MissingRow`] when the
-    /// row is already gone.
-    pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
-        let changed = conn.execute("DELETE FROM sets WHERE id = ?1", params![self.id])?;
-        if changed == 0 {
-            return Err(DomainError::MissingRow {
-                kind: "set",
-                id: self.id,
-            });
-        }
-        Ok(())
     }
 }
 
@@ -444,62 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn for_performance_returns_ordered_sets() {
-        let conn = test_db();
-        let performance_id = seed_performance(&conn);
-
-        // Created in a scrambled order (second before first); rows must come
-        // back keyed to the id SQLite assigned at insertion, i.e. creation
-        // order.
-        let (second, _) = Set::create(
-            &conn,
-            performance_id,
-            1,
-            95.0,
-            6,
-            Difficulty::Failure,
-            dt(2026, 10, 20, 9, 30),
-        )
-        .unwrap();
-        let (first, _) = Set::create(
-            &conn,
-            performance_id,
-            1,
-            90.0,
-            8,
-            Difficulty::Easy,
-            dt(2026, 10, 20, 9, 25),
-        )
-        .unwrap();
-        let (third, _) = Set::create(
-            &conn,
-            performance_id,
-            1,
-            100.0,
-            5,
-            Difficulty::Easy,
-            dt(2026, 10, 20, 9, 35),
-        )
-        .unwrap();
-
-        let sets = Set::for_performance(&conn, performance_id).unwrap();
-        assert_eq!(
-            sets.iter().map(|s| s.id).collect::<Vec<_>>(),
-            [second.id, first.id, third.id]
-        );
-        assert_eq!(sets[0].created_at, dt(2026, 10, 20, 9, 30));
-        assert_eq!(sets[0].difficulty, Difficulty::Failure);
-        assert_eq!(sets[1].reps, 8);
-        assert_eq!(sets[2].weight_kg, 100.0);
-    }
-
-    #[test]
-    fn for_performance_returns_empty_for_unknown() {
-        let conn = test_db();
-        assert!(Set::for_performance(&conn, 999).unwrap().is_empty());
-    }
-
-    #[test]
     fn create_flags_a_personal_best_only_when_it_beats_prior_sets() {
         let conn = test_db();
         let perf1 = seed_performance(&conn); // a session for exercise 1
@@ -664,51 +567,6 @@ mod tests {
 
         // An exercise that has never been performed has no bests.
         assert!(Set::personal_bests(&conn, 999, 3).unwrap().is_empty());
-    }
-
-    #[test]
-    fn delete_removes_the_row() {
-        let conn = test_db();
-        let performance_id = seed_performance(&conn);
-        let (set, _) = Set::create(
-            &conn,
-            performance_id,
-            1,
-            100.0,
-            5,
-            Difficulty::Easy,
-            dt(2026, 10, 20, 9, 30),
-        )
-        .unwrap();
-
-        set.delete(&conn).unwrap();
-
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM sets", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 0);
-    }
-
-    #[test]
-    fn delete_missing_row_errors() {
-        let conn = test_db();
-        let ghost = Set {
-            id: 999,
-            exercise_performance_id: 1,
-            exercise_id: 1,
-            created_at: dt(2026, 10, 20, 9, 0),
-            weight_kg: 0.0,
-            reps: 0,
-            difficulty: Difficulty::Easy,
-            epley_e1rm: 0.0,
-        };
-        assert!(matches!(
-            ghost.delete(&conn),
-            Err(DomainError::MissingRow {
-                kind: "set",
-                id: 999
-            })
-        ));
     }
 
     #[test]

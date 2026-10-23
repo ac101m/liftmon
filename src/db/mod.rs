@@ -127,19 +127,6 @@ impl Database {
         }
     }
 
-    /// True when the file has an older schema that [`Self::upgrade`] can bring
-    /// up to [`Self::latest_version`].
-    #[allow(dead_code)] // convenience for the UI, which is not built yet
-    pub fn needs_upgrade(&self) -> Result<bool, DbError> {
-        Ok(matches!(self.status()?, DbStatus::Upgradeable { .. }))
-    }
-
-    /// True when the file was written by a newer build than this one.
-    #[allow(dead_code)] // convenience for the UI, which is not built yet
-    pub fn is_from_future(&self) -> Result<bool, DbError> {
-        Ok(matches!(self.status()?, DbStatus::FromFuture { .. }))
-    }
-
     /// Apply all pending migrations, backing up the old file first when an
     /// existing schema is being changed (a fresh database has nothing to back
     /// up). Returns what was done.
@@ -251,8 +238,6 @@ mod tests {
         assert!(scratch.path.exists());
         assert_eq!(db.version().unwrap(), 0);
         assert_eq!(db.status().unwrap(), DbStatus::Fresh);
-        assert!(!db.needs_upgrade().unwrap());
-        assert!(!db.is_from_future().unwrap());
     }
 
     #[test]
@@ -458,7 +443,6 @@ mod tests {
 
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 5 });
-        assert!(db.is_from_future().unwrap());
         assert!(
             matches!(db.upgrade(), Err(DbError::TooNew { .. })),
             "must refuse to downgrade a newer database"

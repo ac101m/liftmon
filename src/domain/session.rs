@@ -67,19 +67,13 @@ impl Session {
     /// Load the session with the given `id`, with its whole performances →
     /// sets tree, if one exists.
     pub fn find_by_id(conn: &Connection, id: i64) -> Result<Option<Self>, DomainError> {
-        Ok(tree(conn, Some(id))?.into_iter().next())
-    }
-
-    /// Load every session with its whole tree, most recent first.
-    #[allow(dead_code)] // the full-history loader — used by the tests; waits on a future list-all screen
-    pub fn all(conn: &Connection) -> Result<Vec<Self>, DomainError> {
-        tree(conn, None)
+        Ok(tree(conn, id)?.into_iter().next())
     }
 
     /// Load one [`SessionInfo`] per session — its own columns plus how many
     /// performances it holds and the moment of its most recent activity — most
-    /// recent first. Unlike [`Session::all`], this returns no performances/sets
-    /// at all, so its cost tracks the number of sessions.
+    /// recent first. This returns no performances or sets at all, so its cost
+    /// tracks the number of sessions.
     pub fn list_info(conn: &Connection) -> Result<Vec<SessionInfo>, DomainError> {
         info(conn, None)
     }
@@ -140,16 +134,15 @@ fn info(conn: &Connection, only: Option<i64>) -> Result<Vec<SessionInfo>, Domain
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-/// Load sessions — optionally just the one with id `only` — with their whole
-/// performances → sets tree, in a single query.
+/// Load the session with `id` and its whole performances → sets tree, in a
+/// single query.
 ///
 /// The three-level LEFT JOIN yields one row per set (plus one row per
 /// performance with no sets, plus one per session with no performances), and
 /// the ORDER BY keeps every child contiguous under its parent, so one pass
-/// flattens the rows into the nested structs. [`Session::all`] and
-/// [`Session::find_by_id`] both go through here: loading a session's tree
-/// costs exactly one query, however large it is.
-fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainError> {
+/// flattens the rows into the nested structs. Loading a session's tree costs
+/// exactly one query, however large it is.
+fn tree(conn: &Connection, id: i64) -> Result<Vec<Session>, DomainError> {
     let mut stmt = conn.prepare(
         "SELECT s.id, s.created_at,
                 p.id, p.session_id, p.exercise_id, p.created_at,
@@ -158,10 +151,10 @@ fn tree(conn: &Connection, only: Option<i64>) -> Result<Vec<Session>, DomainErro
          FROM sessions s
          LEFT JOIN exercise_performances p ON p.session_id = s.id
          LEFT JOIN sets st ON st.exercise_performance_id = p.id
-         WHERE (?1 IS NULL OR s.id = ?1)
+         WHERE s.id = ?1
          ORDER BY s.created_at DESC, s.id DESC, p.created_at, p.id, st.created_at, st.id",
     )?;
-    let mut rows = stmt.query(params![only])?;
+    let mut rows = stmt.query(params![id])?;
 
     let mut sessions: Vec<Session> = Vec::new();
     while let Some(row) = rows.next()? {
@@ -258,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn all_returns_sessions_with_full_performances_sets_tree() {
+    fn find_by_id_loads_sessions_with_their_full_trees() {
         let conn = test_db();
         let exercise = Exercise::create(&conn, "bench press", "flat").unwrap();
 
@@ -303,30 +296,20 @@ mod tests {
         let fresh = Session::create(&conn, dt(2026, 10, 20, 7, 0)).unwrap();
         ExercisePerformance::create(&conn, fresh.id, exercise.id, dt(2026, 10, 20, 7, 30)).unwrap();
 
-        let all = Session::all(&conn).unwrap();
-        assert_eq!(all.len(), 2);
-        assert_eq!(all[0].id, fresh.id, "most recent session first");
-        assert_eq!(all[1].id, old.id);
+        // Both sessions load through find_by_id with their trees intact.
+        let fresh = Session::find_by_id(&conn, fresh.id).unwrap().unwrap();
+        assert_eq!(fresh.performances.len(), 1);
+        assert!(fresh.performances[0].sets.is_empty());
 
-        // The fresh session: one set-less performance.
-        assert_eq!(all[0].performances.len(), 1);
-        assert!(all[0].performances[0].sets.is_empty());
-
-        // The old session: two performances, sets intact and ordered.
-        assert_eq!(all[1].performances.len(), 2);
-        assert_eq!(all[1].performances[0].created_at, dt(2026, 10, 19, 9, 0));
-        assert_eq!(all[1].performances[0].sets.len(), 3);
-        assert_eq!(all[1].performances[0].sets[0].reps, 5);
-        assert_eq!(all[1].performances[0].sets[2].weight_kg, 105.0);
-        assert!(all[1].performances[0].sets[1].difficulty == Difficulty::Failure);
-        assert_eq!(all[1].performances[1].created_at, dt(2026, 10, 19, 10, 0));
-        assert!(all[1].performances[1].sets.is_empty());
-    }
-
-    #[test]
-    fn all_returns_empty_on_empty_db() {
-        let conn = test_db();
-        assert!(Session::all(&conn).unwrap().is_empty());
+        let old = Session::find_by_id(&conn, old.id).unwrap().unwrap();
+        assert_eq!(old.performances.len(), 2);
+        assert_eq!(old.performances[0].created_at, dt(2026, 10, 19, 9, 0));
+        assert_eq!(old.performances[0].sets.len(), 3);
+        assert_eq!(old.performances[0].sets[0].reps, 5);
+        assert_eq!(old.performances[0].sets[2].weight_kg, 105.0);
+        assert!(old.performances[0].sets[1].difficulty == Difficulty::Failure);
+        assert_eq!(old.performances[1].created_at, dt(2026, 10, 19, 10, 0));
+        assert!(old.performances[1].sets.is_empty());
     }
 
     #[test]
@@ -526,7 +509,7 @@ mod tests {
         assert_eq!(count_sets, 0);
 
         // ...and the survivor still loads.
-        assert_eq!(Session::all(&conn).unwrap()[0].id, survivor.id);
+        assert!(Session::find_by_id(&conn, survivor.id).unwrap().is_some());
     }
 
     #[test]

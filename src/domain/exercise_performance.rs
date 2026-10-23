@@ -20,12 +20,11 @@ pub struct ExercisePerformance {
     /// The moment the exercise was picked, starting the performance (UTC).
     pub created_at: DateTime<Utc>,
     /// The sets performed, in insertion order. Empty in a freshly created
-    /// entity; the loaders ([`ExercisePerformance::by_id`], and the session
-    /// tree in [`crate::domain::Session`]) populate it.
+    /// entity; only the session tree loader in [`crate::domain::Session`]
+    /// populates it.
     pub sets: Vec<Set>,
 }
 
-#[allow(dead_code)] // create is used by the freeform screen; by_id/delete wait on the session list UI
 impl ExercisePerformance {
     /// Insert a new performance row and return the persisted entity.
     ///
@@ -53,55 +52,13 @@ impl ExercisePerformance {
             sets: Vec::new(),
         })
     }
-
-    /// Load the performance with the given `id`, with its sets, if one exists.
-    ///
-    /// Two queries (the row, then its sets) — fine for a single entity; the
-    /// session tree loads whole sessions in one join instead.
-    pub fn by_id(conn: &Connection, id: i64) -> Result<Option<Self>, DomainError> {
-        let mut performance = match conn.query_row(
-            "SELECT id, session_id, exercise_id, created_at
-             FROM exercise_performances
-             WHERE id = ?1",
-            [id],
-            |row| {
-                Ok(Self {
-                    id: row.get(0)?,
-                    session_id: row.get(1)?,
-                    exercise_id: row.get(2)?,
-                    created_at: row.get(3)?,
-                    sets: Vec::new(),
-                })
-            },
-        ) {
-            Ok(performance) => performance,
-            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
-            Err(err) => return Err(err.into()),
-        };
-        performance.sets = Set::for_performance(conn, id)?;
-        Ok(Some(performance))
-    }
-
-    /// Remove this performance and its sets. The sets go with it (`ON DELETE
-    /// CASCADE`, migration v3), so one statement is enough. Errors with
-    /// [`DomainError::MissingRow`] when the row is already gone.
-    pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
-        let changed = conn.execute("DELETE FROM exercise_performances WHERE id = ?1", [self.id])?;
-        if changed == 0 {
-            return Err(DomainError::MissingRow {
-                kind: "exercise performance",
-                id: self.id,
-            });
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::apply_schema;
-    use crate::domain::{Difficulty, Exercise, Session, Set};
+    use crate::domain::{Exercise, Session};
     use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 
     /// An in-memory database with the full schema applied and foreign keys
@@ -178,114 +135,6 @@ mod tests {
         assert!(matches!(
             ExercisePerformance::create(&conn, session_id, 999, dt(2026, 10, 20, 8, 0)),
             Err(DomainError::Sqlite(_))
-        ));
-    }
-
-    #[test]
-    fn by_id_returns_the_performance_with_its_sets() {
-        let conn = test_db();
-        let (exercise_id, session_id) = seed(&conn);
-        let performance =
-            ExercisePerformance::create(&conn, session_id, exercise_id, dt(2026, 10, 20, 9, 0))
-                .unwrap();
-        Set::create(
-            &conn,
-            performance.id,
-            exercise_id,
-            90.0,
-            8,
-            Difficulty::Easy,
-            dt(2026, 10, 20, 9, 5),
-        )
-        .unwrap();
-        Set::create(
-            &conn,
-            performance.id,
-            exercise_id,
-            95.0,
-            6,
-            Difficulty::Failure,
-            dt(2026, 10, 20, 9, 10),
-        )
-        .unwrap();
-
-        let loaded = ExercisePerformance::by_id(&conn, performance.id)
-            .unwrap()
-            .unwrap();
-        assert_eq!(loaded.session_id, session_id);
-        assert_eq!(loaded.exercise_id, exercise_id);
-        assert_eq!(loaded.created_at, dt(2026, 10, 20, 9, 0));
-        assert_eq!(loaded.sets.len(), 2);
-        assert_eq!(loaded.sets[0].reps, 8);
-        assert_eq!(loaded.sets[0].difficulty, Difficulty::Easy);
-        assert_eq!(loaded.sets[1].weight_kg, 95.0);
-        assert_eq!(loaded.sets[1].difficulty, Difficulty::Failure);
-    }
-
-    #[test]
-    fn by_id_missing_returns_none() {
-        let conn = test_db();
-        assert!(ExercisePerformance::by_id(&conn, 999).unwrap().is_none());
-    }
-
-    #[test]
-    fn delete_removes_sets_then_the_performance() {
-        let conn = test_db();
-        let (exercise_id, session_id) = seed(&conn);
-        let doomed =
-            ExercisePerformance::create(&conn, session_id, exercise_id, dt(2026, 10, 20, 9, 0))
-                .unwrap();
-        Set::create(
-            &conn,
-            doomed.id,
-            exercise_id,
-            90.0,
-            8,
-            Difficulty::Easy,
-            dt(2026, 10, 20, 9, 5),
-        )
-        .unwrap();
-        let survivor =
-            ExercisePerformance::create(&conn, session_id, exercise_id, dt(2026, 10, 20, 10, 0))
-                .unwrap();
-
-        doomed.delete(&conn).unwrap();
-
-        let performance_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM exercise_performances", [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        assert_eq!(performance_count, 1);
-        let set_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM sets", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(set_count, 0);
-
-        // The other performance — and its (empty) set list — survive.
-        let loaded = ExercisePerformance::by_id(&conn, survivor.id)
-            .unwrap()
-            .unwrap();
-        assert_eq!(loaded.id, survivor.id);
-        assert!(loaded.sets.is_empty());
-    }
-
-    #[test]
-    fn delete_missing_row_errors() {
-        let conn = test_db();
-        let ghost = ExercisePerformance {
-            id: 999,
-            session_id: 1,
-            exercise_id: 1,
-            created_at: dt(2026, 10, 20, 8, 0),
-            sets: Vec::new(),
-        };
-        assert!(matches!(
-            ghost.delete(&conn),
-            Err(DomainError::MissingRow {
-                kind: "exercise performance",
-                id: 999
-            })
         ));
     }
 }
