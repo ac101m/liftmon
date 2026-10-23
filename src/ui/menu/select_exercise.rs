@@ -1,4 +1,4 @@
-//! The "list exercises" screen: pick an exercise with the filter box below;
+//! The "show exercises" screen: pick an exercise with the filter box below;
 //! selecting one opens its per-exercise actions screen.
 
 use rusqlite::Connection;

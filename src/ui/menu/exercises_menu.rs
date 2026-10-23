@@ -1,5 +1,5 @@
-//! The exercise screen: add an exercise, list the existing ones, or back out
-//! to the main menu.
+//! The exercise screen: show the existing exercises (the most common action,
+//! so it sits first in the menu), add a new one, or back out to the main menu.
 
 use crate::ui::menu::Menu;
 use crate::ui::utils::{Shell, UiError};
@@ -8,11 +8,11 @@ use crate::ui::utils::{Shell, UiError};
 pub(super) fn run(shell: &mut Shell) -> Result<Option<Menu>, UiError> {
     let choice = shell.ask(
         Some("Exercises".to_string()),
-        ["Add exercise", "List exercises", "Back"],
+        ["Show exercises", "Add exercise", "Back"],
     )?;
     Ok(match choice.as_deref() {
+        Some("Show exercises") => Some(Menu::SelectExercise),
         Some("Add exercise") => Some(Menu::AddExercise),
-        Some("List exercises") => Some(Menu::SelectExercise),
         _ => Some(Menu::Main), // "Back", or Escape
     })
 }

@@ -1,7 +1,6 @@
-//! The session screen: start a new workout — creating its session row and
-//! dropping the user onto that session's options screen — list the existing
-//! sessions (each opening its own options screen), or back out to the main
-//! menu.
+//! The session screen: show the existing sessions (each opening its own
+//! options screen) — the most common action, so it sits first in the menu —
+//! start a new workout, or back out to the main menu.
 
 use chrono::Utc;
 use rusqlite::Connection;
@@ -14,9 +13,10 @@ use crate::ui::utils::{Shell, UiError};
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     let choice = shell.ask(
         Some("Sessions".to_string()),
-        ["new session", "list sessions", "back"],
+        ["show sessions", "new session", "back"],
     )?;
     Ok(match choice.as_deref() {
+        Some("show sessions") => Some(Menu::SelectSession),
         // A new session's row is created up front — `created_at` stamps the
         // moment "new session" is chosen — and the user lands on its options
         // screen, the same screen every session lives on. Entering the
@@ -29,7 +29,6 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
                 session_id: session.id,
             })
         }
-        Some("list sessions") => Some(Menu::SelectSession),
         _ => Some(Menu::Main), // "back", or Escape
     })
 }

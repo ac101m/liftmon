@@ -34,7 +34,7 @@ mod session_options;
 pub(crate) enum Menu {
     /// The top-level menu (Exercises / Sessions / Exit).
     Main,
-    /// The exercise screen (Add exercise / List exercises / Back).
+    /// The exercise screen (Show exercises / Add exercise / Back).
     Exercises,
     /// The add-exercise form (name, then description).
     AddExercise,
@@ -43,10 +43,10 @@ pub(crate) enum Menu {
     /// The actions for one picked exercise, named by its unique name so the
     /// prompt updates after a rename.
     ExerciseOptions { name: String },
-    /// The session screen (New session / List sessions / Back).
+    /// The session screen (Show sessions / New session / Back).
     Sessions,
-    /// The pick-a-session screen: list sessions, then into that session's
-    /// options screen.
+    /// The pick-a-session screen: browse the sessions, then into that
+    /// session's options screen.
     SelectSession,
     /// The actions for one picked session, identified by its database row id.
     /// A brand-new session lands here too: the session screen creates the row

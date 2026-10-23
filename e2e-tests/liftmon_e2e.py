@@ -197,7 +197,7 @@ def end_path():
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\x1b[B\r")                                    # -> Sessions
     app.check("session menu", "─[Sessions]", "new session", "back")
-    app.send("\r")                                          # new session
+    app.send("\x1b[B\r")                                          # new session
     app.check("new session lands on its options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "begin", "summary", "back")
     app.send("\r")                                          # begin (index 0)
@@ -255,7 +255,7 @@ def leave_path():
     seed_db()
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
-    app.send("\r")                                          # new session
+    app.send("\x1b[B\r")                                          # new session
     app.check("new session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
     app.send("\r")                                          # begin (index 0)
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
@@ -288,7 +288,7 @@ def empty_path():
     seed_db(exercises=())
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
-    app.send("\r")                                          # new session
+    app.send("\x1b[B\r")                                          # new session
     # The user is dropped on the new session's options screen, not into an
     # exercise picker that would immediately fail with no exercises.
     app.check("new session lands on its options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
@@ -321,7 +321,7 @@ def resume_path():
     # performances.
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
-    app.send("\r")                                          # new session
+    app.send("\x1b[B\r")                                          # new session
     app.check("new session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
     app.send("\r")                                          # begin (index 0)
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
@@ -345,7 +345,7 @@ def resume_path():
     app.send("\x1b")                                        # Esc on options = back to the session list
     app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                        # Esc on the list = back to the session menu
-    app.check("back at session menu", "─[Sessions]", "list sessions", "back")
+    app.check("back at session menu", "─[Sessions]", "show sessions", "back")
     app.close()
 
     d = db()
@@ -357,13 +357,13 @@ def resume_path():
     squat_perf = d["performances"][1][0]                    # second = Squat, insertion order
     if len(d["sets"]) != 2: raise SystemExit(f"FAIL: expected 2 sets, got {len(d['sets'])}")
 
-    # App #2: same DB, list sessions and resume it. It was last exercised just
+    # App #2: same DB, show sessions and resume it. It was last exercised just
     # now (well within 6 hours), so no confirmation prompt — it must land
     # straight on the performance menu for the LAST exercise (Squat), not
     # Bench press.
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
-    app.send("\x1b[B\r")                                    # list sessions (index 1)
+    app.send("\r")                                    # show sessions
     app.send("\r")                                          # pick the only session
     # The session started today; anchor the options title check on that date.
     app.check("session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
@@ -432,7 +432,7 @@ def stale_confirm_path():
 
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
-    app.send("\x1b[B\r")                                    # list sessions (index 1)
+    app.send("\r")                                    # show sessions
     app.check("session picker labels by creation, not last set", "Select session", "4 days ago")
     app.send("\r")                                          # pick it
     # The options title is the session's start (creation) date, four days back.
@@ -464,13 +464,13 @@ def no_sessions_path():
     seed_db()
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
-    app.send("\x1b[B\r")                                    # list sessions (index 1)
+    app.send("\r")                                    # show sessions
     app.check("nothing to list", "No sessions yet — start one first",
               "─[Sessions]", "new session", "back")
     app.close()
     d = db()
     if d["sessions"]: raise SystemExit(f"FAIL: expected no sessions, got {d['sessions']}")
-    print("ok   list sessions with none just reports and returns to the session menu")
+    print("ok   show sessions with none just reports and returns to the session menu")
     print()
 
 def esc_shortcut_path():
@@ -482,23 +482,23 @@ def esc_shortcut_path():
     app.check("main unchanged after Esc", "─[Main menu]", "Exercises")
 
     app.send("\x1b[B\r")                                # -> Sessions
-    app.check("session menu", "─[Sessions]", "new session", "list sessions", "back")
+    app.check("session menu", "─[Sessions]", "show sessions", "new session", "back")
     app.send("\x1b")                                    # Esc = back
     app.check("Esc backs from sessions menu", "─[Main menu]", "Exercises")
 
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu", "─[Exercises]", "Add exercise", "List exercises", "Back")
+    app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
     app.send("\x1b")                                    # Esc = back
     app.check("Esc backs from exercises menu", "─[Main menu]", "Sessions")
 
     # Per-exercise menu: Esc = back; Esc on the delete confirm = No.
     app.send("\r")                                      # -> Exercises
-    app.send("\x1b[B\r")                                # List exercises
+    app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
     app.check("exercise options", "─[Bench press]", "info", "edit name", "edit description", "delete", "back")
     app.send("\x1b")                                    # Esc = back
     app.check("Esc backs from exercise options", "─[Exercises]", "Add exercise")
-    app.send("\x1b[B\r")                                # List exercises
+    app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
     app.check("exercise options (2nd)", "─[Bench press]", "info", "edit name", "edit description", "delete", "back")
     app.send("\x1b[B\x1b[B\x1b[B\r")                    # delete (index 3)
@@ -514,7 +514,7 @@ def esc_shortcut_path():
     # menu has no back option, so Esc just stays on it; escaping the exercise
     # picker returns to the session's options screen.
     app.send("\x1b[B\r")                                # -> Sessions
-    app.send("\r")                                      # new session
+    app.send("\x1b[B\r")                                      # new session
     app.check("new session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
     app.send("\r")                                      # begin (index 0)
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
@@ -534,7 +534,7 @@ def esc_shortcut_path():
     app.send("\x1b")                                    # Esc on options = back to the session list
     app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                    # Esc on the list = back to the session menu
-    app.check("back at sessions menu", "─[Sessions]", "list sessions")
+    app.check("back at sessions menu", "─[Sessions]", "show sessions")
     app.close()
 
     d = db()
@@ -546,7 +546,7 @@ def esc_shortcut_path():
     # Session picker: Escape leaves back to the session menu.
     app = App()
     app.send("\x1b[B\r")                                # -> Sessions
-    app.send("\x1b[B\r")                                # list sessions (index 1)
+    app.send("\r")                                # show sessions
     app.check("session picker", "Select session", date.today().strftime("%Y/%m/%d"),
               "freeform session")
     app.send("\x1b")                                    # Esc leaves the picker
@@ -560,14 +560,14 @@ def esc_shortcut_path():
     # then exits the session.
     app = App()
     app.send("\x1b[B\r")                                # -> Sessions
-    app.send("\x1b[B\r")                                # list sessions (index 1)
+    app.send("\r")                                # show sessions
     app.send("\r")                                      # pick the session
     app.check("session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "resume", "back")
     app.send("\x1b")                                    # Esc on options = back to the session list
     app.check("Esc leaves session options -> session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                    # Esc on the list = back to the session menu
     app.check("Esc leaves session list", "─[Sessions]", "new session")
-    app.send("\x1b[B\r")                                # list sessions (index 1) again
+    app.send("\r")                                # show sessions again
     app.send("\r")                                      # pick the session
     app.check("session options (2nd)", "resume", "summary", "back")
     app.send("\r")                                      # resume (index 0)
@@ -627,7 +627,7 @@ def delete_session_path():
 
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
-    app.send("\x1b[B\r")                                    # list sessions (index 1)
+    app.send("\r")                                    # show sessions
     app.check("session picker (both listed)", "Select session", doomed_label, survivor_label)
     app.send("\x1b[B\r")                                    # pick the doomed session (index 1)
     app.check("doomed session options", "─[" + doomed_label + " · freeform session]", "resume", "summary", "delete", "back")
@@ -642,7 +642,7 @@ def delete_session_path():
               "─[Select session]", "type to filter", "Esc back")
     app.check("the survivor is still listed", survivor_label)
     app.send("\x1b")                                        # Esc on the list = back to the session menu
-    app.check("back at session menu", "─[Sessions]", "list sessions")
+    app.check("back at session menu", "─[Sessions]", "show sessions")
     app.close()
 
     d = db()
@@ -662,7 +662,7 @@ def personal_best_path():
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\x1b[B\r")                                    # -> Sessions
     app.check("session menu", "─[Sessions]", "new session", "back")
-    app.send("\r")                                          # new session
+    app.send("\x1b[B\r")                                          # new session
     app.check("new session lands on its options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "begin", "summary", "delete", "back")
     app.send("\r")                                          # begin (index 0)
@@ -736,8 +736,8 @@ def personal_best_path():
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                          # -> Exercises
-    app.check("exercise menu", "─[Exercises]", "Add exercise", "List exercises", "Back")
-    app.send("\x1b[B\r")                                    # List exercises
+    app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
+    app.send("\r")                                    # Show exercises
     app.send("\r")                                          # pick Bench press
     app.check("exercise options", "─[Bench press]", "info", "delete")
     app.send("\r")                                          # info
@@ -761,8 +761,8 @@ def delete_path():
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu", "─[Exercises]", "Add exercise", "List exercises", "Back")
-    app.send("\x1b[B\r")                                # List exercises
+    app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
+    app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
     app.check("exercise options", "─[Bench press]", "delete")
     app.send("\x1b[B\x1b[B\x1b[B\r")                    # delete (index 3)
@@ -776,7 +776,7 @@ def delete_path():
     app.check("back at exercises", "─[Exercises]")
 
     # Deleting the unused Squat succeeds and returns to the exercises menu.
-    app.send("\x1b[B\r")                                # List exercises
+    app.send("\r")                                # Show exercises
     app.send("\x1b[B\r")                                # pick Squat
     app.check("squat options", "─[Squat]", "delete")
     app.send("\x1b[B\x1b[B\x1b[B\r")                    # delete (index 3)

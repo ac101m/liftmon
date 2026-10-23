@@ -1,4 +1,4 @@
-//! The "list sessions" screen: pick a session with the filter box below;
+//! The "show sessions" screen: pick a session with the filter box below;
 //! selecting one opens its per-session options screen.
 //!
 //! Each entry is named by the day the session was created, what kind of
