@@ -1,12 +1,15 @@
 //! The "list sessions" screen: pick a session with the filter box below;
 //! selecting one opens its per-session options screen.
 //!
-//! Each entry is named by the day the session was created and how long ago,
-//! e.g. `"2026/10/20 · (3 hours ago)"`. The list is built from the lightweight
-//! [`SessionInfo`] rows rather than full sessions — one row per session, no
-//! performances/sets tree — so listing a long history stays cheap. Selecting
-//! one hands the session to [`super::session_options`], which can begin or
-//! resume it (with the 6-hour confirm on stale resumes) or back out.
+//! Each entry is named by the day the session was created, what kind of
+//! session it is, and how long ago, e.g. `"2026/10/20 · freeform session ·
+//! (3 hours ago)"`. Every session is a *freeform* one today — session plans
+//! are not implemented yet — but the kind is shown anyway. The list is built
+//! from the lightweight [`SessionInfo`] rows rather than full sessions — one
+//! row per session, no performances/sets tree — so listing a long history
+//! stays cheap. Selecting one hands the session to [`super::session_options`],
+//! which can begin or resume it (with the 6-hour confirm on stale resumes) or
+//! back out.
 
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeDelta, Utc};
 use rusqlite::Connection;
@@ -46,17 +49,26 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     }))
 }
 
-/// The choice-list label for a session: the day it was created and how long
-/// ago, e.g. `"2026/10/20 · (3 hours ago)"`. Every session has a creation
-/// moment, so there is no bare-date fallback. Anchoring on creation keeps the
-/// picker about *when the session started* — clearer than dating it by the
-/// last set, which the user has no reason to track — while the 6-hour resume
-/// confirm (in [`super::session_options`]) still looks at the last activity.
+/// The session-kind segment of a session's name — its picker label and the
+/// per-session screen's title — for a session with no plan. Session plans are
+/// not implemented yet, so every session is freeform and this is the only
+/// kind there is — but the kind sits in the name so a planned session's kind
+/// has a place to join it later.
+pub(super) const FREEFORM_LABEL: &str = "freeform session";
+
+/// The choice-list label for a session: the day it was created, what kind of
+/// session it is, and how long ago, e.g. `"2026/10/20 · freeform session ·
+/// (3 hours ago)"`. Every session has a creation moment, so there is no
+/// bare-date fallback. Anchoring on creation keeps the picker about *when the
+/// session started* — clearer than dating it by the last set, which the user
+/// has no reason to track — while the 6-hour resume confirm (in
+/// [`super::session_options`]) still looks at the last activity.
 fn session_label(info: &SessionInfo, now: NaiveDateTime) -> String {
     let at = info.created_at.with_timezone(&Local);
     format!(
-        "{} · ({})",
+        "{} · {} · ({})",
         format_date(at.date_naive()),
+        FREEFORM_LABEL,
         time_ago(at.naive_local(), now)
     )
 }
@@ -157,7 +169,7 @@ mod tests {
         assert_eq!(
             session_label(&info(hours_ago), now_local),
             format!(
-                "{} · (11 hours ago)",
+                "{} · freeform session · (11 hours ago)",
                 format_date(hours_ago.with_timezone(&Local).date_naive())
             )
         );
@@ -166,17 +178,17 @@ mod tests {
         assert_eq!(
             session_label(&info(days_ago), now_local),
             format!(
-                "{} · (15 days ago)",
+                "{} · freeform session · (15 days ago)",
                 format_date(days_ago.with_timezone(&Local).date_naive())
             )
         );
-        // Nothing logged yet (a fresh session): still date + relative time,
-        // reading its creation moment.
+        // Nothing logged yet (a fresh session): still date + kind + relative
+        // time, reading its creation moment.
         let just_created = now - TimeDelta::seconds(30);
         assert_eq!(
             session_label(&info(just_created), now_local),
             format!(
-                "{} · (just now)",
+                "{} · freeform session · (just now)",
                 format_date(just_created.with_timezone(&Local).date_naive())
             )
         );
@@ -199,7 +211,7 @@ mod tests {
         assert_eq!(
             session_label(&info, now_local),
             format!(
-                "{} · (3 days ago)",
+                "{} · freeform session · (3 days ago)",
                 format_date(created.with_timezone(&Local).date_naive())
             )
         );

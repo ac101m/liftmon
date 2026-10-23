@@ -1,7 +1,8 @@
 //! The per-session screen: actions on the session the user just picked — or
 //! just started, since "new session" lands here with the freshly created row.
 //!
-//! The prompt is the session's start date, and the options show a summary of
+//! The prompt is the session's start date with its kind, e.g.
+//! `2026/10/20 · freeform session`, and the options show a summary of
 //! its logged exercises and sets, begin it — the action reads "begin" until the
 //! session holds its first performance, "resume" after that — asking a Yes/No
 //! confirmation before a *resume* whose most recent activity (the latest set,
@@ -22,7 +23,7 @@ use crate::domain::{Exercise, Session, SessionInfo};
 use crate::ui::utils::{Shell, UiError};
 
 use super::Menu;
-use super::select_session::{format_date, local_date};
+use super::select_session::{FREEFORM_LABEL, format_date, local_date};
 
 /// A session whose most recent activity is older than this needs a Yes/No
 /// confirmation before it is resumed.
@@ -44,7 +45,11 @@ pub(super) fn run(
     loop {
         match shell
             .ask(
-                Some(format_date(local_date(info.created_at))),
+                Some(format!(
+                    "{} · {}",
+                    format_date(local_date(info.created_at)),
+                    FREEFORM_LABEL
+                )),
                 [
                     begin_or_resume(info.performance_count),
                     "summary",
@@ -121,17 +126,18 @@ fn log_session(shell: &mut Shell, conn: &Connection, session: &Session) -> Resul
     Ok(())
 }
 
-/// The summary's display lines for a session: its start date, then each
-/// exercise's name with its sets indented beneath. The title and every
-/// exercise name are bold; the sets read `100 kg × 5 · to failure`, the same
-/// shape the freeform screen logs a completed set in — plain when not taken
-/// to failure. [`None`] exercises (not reachable today: the schema blocks
-/// deleting an exercised exercise) fall back to a placeholder name.
+/// The summary's display lines for a session: its kind and start date, then
+/// each exercise's name with its sets indented beneath — framed as a section
+/// by [`log_session`]. The title and every exercise name are bold; the sets
+/// read `100 kg × 5 · to failure`, the same shape the freeform screen logs a
+/// completed set in — plain when not taken to failure. [`None`] exercises
+/// (not reachable today: the schema blocks deleting an exercised exercise)
+/// fall back to a placeholder name.
 fn summary_lines(session: &Session, names: &HashMap<i64, String>) -> Vec<Line<'static>> {
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let mut lines = vec![Line::from(vec![Span::styled(
         format!(
-            "Session from {}",
+            "Freeform session on {}",
             format_date(local_date(session.created_at))
         ),
         bold,
@@ -292,7 +298,7 @@ mod tests {
         assert_eq!(
             lines_text(&lines),
             [
-                "Session from 2026/10/20",
+                "Freeform session on 2026/10/20",
                 "Bench press",
                 "  100 kg × 5",
                 "  102.5 kg × 4 · to failure",
@@ -316,7 +322,7 @@ mod tests {
         };
         assert_eq!(
             lines_text(&summary_lines(&empty, &names())),
-            ["Session from 2026/10/20"]
+            ["Freeform session on 2026/10/20"]
         );
     }
 
