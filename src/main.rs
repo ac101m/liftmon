@@ -6,10 +6,13 @@ use std::process::ExitCode;
 
 use db::{Database, DbStatus};
 
-/// Opens the database at a hard-coded path and drives the migration/backup
-/// flow. The interactive upgrade choice now goes through the UI module.
+/// Opens the database file named by the `LIFTMON_DB_PATH` environment
+/// variable (refusing to start when it is not set, so the app never silently
+/// opens a database the user did not point it at) and drives the
+/// migration/backup flow. The interactive upgrade choice goes through the UI
+/// module.
 fn main() -> ExitCode {
-    let mut database = match Database::open("liftmon.sqlite") {
+    let mut database = match Database::open_from_env() {
         Ok(db) => db,
         Err(err) => return fail(format!("{err}")),
     };

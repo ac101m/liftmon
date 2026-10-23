@@ -20,8 +20,10 @@ from datetime import date, datetime, timedelta, timezone
 # harness runs from a checkout on any machine, not just this one.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.path.join(REPO_ROOT, "target", "debug", "liftmon")
-# Scratch space: the DB is disposable and rebuilt from scratch at every run,
-# and the app is spawned with cwd=/tmp below so its own DB lands next to ours.
+# Scratch space: the DB is disposable and rebuilt from scratch at every run.
+# The app is spawned with $LIFTMON_DB_PATH pointing at it (see App.__init__),
+# so its writes always land in our scratch file, never anywhere a real workout
+# DB could be — and the harness can run from any cwd, not just /tmp.
 DB = "/tmp/liftmon.sqlite"
 os.chdir("/tmp")
 
@@ -74,6 +76,9 @@ class App:
         # set up.
         env = {k: v for k, v in os.environ.items() if k not in ("LINES", "COLUMNS")}
         env["TERM"] = "xterm-256color"
+        # The app refuses to start without LIFTMON_DB_PATH; point it straight
+        # at our scratch file so the app and the harness inspect the same DB.
+        env["LIFTMON_DB_PATH"] = DB
         # Spawn in a fresh session with NO controlling terminal so the app's
         # size queries read the pty we sized: crossterm opens /dev/tty first
         # and only falls back to stdout when that fails, so an inherited
@@ -792,6 +797,17 @@ def delete_path():
     print("ok   a used exercise is refused with its session count; an unused one is deleted; history untouched")
     print()
 
+def missing_env_path():
+    print("=== MISSING ENV PATH: without LIFTMON_DB_PATH the app refuses to start ===")
+    env = {k: v for k, v in os.environ.items() if k != "LIFTMON_DB_PATH"}
+    proc = subprocess.run([BIN], cwd="/tmp", env=env, capture_output=True, text=True, timeout=10)
+    if proc.returncode == 0:
+        raise SystemExit("FAIL: the app started without LIFTMON_DB_PATH set")
+    if "LIFTMON_DB_PATH" not in proc.stderr:
+        raise SystemExit(f"FAIL: expected a LIFTMON_DB_PATH prompt on stderr, got {proc.stderr!r}")
+    print("ok   refused to start; stderr prompts to set LIFTMON_DB_PATH")
+    print()
+
 end_path()
 leave_path()
 empty_path()
@@ -802,4 +818,5 @@ esc_shortcut_path()
 delete_session_path()
 personal_best_path()
 delete_path()
+missing_env_path()
 print("ALL SCENARIOS PASSED")

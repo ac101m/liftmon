@@ -74,10 +74,11 @@ the in-use-exercise delete path.
   `target/debug/liftmon`; a stale binary tests old code. `cargo test` alone
   does not rebuild the app the same way.
 - **The scratch DB is disposable by design.** The harness recreates
-  `/tmp/liftmon.sqlite` on startup and chdirs to `/tmp`, so it never touches a
-  real database and leaves nothing behind in the repo. A `liftmon.sqlite` in
-  the repo root comes from manual runs of the app against its working
-  directory, not from this suite.
+  `/tmp/liftmon.sqlite` on startup and points the app at it via
+  `LIFTMON_DB_PATH` when spawning, so the app only ever writes to the scratch
+  file, never a real database, regardless of where it runs — and it leaves
+  nothing behind in the repo. A `liftmon.sqlite` in the repo root comes from
+  manual runs of the app against its working directory, not from this suite.
 - **It is timing-tolerant by design.** Each keystroke waits ~0.6s for the app
   to draw, and every assertion polls the screen for up to 3s rather than
   snapshotting once, so a slow redraw under load can't flake a run. Don't run

@@ -8,6 +8,7 @@
 
 mod migrations;
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -75,6 +76,12 @@ pub enum DbError {
     },
 
     #[error(
+        "the LIFTMON_DB_PATH environment variable is not set or is empty; set it to \
+         the database file this run should use, e.g. LIFTMON_DB_PATH=/path/to/workouts.sqlite"
+    )]
+    MissingPath,
+
+    #[error(
         "database at {path} is at schema version {version}, newer than this build supports ({latest})"
     )]
     TooNew {
@@ -84,7 +91,27 @@ pub enum DbError {
     },
 }
 
+/// Resolve the database path from a `LIFTMON_DB_PATH` lookup. `None` when
+/// unset or blank — the app treats that as a refusal to start, never guessing
+/// a default file. Parameterized by the lookup so unit tests can inject an
+/// in-memory environment instead of mutating the real one (which is shared
+/// across threads and would need `unsafe` under edition 2024).
+fn database_path(mut lookup: impl FnMut(&str) -> Option<OsString>) -> Option<PathBuf> {
+    lookup("LIFTMON_DB_PATH")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+}
+
 impl Database {
+    /// Open the database file named by the `LIFTMON_DB_PATH` environment
+    /// variable, refusing to run when the variable is not set rather than
+    /// silently opening a default file — the app should only ever touch a
+    /// database the user explicitly pointed it at.
+    pub fn open_from_env() -> Result<Self, DbError> {
+        let path = database_path(|k| std::env::var_os(k)).ok_or(DbError::MissingPath)?;
+        Self::open(path)
+    }
+
     /// Open (creating if needed) the database at `path`.
     ///
     /// Does not migrate. Use [`Self::status`] to check compatibility and
@@ -228,6 +255,30 @@ mod tests {
             let path = dir.path().join(name);
             Self { _dir: dir, path }
         }
+    }
+
+    #[test]
+    fn database_path_reads_only_the_liftmon_db_path_variable() {
+        // Unset: nothing to open — the caller must refuse to start.
+        assert_eq!(database_path(|_| None), None);
+
+        // Set but blank: just as good as unset, so no path is ever guessed.
+        assert_eq!(
+            database_path(|key| {
+                assert_eq!(key, "LIFTMON_DB_PATH");
+                Some("".into())
+            }),
+            None
+        );
+
+        // Set to a real path, and the lookup is fed the exact variable name.
+        assert_eq!(
+            database_path(|key| {
+                assert_eq!(key, "LIFTMON_DB_PATH");
+                Some("/tmp/liftmon.sqlite".into())
+            }),
+            Some(PathBuf::from("/tmp/liftmon.sqlite"))
+        );
     }
 
     #[test]
