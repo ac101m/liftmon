@@ -74,10 +74,28 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         PRIMARY KEY (exercise_id, muscle_group_id))""")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
-    for name in ("Pecs","Lats","Traps","Spinal erectors","Front delts","Side delts",
-                 "Rear delts","Biceps","Triceps","Forearms","Quads","Hamstrings",
-                 "Glutes","Calves","Abs","Obliques"):
-        con.execute("INSERT INTO muscle_group (name, description) VALUES (?, '')", (name,))
+    # The 16 default groups, with the descriptions the app's seed const carries
+    # (mirroring src/db/muscle_groups.rs' INITIAL_MUSCLE_GROUPS), so the info
+    # screen renders a real description.
+    for name, desc in (
+        ("Pecs", "Chest muscles. Typically divided into upper, middle and lower pecs and trained using pushing/pressing movements."),
+        ("Lats", "Large back muscles responsible for the triangular upper body look. Trained with downward pulling movements."),
+        ("Traps", "Shoulder/neck muscles responsible for raising and lowering the shoulders. Trained with shrugging movements."),
+        ("Spinal erectors", "Muscles which stabilise the spine. Trained by heavy hinge movements like deadlifts."),
+        ("Front delts", "Forward shoulder muscles. Trained with forward and overhead pressing movements."),
+        ("Side delts", "Side shoulder muscles. Often trained for the big shoulder look using lateral raises."),
+        ("Rear delts", "Rear shoulder muscles. Trained using high pulling movements like face-pulls."),
+        ("Biceps", "Front upper arm muscles. Comprised of the biceps themselves and also the radialis. Trained using curling movements."),
+        ("Triceps", "Rear upper arm muscles. Trained using arm 'uncurling' motions in various positions."),
+        ("Forearms", "Gripping/wrist flexing muscles. Trained though gripping exercises and wrist curls."),
+        ("Quads", "Muscles of the front thigh. Trained using leg straightening movements."),
+        ("Hamstrings", "Muscles of the rear thigh. Trained using leg extension movements."),
+        ("Glutes", "Muscles of the ass. Trained using leg straightening and hip extension movements."),
+        ("Calves", "Muscles of the rear lower leg. Trained using movements that extend the foot by flexing the ankle."),
+        ("Abs", "Muscles of the lower torso. Trained using crunching movements that curve the spine forward."),
+        ("Obliques", "Muscles at the side of the torso. Trained with movements that twist the torso."),
+    ):
+        con.execute("INSERT INTO muscle_group (name, description) VALUES (?, ?)", (name, desc))
     con.execute("PRAGMA user_version = 5"); con.commit(); con.close()
 
 def stored_local_date(s):
@@ -825,6 +843,36 @@ def delete_path():
     print("ok   a used exercise is refused with its session count; an unused one is deleted; history untouched")
     print()
 
+def muscle_groups_path():
+    print("=== MUSCLE GROUPS PATH: browse the seeded groups, view one's info, back out ===")
+    seed_db()
+    app = App()
+    app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # Muscle groups (index 2)
+    # The plain (non-filtering) list: the 9-row Choice box shows the seeded
+    # groups in name order; "Pecs" (index 9) starts below the fold, so assert
+    # only what is visible initially — and, crucially, not "Pecs" yet.
+    app.check("select muscle group", "─[Select muscle group]", "Abs", "Biceps",
+              "Obliques", "Esc back")
+    app.send("\x1b[B" * 9 + "\r")              # scroll down to Pecs (index 9)
+    app.check("muscle group options", "─[Pecs]", "info", "back")
+    app.send("\r")                             # info
+    # The info section frames "Pecs:" over its description; the text wraps at
+    # 60 columns, so assert the description's leading words, not the sentence.
+    app.check("muscle group info", "Pecs:", "Chest muscles.")
+    app.send("\x1b[B\r")                       # back -> group list
+    app.check("back at group list", "─[Select muscle group]")
+    app.send("\x1b")                           # Esc: back to the main menu
+    app.check("back at main", "─[Main menu]", "Muscle groups")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    count = con.execute("SELECT COUNT(*) FROM muscle_group").fetchone()[0]
+    con.close()
+    if count != 16: raise SystemExit(f"FAIL: expected 16 seeded muscle groups, got {count}")
+    print("ok   the list is browsable, info shows a group's name and description, and the rows are untouched")
+    print()
+
 def cargo_pkg_version():
     """The version Cargo.toml declares. `liftmon --version` is wired to
     CARGO_PKG_VERSION at compile time, so the harness asserts exact parity."""
@@ -882,6 +930,7 @@ esc_shortcut_path()
 delete_session_path()
 personal_best_path()
 delete_path()
+muscle_groups_path()
 cli_path()
 missing_env_path()
 print("ALL SCENARIOS PASSED")

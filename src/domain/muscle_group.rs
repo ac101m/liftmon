@@ -8,8 +8,6 @@ use crate::domain::DomainError;
 /// A single muscle group an exercise can reference. Backed by the
 /// `muscle_group` table (migration v5); rows are seeded from
 /// `db::muscle_groups::INITIAL_MUSCLE_GROUPS`.
-// waits on the muscle-groups UI.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MuscleGroup {
     /// Database row id.
@@ -21,8 +19,28 @@ pub struct MuscleGroup {
 }
 
 impl MuscleGroup {
-    /// Load the muscle group with the given `id`, if one exists.
-    // waits on the muscle-groups UI.
+    /// Load the muscle group with the given unique `name`, if one exists.
+    pub fn find_by_name(conn: &Connection, name: &str) -> Result<Option<Self>, DomainError> {
+        match conn.query_row(
+            "SELECT id, name, description FROM muscle_group WHERE name = ?1",
+            [name],
+            |row| {
+                Ok(Self {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                })
+            },
+        ) {
+            Ok(group) => Ok(Some(group)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    /// Load the muscle group with the given `id`, if one exists. Not used by
+    /// the group screens, which look groups up by name — kept for a future
+    /// caller, and exercised by its test.
     #[allow(dead_code)]
     pub fn find_by_id(conn: &Connection, id: i64) -> Result<Option<Self>, DomainError> {
         match conn.query_row(
@@ -43,8 +61,6 @@ impl MuscleGroup {
     }
 
     /// Load every muscle group, in name order.
-    // waits on the muscle-groups UI.
-    #[allow(dead_code)]
     pub fn all(conn: &Connection) -> Result<Vec<Self>, DomainError> {
         let mut stmt =
             conn.prepare("SELECT id, name, description FROM muscle_group ORDER BY name")?;
@@ -107,6 +123,19 @@ mod tests {
             "every default group carries a filled-in description"
         );
         assert!(all.iter().all(|g| g.id > 0));
+    }
+
+    #[test]
+    fn find_by_name_returns_the_group_or_none() {
+        let conn = test_db();
+
+        let found = MuscleGroup::find_by_name(&conn, "Pecs").unwrap().unwrap();
+        assert_eq!(found.name, "Pecs");
+        assert!(
+            MuscleGroup::find_by_name(&conn, "no such group")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

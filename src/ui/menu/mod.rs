@@ -8,8 +8,9 @@
 //! Each screen's behaviour lives in its own file — see [`self::main_menu`],
 //! [`self::exercises_menu`], [`self::session_menu`], [`self::freeform_session`],
 //! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
-//! [`self::select_exercise`] and [`self::exercise_options`] — so this file
-//! stays a thin dispatcher as more menus are added. The screens are built on
+//! [`self::select_exercise`], [`self::exercise_options`],
+//! [`self::select_muscle_group`] and [`self::muscle_group_options`] — so this
+//! file stays a thin dispatcher as more menus are added. The screens are built on
 //! the reusable element framework in [`super::utils`] (the shell, the input
 //! elements, errors).
 
@@ -25,7 +26,9 @@ mod exercise_options;
 mod exercises_menu;
 mod freeform_session;
 mod main_menu;
+mod muscle_group_options;
 mod select_exercise;
+mod select_muscle_group;
 mod select_session;
 mod session_menu;
 mod session_options;
@@ -43,6 +46,11 @@ pub(crate) enum Menu {
     /// The actions for one picked exercise, named by its unique name so the
     /// prompt updates after a rename.
     ExerciseOptions { name: String },
+    /// The pick-a-muscle-group screen: browse the seeded groups with the plain
+    /// list, then into that group's options screen.
+    SelectMuscleGroup,
+    /// The actions for one picked muscle group, named by its unique name.
+    MuscleGroupOptions { name: String },
     /// The session screen (Show sessions / New session / Back).
     Sessions,
     /// The pick-a-session screen: browse the sessions, then into that
@@ -107,6 +115,8 @@ impl Menu {
             Menu::AddExercise => add_exercise::run(shell, conn),
             Menu::SelectExercise => select_exercise::run(shell, conn),
             Menu::ExerciseOptions { name } => exercise_options::run(shell, conn, name),
+            Menu::SelectMuscleGroup => select_muscle_group::run(shell, conn),
+            Menu::MuscleGroupOptions { name } => muscle_group_options::run(shell, conn, name),
             Menu::Sessions => session_menu::run(shell, conn),
             Menu::SelectSession => select_session::run(shell, conn),
             Menu::SessionOptions { session_id } => session_options::run(shell, conn, session_id),

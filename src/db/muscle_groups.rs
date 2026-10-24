@@ -65,11 +65,11 @@ pub(crate) const INITIAL_MUSCLE_GROUPS: &[(&str, &str)] = &[
     ),
     (
         "Glutes",
-        "Muscles of the ass. Trained using leg straightening movements.",
+        "Muscles of the ass. Trained using leg straightening and hip extension movements.",
     ),
     (
         "Calves",
-        "Muscles of the lower leg. Trained using foot extension and ankle flexing exercises.",
+        "Muscles of the rear lower leg. Trained using movements that extend the foot by flexing the ankle.",
     ),
     (
         "Abs",
@@ -77,7 +77,7 @@ pub(crate) const INITIAL_MUSCLE_GROUPS: &[(&str, &str)] = &[
     ),
     (
         "Obliques",
-        "Muscles at the side of the torso. Trained with torso rotating movements.",
+        "Muscles at the side of the torso. Trained with movements that twist the torso.",
     ),
 ];
 
