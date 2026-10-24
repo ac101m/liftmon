@@ -11,8 +11,6 @@ from the comfort of an SSH session.
 - Stores workout session histories in an on-disk sqlite database (default 
   path is `~/.liftmon/db.sqlite`, but can be customised by setting
   `LIFTMON_DB_PATH` to any path of your choosing.
-- A small command line: `liftmon --help` and `liftmon --version` (the build
-  version) work before any database is opened. No other options exist yet.
 
 ## Installation
 
@@ -28,8 +26,6 @@ This will install exactly two files:
 - `/usr/local/bin/liftmon` - launch wrapper which contains the default DB path.
 - `/usr/local/bin/liftmon-bin` - the actual liftmon binary.
 
-Please note, the build must be performed manually before installing.
-
 **Note to developers:** the raw binary refuses to start without `LIFTMON_DB_PATH`
 (e.g. `LIFTMON_DB_PATH=/tmp/workouts.sqlite target/debug/liftmon`). Only the
 installed wrapper supplies the `~/.liftmon` default, so end-to-end test runs
@@ -44,3 +40,5 @@ Uninstallation can be performed by manually removing the two files:
 ```sh
 sudo rm /usr/local/bin/liftmon /usr/local/bin/liftmon-bin
 ```
+
+That's all, enjoy!
