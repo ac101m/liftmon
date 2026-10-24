@@ -37,7 +37,7 @@ pub(super) fn run(
                     "info",
                     "edit name",
                     "edit description",
-                    "muscle groups",
+                    "edit muscle groups",
                     "delete",
                     "back",
                 ],
@@ -68,7 +68,7 @@ pub(super) fn run(
             Some("edit description") => {
                 edit_description(shell, conn, &exercise)?;
             }
-            Some("muscle groups") => {
+            Some("edit muscle groups") => {
                 super::exercise_muscle_groups::edit_muscle_groups(shell, conn, &exercise)?;
             }
             Some("delete") => {

@@ -546,16 +546,16 @@ def esc_shortcut_path():
     app.send("\r")                                      # -> Exercises
     app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
-    app.check("exercise options", "─[Bench press]", "info", "edit name", "edit description", "muscle groups", "delete", "back")
+    app.check("exercise options", "─[Bench press]", "info", "edit name", "edit description", "edit muscle groups", "delete", "back")
     app.send("\x1b")                                    # Esc = back
     app.check("Esc backs from exercise options", "─[Exercises]", "Add exercise")
     app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
-    app.check("exercise options (2nd)", "─[Bench press]", "info", "edit name", "edit description", "muscle groups", "delete", "back")
+    app.check("exercise options (2nd)", "─[Bench press]", "info", "edit name", "edit description", "edit muscle groups", "delete", "back")
     app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
     app.check("delete confirm", "Delete exercise 'Bench press'?", "Yes", "No")
     app.send("\x1b")                                    # Esc = No: keep the exercise
-    app.check("delete cancelled", "─[Bench press]", "info", "edit name", "edit description", "muscle groups", "delete", "back")
+    app.check("delete cancelled", "─[Bench press]", "info", "edit name", "edit description", "edit muscle groups", "delete", "back")
     app.send("\x1b")                                    # Esc = back to exercises menu
     app.check("back at exercises", "─[Exercises]")
     app.send("\x1b")                                    # Esc = back to main menu
@@ -815,7 +815,7 @@ def delete_path():
     app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
     app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
-    app.check("exercise options", "─[Bench press]", "muscle groups", "delete")
+    app.check("exercise options", "─[Bench press]", "edit muscle groups", "delete")
     app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
     app.check("delete confirm", "Delete exercise 'Bench press'?", "Yes", "No")
     app.send("\r")                                      # Yes
@@ -829,7 +829,7 @@ def delete_path():
     # Deleting the unused Squat succeeds and returns to the exercises menu.
     app.send("\r")                                # Show exercises
     app.send("\x1b[B\r")                                # pick Squat
-    app.check("squat options", "─[Squat]", "muscle groups", "delete")
+    app.check("squat options", "─[Squat]", "edit muscle groups", "delete")
     app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
     app.check("delete confirm", "Delete exercise 'Squat'?", "Yes", "No")
     app.send("\r")                                      # Yes
@@ -953,7 +953,7 @@ def exercise_muscle_groups_path():
     app.send("\r")                                      # -> Exercises
     app.send("\r")                                      # Show exercises
     app.send("\r")                                      # pick Bench press (index 0)
-    app.check("exercise options", "─[Bench press]", "muscle groups", "delete")
+    app.check("exercise options", "─[Bench press]", "edit muscle groups", "delete")
     app.send("\r")                                      # info: no refs yet
     app.check("info shows none assigned", "Muscle groups:", "none assigned")
     app.send("\x1b[B" * 3 + "\r")                       # muscle groups (index 3)
