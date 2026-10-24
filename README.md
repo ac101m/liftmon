@@ -1,7 +1,7 @@
 # Liftmon
 
-A terminal based workout tracker for nerds. Track progressive overload and personal bests and whatever else all
-from the comfort of an SSH session.
+A terminal based workout tracker for nerds. Track workout sessions, progressive 
+overload and personal bests, all from the comfort of your terminal.
 
 ## Features
 
