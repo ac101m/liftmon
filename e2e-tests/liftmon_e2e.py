@@ -41,8 +41,10 @@ if os.path.exists(DB):
 os.chdir("/tmp")
 
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat"))):
-    """Rebuild the on-disk DB to the exact v4 schema (delete rules included)
-    with the given exercises."""
+    """Rebuild the on-disk DB to the exact v5 schema (delete rules included) —
+    mirroring what the app's `upgrade()` produces: the four shipped migrations,
+    plus the v5 muscle-group tables with the 16 default groups seeded — with the
+    given exercises."""
     if os.path.exists(DB): os.unlink(DB)
     con = sqlite3.connect(DB)
     con.execute("CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
@@ -61,9 +63,22 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         difficulty TEXT NOT NULL CHECK (difficulty IN ('easy','hard','failure')), epley_e1rm REAL NOT NULL DEFAULT 0)""")
     con.execute("CREATE INDEX idx_performances_session ON exercise_performances(session_id)")
     con.execute("CREATE INDEX idx_sets_performance ON sets(exercise_performance_id)")
+    con.execute("""CREATE TABLE muscle_group (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT NOT NULL)""")
+    con.execute("""CREATE TABLE muscle_group_reference (
+        exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+        muscle_group_id INTEGER NOT NULL REFERENCES muscle_group(id) ON DELETE RESTRICT,
+        stimulus_type TEXT NOT NULL CHECK (stimulus_type IN ('primary', 'secondary', 'auxiliary')),
+        PRIMARY KEY (exercise_id, muscle_group_id))""")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
-    con.execute("PRAGMA user_version = 4"); con.commit(); con.close()
+    for name in ("Pecs","Lats","Traps","Spinal erectors","Front delts","Side delts",
+                 "Rear delts","Biceps","Triceps","Forearms","Quads","Hamstrings",
+                 "Glutes","Calves","Abs","Obliques"):
+        con.execute("INSERT INTO muscle_group (name, description) VALUES (?, '')", (name,))
+    con.execute("PRAGMA user_version = 5"); con.commit(); con.close()
 
 def stored_local_date(s):
     """Parse a stored created_at text (fmt '%F %T%.f%:z', e.g.

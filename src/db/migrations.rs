@@ -32,6 +32,7 @@ use rusqlite_migration::{M, Migrations};
 /// One migration per schema version, oldest first. `MIGRATION_DEFS.len()` is the
 /// latest schema version this build knows.
 pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
+    // FROZEN — shipped in liftmon 1.0.0. Do not edit; append a new migration.
     M::up(
         r"
         CREATE TABLE app_meta (
@@ -53,6 +54,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
     )
     .down("DROP TABLE exercises;")
     .comment("Exercises, the first domain entity. name is unique (enforced by SQLite)."),
+    // FROZEN — shipped in liftmon 1.0.0. Do not edit; append a new migration.
     M::up(
         r"
         CREATE TABLE sessions (
@@ -97,6 +99,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          deleted); the session and performance foreign keys ON DELETE CASCADE, so deleting a \
          session removes its performances and their sets (and a performance its sets).",
     ),
+    // FROZEN — shipped in liftmon 1.0.0. Do not edit; append a new migration.
     M::up(
         r"
         ALTER TABLE sets ADD COLUMN epley_e1rm REAL NOT NULL DEFAULT 0;
@@ -110,6 +113,39 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          at-the-time best status derivable (a set was a best when its value strictly exceeded \
          the max of the strictly earlier sets of the same exercise), without a boolean flag. \
          The `epley_` prefix leaves room for other estimators. Backfilled for existing sets.",
+    ),
+    M::up(
+        r"
+        CREATE TABLE muscle_group (
+            id          INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL UNIQUE,
+            description TEXT NOT NULL
+        );
+
+        -- Each (exercise, muscle_group) pair appears once; stimulus_type says
+        -- how strongly the exercise stimulates that group: 'primary' = primary
+        -- mover, 'secondary' = secondary/synergist, 'auxiliary' = minor/supporting.
+        CREATE TABLE muscle_group_reference (
+            exercise_id       INTEGER NOT NULL REFERENCES exercises(id)    ON DELETE CASCADE,
+            muscle_group_id   INTEGER NOT NULL REFERENCES muscle_group(id) ON DELETE RESTRICT,
+            stimulus_type     TEXT NOT NULL CHECK (stimulus_type IN ('primary', 'secondary', 'auxiliary')),
+            PRIMARY KEY (exercise_id, muscle_group_id)
+        );
+        ",
+    )
+    .down(
+        r"
+        DROP TABLE muscle_group_reference;
+        DROP TABLE muscle_group;
+        ",
+    )
+    .comment(
+        "Muscle groups an exercise activates, each tagged with a stimulus \
+         type ('primary' / 'secondary' / 'auxiliary'). The muscle_group table \
+         is seeded from db/muscle_groups.rs' initial/default list \
+         (see `seed_muscle_groups` in the migration flow); references are added per \
+         exercise. An exercise's references cascade away with it; a muscle group referenced \
+         by any exercise can't be deleted.",
     ),
 ];
 

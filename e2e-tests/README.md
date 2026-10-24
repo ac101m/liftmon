@@ -47,7 +47,8 @@ What happens on a run:
 1. The harness picks a random scratch filename under `/tmp` (never a fixed
    path), refuses to run if a database already exists at that name, then
    rebuilds its own file to the exact current schema (all three record tables,
-   both indexes, the FK delete rules, `PRAGMA user_version`), seeded with a
+   both indexes, the FK delete rules, the v5 muscle-group tables with the 16
+   default groups seeded, `PRAGMA user_version`), seeded with a
    couple of exercises.
 2. For each scenario it launches the binary in a fresh pseudo-terminal
    (24×60, `TERM=xterm-256color`), types the keystrokes, and re-renders the

@@ -7,6 +7,7 @@
 //! of the old file.
 
 mod migrations;
+mod muscle_groups;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -17,6 +18,9 @@ use rusqlite_migration::Migrations;
 use thiserror::Error;
 
 use self::migrations::{latest_version, schema_migrations};
+// Re-exported so the seed is callable crate-wide (e.g. by domain tests that
+// build a full current-schema database), not just inside `db`.
+pub(crate) use self::muscle_groups::seed_muscle_groups;
 
 /// An open connection to a liftmon database file.
 ///
@@ -156,9 +160,14 @@ impl Database {
 
     /// Apply all pending migrations, backing up the old file first when an
     /// existing schema is being changed (a fresh database has nothing to back
-    /// up). Returns what was done.
+    /// up), then load the seed data (currently the default muscle groups).
+    /// Returns what the migrations did. Seeding lives here — not inside
+    /// [`Self::apply_migrations`], which tests drive with synthetic migration
+    /// lists over tables that lack the seed target.
     pub fn upgrade(&mut self) -> Result<UpgradeOutcome, DbError> {
-        self.apply_migrations(schema_migrations())
+        let outcome = self.apply_migrations(schema_migrations())?;
+        seed_muscle_groups(&mut self.conn)?;
+        Ok(outcome)
     }
 
     /// Shared upgrade machinery, parameterized by the migration set so tests can
@@ -382,17 +391,17 @@ mod tests {
         v1.to_latest(&mut conn).unwrap();
         drop(conn);
 
-        // This build knows three more migrations (exercises, the workout
-        // tables, then the epley_e1rm column): opening the old file reports an
-        // upgradable schema — the case main/UI prompts on.
+        // This build knows four more migrations (exercises, the workout
+        // tables, the epley_e1rm column, then the muscle groups): opening the
+        // old file reports an upgradable schema — the case main/UI prompts on.
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 1, to: 4 }
+            DbStatus::Upgradeable { from: 1, to: 5 }
         );
 
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 3);
+        assert_eq!(outcome.applied, 4);
         let backup = outcome
             .backup
             .expect("upgrading an old file must back it up");
@@ -450,10 +459,12 @@ mod tests {
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 3, to: 4 }
+            DbStatus::Upgradeable { from: 3, to: 5 }
         );
+        // v4 backfills the e1RM column; v5 adds the muscle groups (and the
+        // upgrade seeds them).
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 1);
+        assert_eq!(outcome.applied, 2);
 
         // Every pre-existing set now carries its e1RM, computed with the same
         // Epley formula the app writes on new inserts.
@@ -478,14 +489,15 @@ mod tests {
     fn newer_database_is_rejected_as_too_new() {
         let scratch = Scratch::new("future.sqlite");
 
-        // A future build knew five migrations, one more than this build, so
-        // the file is left at a schema version we don't understand (v5).
+        // A future build knew six migrations, one more than this build, so
+        // the file is left at a schema version we don't understand (v6).
         let future_defs = [
             M::up("CREATE TABLE a (x INTEGER);"),
             M::up("CREATE TABLE b (x INTEGER);"),
             M::up("CREATE TABLE c (x INTEGER);"),
             M::up("CREATE TABLE d (x INTEGER);"),
             M::up("CREATE TABLE e (x INTEGER);"),
+            M::up("CREATE TABLE f (x INTEGER);"),
         ];
         let future = Migrations::from_slice(&future_defs);
         let mut conn = Connection::open(&scratch.path).unwrap();
@@ -493,10 +505,119 @@ mod tests {
         drop(conn);
 
         let mut db = Database::open(&scratch.path).unwrap();
-        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 5 });
+        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 6 });
         assert!(
             matches!(db.upgrade(), Err(DbError::TooNew { .. })),
             "must refuse to downgrade a newer database"
         );
+    }
+
+    #[test]
+    fn seed_populates_all_default_muscle_groups() {
+        let scratch = Scratch::new("seeded.sqlite");
+        let mut db = Database::open(&scratch.path).unwrap();
+        db.upgrade().unwrap();
+
+        let rows: Vec<(String, String)> = db
+            .connection()
+            .prepare("SELECT name, description FROM muscle_group ORDER BY name")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+
+        // Every default group, with its written description — the order the
+        // list declares does not matter; the DB sorts by name.
+        let mut expected: Vec<(String, String)> = super::muscle_groups::INITIAL_MUSCLE_GROUPS
+            .iter()
+            .map(|(name, description)| (name.to_string(), description.to_string()))
+            .collect();
+        expected.sort();
+        assert_eq!(rows, expected);
+    }
+
+    #[test]
+    fn seed_is_idempotent() {
+        let scratch = Scratch::new("reseed.sqlite");
+        let mut db = Database::open(&scratch.path).unwrap();
+        db.upgrade().unwrap();
+        // A second upgrade (nothing pending) must not duplicate any group.
+        db.upgrade().unwrap();
+
+        // Nor may a direct reseed (e.g. after an app update changes the
+        // defaults) — the upsert reconciles rather than duplicates.
+        let mut conn = Connection::open(&scratch.path).unwrap();
+        super::muscle_groups::seed_muscle_groups(&mut conn).unwrap();
+
+        let count: i64 = db
+            .connection()
+            .query_row("SELECT COUNT(*) FROM muscle_group", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            count,
+            super::muscle_groups::INITIAL_MUSCLE_GROUPS.len() as i64
+        );
+    }
+
+    #[test]
+    fn stimulus_type_is_restricted_to_the_three_kinds() {
+        let scratch = Scratch::new("stimulus-type.sqlite");
+        let mut conn = Connection::open(&scratch.path).unwrap();
+        super::apply_schema(&mut conn).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        conn.execute(
+            "INSERT INTO exercises (name, description) VALUES ('bench press', '')",
+            [],
+        )
+        .unwrap();
+        super::muscle_groups::seed_muscle_groups(&mut conn).unwrap();
+
+        let insert = |stimulus_type: &str, group_id: i64| {
+            conn.execute(
+                "INSERT INTO muscle_group_reference
+                     (exercise_id, muscle_group_id, stimulus_type)
+                 VALUES (1, ?1, ?2)",
+                rusqlite::params![group_id, stimulus_type],
+            )
+        };
+
+        // A 'secondary' reference is fine; anything outside the three kinds
+        // (fresh pairs each time, so only the CHECK can reject them) is not.
+        assert!(insert("secondary", 1).is_ok());
+        assert!(insert("everything", 2).is_err());
+        assert!(insert("", 3).is_err());
+    }
+
+    #[test]
+    fn muscle_group_reference_rejects_a_duplicate_pair() {
+        let scratch = Scratch::new("dup-pair.sqlite");
+        let mut conn = Connection::open(&scratch.path).unwrap();
+        super::apply_schema(&mut conn).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        conn.execute(
+            "INSERT INTO exercises (name, description) VALUES ('bench press', '')",
+            [],
+        )
+        .unwrap();
+        super::muscle_groups::seed_muscle_groups(&mut conn).unwrap();
+
+        // First reference for the pair is fine.
+        conn.execute(
+            "INSERT INTO muscle_group_reference
+                 (exercise_id, muscle_group_id, stimulus_type)
+             VALUES (1, 1, 'primary')",
+            [],
+        )
+        .unwrap();
+
+        // The same (exercise, muscle group) pair again is a PK violation.
+        let dup = conn.execute(
+            "INSERT INTO muscle_group_reference
+                 (exercise_id, muscle_group_id, stimulus_type)
+             VALUES (1, 1, 'auxiliary')",
+            [],
+        );
+        assert!(dup.is_err());
     }
 }
