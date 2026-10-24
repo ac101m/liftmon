@@ -6,7 +6,7 @@
 //! it `None → Auxiliary → Secondary → Primary → None`, so one key cycles a
 //! group from unselected, through the two supporting levels, up to primary
 //! mover, and back around. The chosen levels render as a name-aligned trailing
-//! label (`· auxiliary`, `· secondary`, `· primary`) coloured yellow, orange
+//! label (`· auxiliary`, `· secondary`, `· primary`) coloured green, yellow
 //! and red so the grid reads at a glance.
 //!
 //! Enter submits the whole selection and Escape cancels it; the shell reads the
@@ -51,8 +51,9 @@ impl Level {
     }
 
     /// The trailing label a selected row shows, or [`None`] for an unselected
-    /// row.
-    fn label(self) -> Option<&'static str> {
+    /// row. `pub(crate)` so the menu layer can render the same label the picker
+    /// does (e.g. the exercise info screen's muscle-group list).
+    pub(crate) fn label(self) -> Option<&'static str> {
         match self {
             Level::None => None,
             Level::Auxiliary => Some("auxiliary"),
@@ -61,14 +62,16 @@ impl Level {
         }
     }
 
-    /// The colour a selected row's label renders as: yellow for auxiliary, a
-    /// 256-colour orange for secondary (ratatui has no named orange), red for
-    /// primary. `None` for an unselected row, which shows no label.
-    fn colour(self) -> Option<Color> {
+    /// The colour a selected row's label renders as: green for auxiliary,
+    /// yellow for secondary, red for primary — the same intensity language the
+    /// session summary's difficulty markers use. `None` for an unselected row,
+    /// which shows no label. `pub(crate)` so the menu layer can reuse the
+    /// picker's colour language.
+    pub(crate) fn colour(self) -> Option<Color> {
         match self {
             Level::None => None,
-            Level::Auxiliary => Some(Color::Yellow),
-            Level::Secondary => Some(Color::Indexed(208)),
+            Level::Auxiliary => Some(Color::Green),
+            Level::Secondary => Some(Color::Yellow),
             Level::Primary => Some(Color::Red),
         }
     }
@@ -328,18 +331,18 @@ mod tests {
         );
         assert_eq!(RowText::at(&buf, 3).trim_end(), " Front delts· primary");
 
-        // The label spans carry the level colour: orange for secondary, red for
+        // The label spans carry the level colour: yellow for secondary, red for
         // primary, and no level colour anywhere on the unselected row (its row
         // is the raw name span plus ratatui's blank padding, neither of which
         // is Reversed).
-        assert_eq!(buf[(label_col, 2)].style().fg, Some(Color::Indexed(208)));
+        assert_eq!(buf[(label_col, 2)].style().fg, Some(Color::Yellow));
         assert_eq!(buf[(label_col, 3)].style().fg, Some(Color::Red));
         for x in 0..buf.area.width {
             let fg = buf[(x, 1)].style().fg;
             assert!(
                 !matches!(
                     fg,
-                    Some(Color::Yellow) | Some(Color::Indexed(208)) | Some(Color::Red)
+                    Some(Color::Green) | Some(Color::Yellow) | Some(Color::Red)
                 ),
                 "unselected row carries no level colour at column {x} (got {fg:?})"
             );
@@ -363,7 +366,7 @@ mod tests {
                 .add_modifier
                 .contains(Modifier::REVERSED)
         );
-        assert_eq!(buf[(label_col, 2)].style().fg, Some(Color::Indexed(208)));
+        assert_eq!(buf[(label_col, 2)].style().fg, Some(Color::Yellow));
         assert!(
             !buf[(0, 1)]
                 .style()

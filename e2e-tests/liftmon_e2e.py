@@ -954,6 +954,8 @@ def exercise_muscle_groups_path():
     app.send("\r")                                      # Show exercises
     app.send("\r")                                      # pick Bench press (index 0)
     app.check("exercise options", "─[Bench press]", "muscle groups", "delete")
+    app.send("\r")                                      # info: no refs yet
+    app.check("info shows none assigned", "Muscle groups:", "none assigned")
     app.send("\x1b[B" * 3 + "\r")                       # muscle groups (index 3)
     app.check("muscle group picker (3rd)", "─[Muscle groups]", " Abs", "Space cycle")
     app.send(" ")                                       # Abs: unselected -> auxiliary
@@ -964,11 +966,13 @@ def exercise_muscle_groups_path():
     app.send(" ")                                       # Abs: auxiliary -> secondary
     app.send("\r")                                      # save (replaces the previous selection)
     app.check("saved replaced selection", "Saved 1 muscle group(s) for 'Bench press'")
+    app.send("\r")                                      # info: now lists the saved group
+    app.check("info lists the assigned groups", "Muscle groups:", " Abs", "· secondary")
     app.close()
 
     if sorted(refs_for(1)) != [("Abs", "secondary")]:
         raise SystemExit(f"FAIL: Bench press refs are {refs_for(1)}, expected only Abs=secondary")
-    print("ok   options menu: saving writes refs, and a later save replaces the earlier selection (Abs=auxiliary -> Abs=secondary)")
+    print("ok   options menu: saving writes refs, a later save replaces the earlier selection (Abs=auxiliary -> Abs=secondary), and info lists the assigned groups ('none assigned' when none)")
     print()
 
 def cargo_pkg_version():

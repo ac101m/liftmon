@@ -11,6 +11,8 @@
 
 use std::collections::HashMap;
 
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
 use crate::domain::{Exercise, MuscleGroup, MuscleGroupReference, Stimulus};
@@ -130,9 +132,75 @@ pub(super) fn edit_muscle_groups(
     Ok(())
 }
 
+/// Append a bold `Muscle groups:` heading and each assigned group as
+/// `  {name} · {marker}`, the marker word coloured like the difficulty markers
+/// in the session summary (only the word carries the colour), in name order —
+/// the info screen shows it between the description and personal bests. `  none
+/// assigned` when the exercise references no groups. The heading always shows,
+/// mirroring how "Personal bests:" always shows (with `  none yet`).
+pub(super) fn append_muscle_groups(
+    lines: &mut Vec<Line<'static>>,
+    conn: &Connection,
+    exercise_id: i64,
+) -> Result<(), UiError> {
+    let assigned: Vec<(String, Level)> = rows_for(conn, exercise_id)?
+        .into_iter()
+        .filter(|(_, level)| *level != Level::None)
+        .collect();
+    // Bold goes on the heading's span, not its line, so it survives the history
+    // render's dimming pass (which patches, not merges, line styles) — the same
+    // trick "Personal bests:" heading uses on the same screen.
+    lines.push(Line::from(vec![Span::styled(
+        "Muscle groups:".to_string(),
+        Style::new().add_modifier(Modifier::BOLD),
+    )]));
+    if assigned.is_empty() {
+        lines.push(Line::from("  none assigned"));
+        return Ok(());
+    }
+    for (name, level) in assigned {
+        lines.push(muscle_group_line(&name, level));
+    }
+    Ok(())
+}
+
+/// The display line for one assigned group: `  {name} · {marker}` with only the
+/// marker word coloured, at the level's stimulus colour — shaped like a set's
+/// difficulty marker in the session summary (`100 kg × 5 · easy`).
+fn muscle_group_line(name: &str, level: Level) -> Line<'static> {
+    let (label, colour) = match (level.label(), level.colour()) {
+        (Some(label), Some(colour)) => (label, colour),
+        // The None rows are filtered out before this is called, so a level here
+        // always carries a label and a colour.
+        _ => unreachable!("assigned groups always have a label and colour"),
+    };
+    Line::from(vec![
+        Span::raw(format!("  {name} · ")),
+        Span::styled(label, Style::new().fg(colour)),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{apply_schema, seed_muscle_groups};
+    use ratatui::style::{Color, Modifier};
+
+    /// An in-memory database with the full schema, the default muscle groups
+    /// seeded, and one exercise to attach references to.
+    fn test_db() -> (Connection, Exercise) {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        apply_schema(&mut conn).unwrap();
+        seed_muscle_groups(&mut conn).unwrap();
+        let exercise = Exercise::create(&conn, "bench press", "flat barbell").unwrap();
+        (conn, exercise)
+    }
+
+    /// A line's plain text, spans concatenated.
+    fn text(line: &Line<'static>) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
 
     #[test]
     fn stimulus_pairs_drops_unselected_rows_and_maps_the_rest_in_order() {
@@ -153,5 +221,68 @@ mod tests {
             ],
             "unselected rows contribute nothing, and row order is preserved"
         );
+    }
+
+    #[test]
+    fn muscle_group_line_colours_only_the_marker_word() {
+        // `  Abs · ` is plain; only the "auxiliary" marker carries the level's
+        // colour — the difficulty-marker shape from the session summary.
+        let line = muscle_group_line("Abs", Level::Auxiliary);
+        assert_eq!(line.spans.len(), 2);
+        assert_eq!(text(&line), "  Abs · auxiliary");
+        assert_eq!(line.spans[1].style.fg, Some(Color::Green));
+        assert_eq!(line.spans[0].style.fg, None, "the name is plain");
+
+        let secondary = muscle_group_line("Biceps", Level::Secondary);
+        assert_eq!(text(&secondary), "  Biceps · secondary");
+        assert_eq!(secondary.spans[1].style.fg, Some(Color::Yellow));
+
+        let primary = muscle_group_line("Pecs", Level::Primary);
+        assert_eq!(text(&primary), "  Pecs · primary");
+        assert_eq!(primary.spans[1].style.fg, Some(Color::Red));
+    }
+
+    #[test]
+    fn append_muscle_groups_shows_none_assigned_when_no_references() {
+        let (conn, exercise) = test_db();
+        let mut lines: Vec<Line<'static>> = Vec::new();
+        append_muscle_groups(&mut lines, &conn, exercise.id).unwrap();
+
+        assert_eq!(lines.len(), 2, "bold heading plus the none-assigned line");
+        assert_eq!(text(&lines[0]), "Muscle groups:");
+        assert!(
+            lines[0].spans[0]
+                .style
+                .add_modifier
+                .contains(Modifier::BOLD),
+            "the heading is bold so it survives the history dimming"
+        );
+        assert_eq!(text(&lines[1]), "  none assigned");
+    }
+
+    #[test]
+    fn append_muscle_groups_lists_assigned_groups_in_name_order() {
+        let (conn, exercise) = test_db();
+        let abs = MuscleGroup::find_by_name(&conn, "Abs").unwrap().unwrap();
+        let pecs = MuscleGroup::find_by_name(&conn, "Pecs").unwrap().unwrap();
+        MuscleGroupReference::set_for_exercise(
+            &conn,
+            exercise.id,
+            &[(abs.id, Stimulus::Auxiliary), (pecs.id, Stimulus::Primary)],
+        )
+        .unwrap();
+
+        let mut lines: Vec<Line<'static>> = Vec::new();
+        append_muscle_groups(&mut lines, &conn, exercise.id).unwrap();
+
+        assert_eq!(
+            lines.len(),
+            3,
+            "bold heading plus one line per assigned group"
+        );
+        assert_eq!(text(&lines[1]), "  Abs · auxiliary");
+        assert_eq!(lines[1].spans[1].style.fg, Some(Color::Green));
+        assert_eq!(text(&lines[2]), "  Pecs · primary");
+        assert_eq!(lines[2].spans[1].style.fg, Some(Color::Red));
     }
 }

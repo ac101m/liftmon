@@ -45,13 +45,16 @@ pub(super) fn run(
             .as_deref()
         {
             // Read-only: print the exercise as a framed section — divider,
-            // bold name with a trailing colon, indented description — with
-            // the last few personal bests (the sets, newest first, that beat
-            // every earlier set's e1RM) listed inside the same frame as weight
-            // × reps, when the record was set, and how long ago that was. The
-            // e1RM itself never appears, and there's no difficulty marker.
+            // bold name with a trailing colon, indented description, the
+            // assigned muscle groups (only their marker words coloured, like a
+            // set's difficulty marker), then the last few personal bests (the
+            // sets, newest first, that beat every earlier set's e1RM) listed
+            // inside the same frame as weight × reps, when the record was set,
+            // and how long ago that was. The e1RM itself never appears, and
+            // there's no difficulty marker.
             Some("info") => {
                 let mut lines = super::exercise_lines(&exercise);
+                super::exercise_muscle_groups::append_muscle_groups(&mut lines, conn, exercise.id)?;
                 append_personal_bests(&mut lines, conn, &exercise)?;
                 shell.log_section(lines);
             }
