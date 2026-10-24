@@ -72,7 +72,14 @@ last three personal bests as weight × reps with when each record was set), the
 in-use-exercise delete path, the muscle-groups path (the main menu's item lands
 on the non-filtering group picker; a group's options screen shows its info —
 name and description frame — and back/Escape return to the list and main
-menu), and the command-line path (`--version` prints the
+menu), the muscle-group-references path (new in the create flow after the
+description, and amendable from the per-exercise options menu: Space cycles a
+group through unselected/auxiliary/secondary/primary, Enter saves the
+selection to the muscle_group_reference table, re-opening prefills the saved
+selection and replaces it rather than appending, and Escape at the create-flow
+picker asks whether to cancel the whole add — No keeps the in-progress
+selection, Yes deletes the fresh exercise), and the command-line path
+(`--version` prints the
 version Cargo.toml declares — the build version — and `-h`/`--help` print the
 usage, all without `LIFTMON_DB_PATH` set; unknown flags are usage errors).
 

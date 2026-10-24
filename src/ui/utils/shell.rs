@@ -27,6 +27,7 @@ use unicode_width::UnicodeWidthChar;
 use super::Element;
 use super::ElementResult;
 use super::choice::Choice;
+use super::cycle_picker::{CyclePicker, Level};
 use super::error::UiError;
 use super::picker::Picker;
 use super::text_input::TextInput;
@@ -41,6 +42,16 @@ pub(crate) enum ReadOutcome {
     Value(String),
     /// The user pressed Escape; `partial` is what they had typed so far.
     Cancelled { partial: String },
+}
+
+/// How settling the per-row levels of a cycle picker turned out.
+pub(crate) enum CycleOutcome {
+    /// The user pressed Enter; the whole selection is committed.
+    Saved(Vec<(String, Level)>),
+    /// The user pressed Escape; `partial` is their in-progress selection, so a
+    /// "keep editing" caller can re-seed the picker (and a Discard caller can
+    /// ignore it entirely).
+    Cancelled { partial: Vec<(String, Level)> },
 }
 
 /// One row of the run's log: a line of text, or a horizontal rule used to
@@ -138,6 +149,29 @@ impl Shell {
             ElementResult::Value(value) => Ok(ReadOutcome::Value(value)),
             ElementResult::Cancelled => Ok(ReadOutcome::Cancelled {
                 partial: input.text(),
+            }),
+        }
+    }
+
+    /// Settle the per-row levels of a cycle picker (e.g. which muscle groups an
+    /// exercise activates, and how strongly).
+    ///
+    /// Runs a [`CyclePicker`] seeded with `rows`, and reports whether the user
+    /// confirmed with Enter or backed out with Escape. Either way the caller
+    /// harvests the rows back out here — the element's own submit payload is a
+    /// placeholder — so a cancelled attempt can return the in-progress
+    /// selection unchanged for re-seeding, exactly like [`Shell::read_line`]
+    /// returns what was typed so far.
+    pub(crate) fn cycle_pick(
+        &mut self,
+        title: Option<String>,
+        rows: Vec<(String, Level)>,
+    ) -> Result<CycleOutcome, UiError> {
+        let mut picker = CyclePicker::new(title, rows);
+        match self.run(&mut picker)? {
+            ElementResult::Value(_) => Ok(CycleOutcome::Saved(picker.rows())),
+            ElementResult::Cancelled => Ok(CycleOutcome::Cancelled {
+                partial: picker.rows(),
             }),
         }
     }

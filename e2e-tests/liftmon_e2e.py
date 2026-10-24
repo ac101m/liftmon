@@ -546,16 +546,16 @@ def esc_shortcut_path():
     app.send("\r")                                      # -> Exercises
     app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
-    app.check("exercise options", "─[Bench press]", "info", "edit name", "edit description", "delete", "back")
+    app.check("exercise options", "─[Bench press]", "info", "edit name", "edit description", "muscle groups", "delete", "back")
     app.send("\x1b")                                    # Esc = back
     app.check("Esc backs from exercise options", "─[Exercises]", "Add exercise")
     app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
-    app.check("exercise options (2nd)", "─[Bench press]", "info", "edit name", "edit description", "delete", "back")
-    app.send("\x1b[B\x1b[B\x1b[B\r")                    # delete (index 3)
+    app.check("exercise options (2nd)", "─[Bench press]", "info", "edit name", "edit description", "muscle groups", "delete", "back")
+    app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
     app.check("delete confirm", "Delete exercise 'Bench press'?", "Yes", "No")
     app.send("\x1b")                                    # Esc = No: keep the exercise
-    app.check("delete cancelled", "─[Bench press]", "info", "edit name", "edit description", "delete", "back")
+    app.check("delete cancelled", "─[Bench press]", "info", "edit name", "edit description", "muscle groups", "delete", "back")
     app.send("\x1b")                                    # Esc = back to exercises menu
     app.check("back at exercises", "─[Exercises]")
     app.send("\x1b")                                    # Esc = back to main menu
@@ -815,8 +815,8 @@ def delete_path():
     app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
     app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
-    app.check("exercise options", "─[Bench press]", "delete")
-    app.send("\x1b[B\x1b[B\x1b[B\r")                    # delete (index 3)
+    app.check("exercise options", "─[Bench press]", "muscle groups", "delete")
+    app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
     app.check("delete confirm", "Delete exercise 'Bench press'?", "Yes", "No")
     app.send("\r")                                      # Yes
     # The app must refuse (not crash): stays on the per-exercise menu with a
@@ -829,8 +829,8 @@ def delete_path():
     # Deleting the unused Squat succeeds and returns to the exercises menu.
     app.send("\r")                                # Show exercises
     app.send("\x1b[B\r")                                # pick Squat
-    app.check("squat options", "─[Squat]", "delete")
-    app.send("\x1b[B\x1b[B\x1b[B\r")                    # delete (index 3)
+    app.check("squat options", "─[Squat]", "muscle groups", "delete")
+    app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
     app.check("delete confirm", "Delete exercise 'Squat'?", "Yes", "No")
     app.send("\r")                                      # Yes
     app.check("deleted", "Deleted exercise 'Squat'", "─[Exercises]")
@@ -871,6 +871,104 @@ def muscle_groups_path():
     con.close()
     if count != 16: raise SystemExit(f"FAIL: expected 16 seeded muscle groups, got {count}")
     print("ok   the list is browsable, info shows a group's name and description, and the rows are untouched")
+    print()
+
+def refs_for(exercise_id):
+    """The exercise's muscle-group references as (name, stimulus), by id order —
+    mirroring `MuscleGroupReference::for_exercise`'s ordering."""
+    con = sqlite3.connect(DB)
+    rows = con.execute(
+        "SELECT g.name, r.stimulus_type FROM muscle_group_reference r"
+        " JOIN muscle_group g ON g.id = r.muscle_group_id"
+        " WHERE r.exercise_id = ? ORDER BY r.muscle_group_id", (exercise_id,)).fetchall()
+    con.close()
+    return rows
+
+def exercise_muscle_groups_path():
+    print("=== MUSCLE-GROUP REFERENCES PATH: cycle-pick an exercise's groups in the create flow and via options ===")
+    # Part 1: create an exercise, cycle its muscle groups (Abs -> auxiliary,
+    # Biceps -> secondary), and save.
+    seed_db()
+    app = App()
+    app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
+    app.send("\r")                                      # -> Exercises
+    app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
+    app.send("\x1b[B\r")                                # Add exercise (index 1)
+    app.send("Deadlift\r")                              # name
+    app.send("hinge\r")                                 # description
+    # The cycle picker appears after the description; Abs and Biceps are both
+    # inside the 9 visible rows (groups are sorted by name).
+    app.check("muscle group picker", "─[Muscle groups]", " Abs", " Biceps", "Space cycle")
+    app.send(" ")                                       # Abs: unselected -> auxiliary
+    app.check("abs auxiliary", "· auxiliary")
+    app.send("\x1b[B")                                  # -> Biceps
+    app.send(" ")                                       # Biceps: unselected -> auxiliary
+    app.send(" ")                                       # Biceps: auxiliary -> secondary
+    app.check("biceps secondary", "· secondary")
+    app.send("\r")                                      # save the selection
+    app.check("saved refs, back at exercises", "Saved 2 muscle group(s) for 'Deadlift'", "─[Exercises]")
+    app.close()
+
+    d = db()
+    if "Deadlift" not in [n for _, n in d["exercises"]]:
+        raise SystemExit("FAIL: Deadlift was not created")
+    deadlift_id = [i for i, n in d["exercises"] if n == "Deadlift"][0]
+    if sorted(refs_for(deadlift_id)) != sorted([("Abs", "auxiliary"), ("Biceps", "secondary")]):
+        raise SystemExit(f"FAIL: Deadlift refs are {refs_for(deadlift_id)}, expected Abs=auxiliary + Biceps=secondary")
+    print("ok   create flow: cycling with Space and saving writes Abs=auxiliary and Biceps=secondary")
+
+    # Part 2: Escape at the picker asks to cancel the whole add; No keeps the
+    # in-progress selection, Yes deletes the fresh row and leaves nothing behind.
+    seed_db()
+    app = App()
+    app.send("\r")                                      # -> Exercises
+    app.send("\x1b[B\r")                                # Add exercise
+    app.send("Row\r")                                   # name
+    app.send("\r")                                      # empty description
+    app.check("muscle group picker (2nd)", "─[Muscle groups]", " Abs", "Space cycle")
+    app.send(" ")                                       # Abs: unselected -> auxiliary
+    app.check("abs auxiliary (2nd)", "· auxiliary")
+    app.send("\x1b")                                    # Esc: ask whether to cancel the add
+    app.check("abandon confirm", "Cancel adding this exercise?", "Yes", "No")
+    app.send("\x1b[B\r")                                # No: keep editing
+    app.check("picker re-seeded with progress", "─[Muscle groups]", "· auxiliary")
+    app.send("\x1b")                                    # Esc again
+    app.check("abandon confirm (2nd)", "Cancel adding this exercise?", "Yes", "No")
+    app.send("\r")                                      # Yes: cancel the whole add
+    app.check("cancelled add, back at exercises", "─[Exercises]")
+    app.close()
+
+    d = db()
+    if any(n == "Row" for _, n in d["exercises"]):
+        raise SystemExit("FAIL: cancelling the add must not leave the Row exercise behind")
+    if sqlite3.connect(DB).execute("SELECT COUNT(*) FROM muscle_group_reference").fetchone()[0] != 0:
+        raise SystemExit("FAIL: cancelling the add must not leave muscle_group_reference rows")
+    print("ok   Esc at the picker: No preserves the selection, Yes cancels the whole add cleanly")
+
+    # Part 3: amend via the per-exercise options menu (muscle groups, index 3) —
+    # saving writes the references, and re-opening prefills them (proving the
+    # saved selection is what gets replaced, not appended to).
+    seed_db()
+    app = App()
+    app.send("\r")                                      # -> Exercises
+    app.send("\r")                                      # Show exercises
+    app.send("\r")                                      # pick Bench press (index 0)
+    app.check("exercise options", "─[Bench press]", "muscle groups", "delete")
+    app.send("\x1b[B" * 3 + "\r")                       # muscle groups (index 3)
+    app.check("muscle group picker (3rd)", "─[Muscle groups]", " Abs", "Space cycle")
+    app.send(" ")                                       # Abs: unselected -> auxiliary
+    app.send("\r")                                      # save
+    app.check("saved via options", "Saved 1 muscle group(s) for 'Bench press'")
+    app.send("\x1b[B" * 3 + "\r")                       # muscle groups again
+    app.check("picker prefilled from the saved refs", "· auxiliary")
+    app.send(" ")                                       # Abs: auxiliary -> secondary
+    app.send("\r")                                      # save (replaces the previous selection)
+    app.check("saved replaced selection", "Saved 1 muscle group(s) for 'Bench press'")
+    app.close()
+
+    if sorted(refs_for(1)) != [("Abs", "secondary")]:
+        raise SystemExit(f"FAIL: Bench press refs are {refs_for(1)}, expected only Abs=secondary")
+    print("ok   options menu: saving writes refs, and a later save replaces the earlier selection (Abs=auxiliary -> Abs=secondary)")
     print()
 
 def cargo_pkg_version():
@@ -931,6 +1029,7 @@ delete_session_path()
 personal_best_path()
 delete_path()
 muscle_groups_path()
+exercise_muscle_groups_path()
 cli_path()
 missing_env_path()
 print("ALL SCENARIOS PASSED")

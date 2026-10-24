@@ -13,18 +13,21 @@
 //!   log of past actions on top, the active element below it, and a one-row
 //!   prompt bar of key hints at the bottom.
 //! * The elements themselves: the multiple-choice [`choice`] list, the
-//!   filterable [`picker`], and the wrapping [`text_input`].
+//!   filterable [`picker`], the wrapping [`text_input`], and the cycling
+//!   [`cycle_picker`] that sets a level on each row.
 //! * [`error`]: the errors the UI layer can produce.
 
 mod choice;
+mod cycle_picker;
 mod error;
 mod picker;
 mod shell;
 mod text_input;
 
 pub use choice::get_user_selection;
+pub(crate) use cycle_picker::Level;
 pub(crate) use error::UiError;
-pub(crate) use shell::{ReadOutcome, Shell};
+pub(crate) use shell::{CycleOutcome, ReadOutcome, Shell};
 
 use crossterm::event::KeyEvent;
 use ratatui::buffer::Buffer;

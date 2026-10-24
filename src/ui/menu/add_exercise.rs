@@ -1,5 +1,6 @@
-//! The add-exercise form: asks for a name, then an optional description, and
-//! writes the new exercise to the database.
+//! The add-exercise form: asks for a name, then an optional description, then
+//! which muscle groups the exercise activates (via the cycle picker), and
+//! writes the new exercise — and its references — to the database.
 //!
 //! Escape backs out of the current field; the user then confirms with a
 //! Yes/No prompt. An escape with nothing typed yet (both fields empty) cancels
@@ -14,7 +15,7 @@ use rusqlite::Connection;
 
 use crate::domain::{DomainError, Exercise};
 
-use crate::ui::utils::{ReadOutcome, Shell, UiError};
+use crate::ui::utils::{CycleOutcome, ReadOutcome, Shell, UiError};
 
 use super::Menu;
 
@@ -36,8 +37,39 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
 
         match Exercise::create(conn, name, description) {
             Ok(exercise) => {
-                super::log_exercise(shell, &exercise);
-                return Ok(Some(Menu::Exercises));
+                // The row exists before the picker runs, so a taken name is
+                // still caught above; the picker then assigns its references.
+                // Backing out of it asks whether to give up on the whole add,
+                // and a Yes deletes the fresh row so nothing is left behind.
+                let mut rows = super::exercise_muscle_groups::unselected_rows(conn)?;
+                loop {
+                    match shell.cycle_pick(Some("Muscle groups".to_string()), rows)? {
+                        CycleOutcome::Saved(page) => {
+                            let saved = super::exercise_muscle_groups::save_references(
+                                conn,
+                                exercise.id,
+                                &page,
+                            )?;
+                            shell.log(format!(
+                                "Saved {saved} muscle group(s) for '{}'",
+                                exercise.name
+                            ));
+                            super::log_exercise(shell, &exercise);
+                            return Ok(Some(Menu::Exercises));
+                        }
+                        CycleOutcome::Cancelled { partial } => {
+                            if abandon(shell)? {
+                                // Fresh row, no references yet (the selection
+                                // was only in the picker): the delete cannot
+                                // fail, and nothing is left behind.
+                                exercise.delete(conn)?;
+                                return Ok(Some(Menu::Exercises));
+                            }
+                            // No: keep their in-progress selection and re-ask.
+                            rows = partial;
+                        }
+                    }
+                }
             }
             // Only the name is UNIQUE, so a constraint violation means a
             // duplicate name: log it and re-ask, keeping the typed name.

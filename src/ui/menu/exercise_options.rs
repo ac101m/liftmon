@@ -1,9 +1,10 @@
 //! The per-exercise screen: actions on the exercise the user just picked.
 //!
 //! The prompt is the exercise's own name, and the options print a summary of
-//! it, edit its name, edit its description, delete it (after a Yes/No "are you
-//! sure"), or back out. Edits loop back onto this screen under the (possibly
-//! renamed) exercise, so several changes can be made before leaving.
+//! it, edit its name, edit its description, edit which muscle groups it
+//! activates, delete it (after a Yes/No "are you sure"), or back out. Edits
+//! loop back onto this screen under the (possibly renamed) exercise, so several
+//! changes can be made before leaving.
 
 use chrono::Local;
 use ratatui::style::{Modifier, Style};
@@ -32,7 +33,14 @@ pub(super) fn run(
         match shell
             .ask(
                 Some(exercise.name.clone()),
-                ["info", "edit name", "edit description", "delete", "back"],
+                [
+                    "info",
+                    "edit name",
+                    "edit description",
+                    "muscle groups",
+                    "delete",
+                    "back",
+                ],
             )?
             .as_deref()
         {
@@ -56,6 +64,9 @@ pub(super) fn run(
             }
             Some("edit description") => {
                 edit_description(shell, conn, &exercise)?;
+            }
+            Some("muscle groups") => {
+                super::exercise_muscle_groups::edit_muscle_groups(shell, conn, &exercise)?;
             }
             Some("delete") => {
                 let sure = shell.ask(

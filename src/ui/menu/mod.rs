@@ -22,6 +22,7 @@ use crate::domain::{Difficulty, Exercise};
 use crate::ui::utils::{Shell, UiError};
 
 mod add_exercise;
+mod exercise_muscle_groups;
 mod exercise_options;
 mod exercises_menu;
 mod freeform_session;
