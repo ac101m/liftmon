@@ -40,11 +40,13 @@ if os.path.exists(DB):
     )
 os.chdir("/tmp")
 
-def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat"))):
+def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat")),
+            refs=()):
     """Rebuild the on-disk DB to the exact v5 schema (delete rules included) —
     mirroring what the app's `upgrade()` produces: the four shipped migrations,
     plus the v5 muscle-group tables with the 16 default groups seeded — with the
-    given exercises."""
+    given exercises and, optionally, their muscle-group references as
+    (exercise name, muscle group name) pairs."""
     if os.path.exists(DB): os.unlink(DB)
     con = sqlite3.connect(DB)
     con.execute("CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
@@ -96,6 +98,13 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         ("Obliques", "Muscles at the side of the torso. Trained with movements that twist the torso."),
     ):
         con.execute("INSERT INTO muscle_group (name, description) VALUES (?, ?)", (name, desc))
+    # Optional muscle-group references — how the session's by-group exercise
+    # picker finds an exercise under a group. Each becomes a "primary" link.
+    for exercise, group in refs:
+        con.execute(
+            "INSERT INTO muscle_group_reference (exercise_id, muscle_group_id, stimulus_type) "
+            "SELECT e.id, g.id, 'primary' FROM exercises e, muscle_group g "
+            "WHERE e.name = ? AND g.name = ?", (exercise, group))
     con.execute("PRAGMA user_version = 5"); con.commit(); con.close()
 
 def stored_local_date(s):
@@ -242,8 +251,8 @@ def db():
     con.close(); return out
 
 def end_path():
-    print("=== EXIT PATH: pick, two sets, next exercise, second exercise, exit session ===")
-    seed_db()
+    print("=== EXIT PATH: pick, two sets, submenu -> exercises by muscle group, second exercise, exit session ===")
+    seed_db(refs=(("Bench press", "Abs"), ("Squat", "Abs")))
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\x1b[B\r")                                    # -> Sessions
@@ -252,6 +261,8 @@ def end_path():
     app.check("new session lands on its options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "begin", "summary", "back")
     app.send("\r")                                          # begin (index 0)
+    app.check("submenu", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
     app.check("exercise picker", "Select exercise", "type to filter", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
     app.check("moved to next exercise logged", "Moved to next exercise 'Bench press'")
@@ -268,8 +279,12 @@ def end_path():
     app.send("4\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("performance menu (again)", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\r")                                    # next exercise
-    app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
+    app.send("\x1b[B\r")                                    # next exercise (index 1)
+    app.check("submenu (2nd)", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\x1b[B\r")                                    # exercises by muscle group (index 1)
+    app.check("muscle group picker", "Select muscle group", " Abs", "Esc back")
+    app.send("\r")                                          # Abs (index 0)
+    app.check("exercise picker (2nd)", "Select exercise · Abs", "type to filter", " Bench press", " Squat")
     app.send("\x1b[B\r")                                    # pick Squat
     app.check("moved to Squat logged", "Moved to next exercise 'Squat'")
     app.check("weight prompt (squat)", "─[Weight (kg)]")
@@ -302,13 +317,15 @@ def end_path():
     print()
 
 def leave_path():
-    print("=== LEAVE PATH: escape the picker mid-session leaves the session intact ===")
+    print("=== LEAVE PATH: escape back through the submenu mid-session leaves the session intact ===")
     seed_db()
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
     app.send("\x1b[B\r")                                          # new session
     app.check("new session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
     app.send("\r")                                          # begin (index 0)
+    app.check("submenu", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
     app.send("100\r")                                       # weight
@@ -316,8 +333,12 @@ def leave_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
+    app.check("submenu (2nd)", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
-    app.send("\x1b")                                        # escape the picker: session stays open
+    app.send("\x1b")                                        # escape the all picker: back to the submenu
+    app.check("submenu again", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\x1b")                                        # escape the submenu: session stays open
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -368,13 +389,15 @@ def resume_path():
     print("=== RESUME PATH: leave a session, resume it (within 6h -> no confirm) in a fresh app instance ===")
     seed_db()
     # App #1: Bench press (100/5/Yes), next exercise -> Squat (60/10/Yes),
-    # next exercise -> escape the picker, leaving one session with two
+    # next exercise -> escape the submenu, leaving one session with two
     # performances.
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
     app.send("\x1b[B\r")                                          # new session
     app.check("new session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
     app.send("\r")                                          # begin (index 0)
+    app.check("submenu", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
     app.send("100\r")                                       # weight
@@ -382,6 +405,8 @@ def resume_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu (bench)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
+    app.check("submenu (2nd)", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
     app.send("\x1b[B\r")                                    # pick Squat
     app.send("60\r")                                        # weight
@@ -389,8 +414,8 @@ def resume_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu (squat)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
-    app.check("exercise picker (3rd)", "Select exercise", " Bench press", " Squat")
-    app.send("\x1b")                                        # escape the picker: leave open
+    app.check("submenu (3rd)", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\x1b")                                        # escape the submenu: leave open
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -563,12 +588,14 @@ def esc_shortcut_path():
     app.check("back at main", "─[Main menu]")
 
     # Freeform set form: Esc on the difficulty ask cancels the set; the performance
-    # menu has no back option, so Esc just stays on it; escaping the exercise
-    # picker returns to the session's options screen.
+    # menu has no back option, so Esc just stays on it; escaping the submenu
+    # mid-session returns to the session's options screen.
     app.send("\x1b[B\r")                                # -> Sessions
     app.send("\x1b[B\r")                                      # new session
     app.check("new session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
     app.send("\r")                                      # begin (index 0)
+    app.check("submenu", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                      # all exercises (index 0)
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
     app.send("\r")                                      # pick Bench press
     app.send("100\r")                                   # weight
@@ -578,9 +605,13 @@ def esc_shortcut_path():
     app.check("set cancelled", "next set", "next exercise", "exit session")
     app.send("\x1b")                                    # Esc is a no-op here
     app.check("still on performance menu", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\r")                                # next exercise (index 1) -> picker
+    app.send("\x1b[B\r")                                # next exercise (index 1) -> submenu
+    app.check("submenu (2nd)", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                      # all exercises (index 0)
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
-    app.send("\x1b")                                    # escape the picker: session stays open
+    app.send("\x1b")                                    # escape the all picker: back to the submenu
+    app.check("submenu again", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\x1b")                                    # escape the submenu: session stays open
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                    # Esc on options = back to the session list
@@ -718,6 +749,8 @@ def personal_best_path():
     app.check("new session lands on its options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "begin", "summary", "delete", "back")
     app.send("\r")                                          # begin (index 0)
+    app.check("submenu", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
     app.check("weight prompt", "─[Weight (kg)]", "e.g. 100")

@@ -14,8 +14,9 @@
 //! ```
 //!
 //! * "next set" starts another set for the same exercise,
-//! * "next exercise" breaks back to the picker, moving on to the next
-//!   exercise,
+//! * "next exercise" breaks back to picking the next exercise. Beginning a
+//!   session and moving on both ask first how to pick — a submenu offering the
+//!   all-exercises list or the per-muscle-group browse — then run that picker,
 //! * "exit session" leaves the workout and returns to the session's options
 //!   screen. Sessions are never "ended" — there is no end date, so exiting
 //!   records nothing and the session can be resumed again later.
@@ -36,6 +37,7 @@ use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
 use super::difficulty_style;
+use super::select_exercise_by_group::pick_exercise;
 use super::select_session::{format_date, local_date};
 
 /// Drive the session until the user leaves it, then land back on its options
@@ -50,8 +52,8 @@ pub(super) fn run(
         shell.log("That session is no longer there");
         return Ok(Some(Menu::Sessions));
     };
-    // Leaving the flow — backing out of the picker, or exiting the session —
-    // lands back on this session's options screen.
+    // Leaving the flow — backing out of the submenu or a picker, or exiting
+    // the session — lands back on this session's options screen.
     let return_to = Menu::SessionOptions { session_id };
     // A session starts at its most recent exercise; the entry is consumed
     // once, after which the flow behaves like a fresh one. An empty session (a
@@ -88,7 +90,7 @@ pub(super) fn run(
             Some(seeded) => (seeded.0, seeded.1, true),
             None => {
                 let Some(pair) = begin_exercise(shell, conn, &session)? else {
-                    return Ok(Some(return_to)); // backed out of the picker
+                    return Ok(Some(return_to)); // backed out of the submenu/pickers
                 };
                 (pair.0, pair.1, false)
             }
@@ -110,7 +112,8 @@ pub(super) fn run(
                 {
                     // Another set for the same exercise.
                     Some("next set") => break,
-                    // Break back to the picker for the next exercise.
+                    // Break back to the picker for the next exercise — which
+                    // first asks how to pick it.
                     Some("next exercise") => continue 'exercises,
                     // "exit session": leave the workout, session intact, and
                     // land back on this session's options screen.
@@ -124,19 +127,68 @@ pub(super) fn run(
 }
 
 /// Pick the next exercise and start a performance for it — its `created_at`
-/// stamps the moment the exercise was selected. `None` means the user backed
-/// out of the picker (or there is nothing to pick), and the caller returns to
-/// where the flow was launched from.
+/// stamps the moment the exercise was selected. How it is picked is the
+/// submenu's call ([`pick_next_exercise`]). `None` means the user backed out
+/// (of the submenu or a picker), or there is nothing to pick, and the caller
+/// returns to where the flow was launched from.
 fn begin_exercise(
     shell: &mut Shell,
     conn: &Connection,
     session: &Session,
 ) -> Result<Option<(Exercise, ExercisePerformance)>, UiError> {
-    let exercises = Exercise::all(conn)?;
-    if exercises.is_empty() {
+    let Some(exercise) = pick_next_exercise(shell, conn)? else {
+        return Ok(None);
+    };
+    let performance = ExercisePerformance::create(conn, session.id, exercise.id, Utc::now())?;
+    // A picked exercise begins with a plain notice — not a framed section — so
+    // a session's log reads as a contiguous stream of set lines with a small
+    // marker where each exercise starts.
+    shell.log(format!("Moved to next exercise '{}'", exercise.name));
+    Ok(Some((exercise, performance)))
+}
+
+/// Ask how the next exercise is picked, then run the chosen picker: the
+/// all-exercises filter list, or the per-muscle-group browse shared with the
+/// exercises screen. Escape backs out one level at a time — off a picker you
+/// are offered the other way to pick, and off the submenu you leave the flow.
+/// There is no point offering the submenu when nothing at all exists to pick,
+/// so the empty-exercises case logs and leaves. `None` means the user backed
+/// out of the submenu.
+fn pick_next_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exercise>, UiError> {
+    if Exercise::all(conn)?.is_empty() {
         shell.log("No exercises yet — add one first");
         return Ok(None);
     }
+    loop {
+        match shell
+            .ask(
+                Some("Next exercise".to_string()),
+                ["all exercises", "exercises by muscle group"],
+            )?
+            .as_deref()
+        {
+            None => return Ok(None), // Escape: leave the flow
+            Some("all exercises") => {
+                if let Some(exercise) = pick_any_exercise(shell, conn)? {
+                    return Ok(Some(exercise));
+                }
+                // Escape in the picker: re-ask how to pick.
+            }
+            Some("exercises by muscle group") => {
+                if let Some(exercise) = pick_exercise(shell, conn)? {
+                    return Ok(Some(exercise));
+                }
+                // Escape at the group list: re-ask how to pick.
+            }
+            _ => unreachable!("the submenu only offers the two pickers"),
+        }
+    }
+}
+
+/// The all-exercises picker: every exercise in one filter list. `None` when
+/// the user backed out with Escape.
+fn pick_any_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exercise>, UiError> {
+    let exercises = Exercise::all(conn)?;
     let names: Vec<String> = exercises.iter().map(|e| e.name.clone()).collect();
     let Some(chosen) = shell.pick(
         Some("Select exercise".to_string()),
@@ -151,12 +203,7 @@ fn begin_exercise(
         .into_iter()
         .find(|e| e.name == chosen)
         .expect("picked a listed exercise");
-    let performance = ExercisePerformance::create(conn, session.id, exercise.id, Utc::now())?;
-    // A picked exercise begins with a plain notice — not a framed section — so
-    // a session's log reads as a contiguous stream of set lines with a small
-    // marker where each exercise starts.
-    shell.log(format!("Moved to next exercise '{}'", exercise.name));
-    Ok(Some((exercise, performance)))
+    Ok(Some(exercise))
 }
 
 /// Ask for one set — weight, then rep count, then how tough it was — and
