@@ -17,7 +17,8 @@ pub struct ExercisePerformance {
     pub session_id: i64,
     /// The exercise performed.
     pub exercise_id: i64,
-    /// The moment the exercise was picked, starting the performance (UTC).
+    /// The moment of the performance's first set — a performance is created
+    /// only when its first set is logged (UTC).
     pub created_at: DateTime<Utc>,
     /// The sets performed, in insertion order. Empty in a freshly created
     /// entity; only the session tree loader in [`crate::domain::Session`]
@@ -28,10 +29,11 @@ pub struct ExercisePerformance {
 impl ExercisePerformance {
     /// Insert a new performance row and return the persisted entity.
     ///
-    /// The `created_at` instant is fixed when the exercise is selected — a
-    /// performance is created up front, before any set is logged. A foreign key
-    /// to a session or exercise that does not exist surfaces as
-    /// [`DomainError::Sqlite`]; the schema enforces it.
+    /// The `created_at` instant is the moment of the performance's first set —
+    /// the caller creates a performance only when that set is completed, never
+    /// for an exercise that was merely selected, so no empty performance is
+    /// left behind. A foreign key to a session or exercise that does not exist
+    /// surfaces as [`DomainError::Sqlite`]; the schema enforces it.
     pub fn create(
         conn: &Connection,
         session_id: i64,

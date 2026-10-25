@@ -535,6 +535,76 @@ def stale_confirm_path():
     print("ok   a stale session is confirmed; No stays put; Yes resumes it at its last exercise")
     print()
 
+def no_empty_performance_path():
+    print("=== NO EMPTY PERFORMANCE PATH: leaving an exercise before any set leaves no empty performance in the session summary ===")
+    seed_db()
+    app = App()
+    app.send("\x1b[B\r")                                    # -> Sessions
+    app.send("\x1b[B\r")                                    # new session
+    app.check("new session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
+    app.send("\r")                                          # begin (index 0)
+    app.check("submenu", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
+    app.check("exercise picker", "Select exercise", " Bench press", " Squat")
+    app.send("\r")                                          # pick Bench press
+    app.check("moved to Bench press logged", "Moved to next exercise 'Bench press'")
+    app.send("100\r")                                       # weight
+    app.send("5\r")                                         # reps
+    app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
+    app.check("performance menu (bench)", "next set", "next exercise", "exit session")
+    # Move on to Squat but log nothing: escape the set form and leave the
+    # session. With the old behaviour this left an empty Squat performance —
+    # created the moment the exercise was picked — visible in the summary as a
+    # bare 'Squat' header over no sets. The performance must not exist until the
+    # first set is actually completed.
+    app.send("\x1b[B\r")                                    # next exercise (index 1)
+    app.check("submenu (2nd)", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
+    app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
+    app.send("\x1b[B\r")                                    # pick Squat
+    app.check("moved to Squat logged", "Moved to next exercise 'Squat'")
+    app.send("\x1b")                                        # Esc at the weight form cancels the set
+    app.check("performance menu (squat)", "next set", "next exercise", "exit session")
+    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
+              "resume", "summary", "back")
+    app.send("\x1b")                                        # Esc on options = back to the session list
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
+    app.send("\x1b")                                        # Esc on the list = back to the session menu
+    app.check("back at session menu", "─[Sessions]", "new session", "back")
+    app.close()
+
+    d = db()
+    print(f"  sessions     = {d['sessions']}")
+    print(f"  performances = {d['performances']}")
+    print(f"  sets         = {d['sets']}")
+    (sid, created_at), = d["sessions"]
+    if len(d["performances"]) != 1: raise SystemExit(f"FAIL: expected 1 performance (Bench press only), got {len(d['performances'])}")
+    bench_id = [i for i, n in d["exercises"] if n == "Bench press"][0]
+    if d["performances"][0][2] != bench_id:
+        raise SystemExit(f"FAIL: the lone performance should be Bench press, got exercise_id {d['performances'][0][2]}")
+    if len(d["sets"]) != 1: raise SystemExit("FAIL: expected 1 set, got " + str(len(d["sets"])))
+
+    # The user-visible proof: a fresh app's summary of the session lists only
+    # the exercised Bench press — no empty 'Squat' header for the exercise that
+    # was picked but never given a set.
+    app = App()
+    app.send("\x1b[B\r")                                    # -> Sessions
+    app.send("\r")                                    # show sessions
+    app.send("\r")                                      # pick the session
+    app.check("session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
+              "resume", "summary", "back")
+    app.send("\x1b[B\r")                                    # summary (index 1)
+    app.check("summary lists only the exercised exercise",
+              "Freeform session on " + date.today().strftime("%Y/%m/%d"),
+              "Bench press", "100 kg × 5 · failure")
+    grid = app.grid()
+    if any("Squat" in row for row in grid):
+        raise SystemExit("FAIL: Squat appears in the summary although it was never given a set")
+    print("ok   an exercise picked but left without a set leaves no empty performance in the session summary")
+    app.close()
+    print()
+
 def no_sessions_path():
     print("=== NO SESSIONS PATH: no sessions at all, list is a no-op ===")
     seed_db()
@@ -613,7 +683,7 @@ def esc_shortcut_path():
     app.check("submenu again", "─[Next exercise]", "all exercises", "exercises by muscle group")
     app.send("\x1b")                                    # escape the submenu: session stays open
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
-              "resume", "summary", "back")
+              "begin", "summary", "back")
     app.send("\x1b")                                    # Esc on options = back to the session list
     app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                    # Esc on the list = back to the session menu
@@ -621,9 +691,10 @@ def esc_shortcut_path():
     app.close()
 
     d = db()
-    print(f"  after cancel+leave: exercises = {d['exercises']}  sessions = {d['sessions']}  sets = {d['sets']}")
+    print(f"  after cancel+leave: exercises = {d['exercises']}  sessions = {d['sessions']}  performances = {d['performances']}  sets = {d['sets']}")
     if len(d["exercises"]) != 2: raise SystemExit("FAIL: Esc on the delete confirm must not delete")
     if len(d["sessions"]) != 1: raise SystemExit("FAIL: escaping the picker must keep exactly one session")
+    if len(d["performances"]) != 0: raise SystemExit(f"FAIL: cancelling the only set must leave no performance, got {d['performances']}")
     if len(d["sets"]) != 0: raise SystemExit("FAIL: Esc at the difficulty ask must cancel the set")
 
     # Session picker: Escape leaves back to the session menu.
@@ -638,30 +709,35 @@ def esc_shortcut_path():
     app.check("Esc to main", "─[Main menu]")
     app.close()
 
-    # Recovery after the cancels: resume lands on the performance menu (within
-    # 6h, so no confirm), Esc is a no-op there, and a real set (via next set)
-    # then exits the session.
+    # Recovery after the cancels: with nothing logged the session is empty, so a
+    # fresh instance begins it (its options read "begin", not "resume") and
+    # lands on the picker — no performance exists to resume onto. A set
+    # completed after entering creates the performance on the spot, through the
+    # same deferred-creation path the normal flow uses.
     app = App()
     app.send("\x1b[B\r")                                # -> Sessions
     app.send("\r")                                # show sessions
     app.send("\r")                                      # pick the session
-    app.check("session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "resume", "back")
+    app.check("session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
     app.send("\x1b")                                    # Esc on options = back to the session list
     app.check("Esc leaves session options -> session list", "─[Select session]", "type to filter", "Esc back")
     app.send("\x1b")                                    # Esc on the list = back to the session menu
     app.check("Esc leaves session list", "─[Sessions]", "new session")
     app.send("\r")                                # show sessions again
     app.send("\r")                                      # pick the session
-    app.check("session options (2nd)", "resume", "summary", "back")
-    app.send("\r")                                      # resume (index 0)
-    app.check("resumed at performance menu", "next set", "next exercise", "exit session")
-    app.send("\x1b")                                    # Esc on the menu: no back — re-asks
-    app.check("still on performance menu", "next set", "next exercise", "exit session")
-    app.send("\r")                                      # next set
+    app.check("session options (2nd)", "begin", "summary", "back")
+    app.send("\r")                                      # begin (index 0)
+    app.check("submenu after begin", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                      # all exercises (index 0)
+    app.check("exercise picker", "Select exercise", " Bench press", " Squat")
+    app.send("\r")                                      # pick Bench press
+    app.check("moved to Bench press", "Moved to next exercise 'Bench press'")
     app.check("weight prompt", "─[Weight (kg)]", "e.g. 100")
     app.send("\x1b")                                    # Esc at the weight form cancels the set
     app.check("set cancelled back to menu", "next set", "next exercise", "exit session")
-    app.send("\r")                                      # next set again
+    app.send("\x1b")                                    # Esc on the menu: no back — re-asks
+    app.check("still on performance menu", "next set", "next exercise", "exit session")
+    app.send("\r")                                      # next set
     app.check("weight prompt (2nd)", "─[Weight (kg)]", "e.g. 100")
     app.send("60\r")                                    # weight
     app.send("8\r")                                     # reps
@@ -680,6 +756,7 @@ def esc_shortcut_path():
     d = db()
     print(f"  final: sessions = {d['sessions']}  performances = {d['performances']}  sets = {d['sets']}")
     (sid, created_at), = d["sessions"]
+    if len(d["performances"]) != 1: raise SystemExit(f"FAIL: expected exactly 1 performance, got {len(d['performances'])}")
     if len(d["sets"]) != 1: raise SystemExit(f"FAIL: expected exactly 1 set, got {len(d['sets'])}")
     if (d["sets"][0][4], d["sets"][0][5], d["sets"][0][6]) != (60.0, 8, "failure"):
         raise SystemExit(f"FAIL: set values {d['sets'][0][4:]}")
@@ -1091,6 +1168,7 @@ leave_path()
 empty_path()
 resume_path()
 stale_confirm_path()
+no_empty_performance_path()
 no_sessions_path()
 esc_shortcut_path()
 delete_session_path()

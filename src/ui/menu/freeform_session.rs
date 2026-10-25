@@ -22,10 +22,12 @@
 //!   records nothing and the session can be resumed again later.
 //!
 //! Each moment a real-world event happens gets its `created_at` timestamp: the
-//! session when "new session" is chosen, a performance when its exercise is
-//! picked, and a set when it is logged. An exercise performance is created for
-//! every picked exercise, and a set row for every completed set (Escape
-//! anywhere in the set form cancels that set).
+//! session when "new session" is chosen, a set when it is logged — and a
+//! performance stamped with the same instant as its first set. An exercise
+//! performance is created only when the exercise's first set is completed, so
+//! picking an exercise and moving on without logging a set never leaves an
+//! empty performance behind; a set row is created for every completed set
+//! (Escape anywhere in the set form cancels that set).
 
 use chrono::Utc;
 use ratatui::text::{Line, Span};
@@ -85,19 +87,21 @@ pub(super) fn run(
         // A session with a last exercise lands on that exercise's performance
         // menu rather than straight into the weight form, so the user chooses
         // whether to add a set, move on, or exit. Every later (picked)
-        // exercise keeps asking a set first, as before.
-        let (exercise, performance, mut menu_first) = match current.take() {
-            Some(seeded) => (seeded.0, seeded.1, true),
+        // exercise keeps asking a set first, as before. The performance for the
+        // current exercise is `None` until its first set is logged — it has no
+        // row yet, since picking an exercise no longer creates one.
+        let (exercise, mut performance, mut menu_first) = match current.take() {
+            Some(seeded) => (seeded.0, Some(seeded.1), true),
             None => {
-                let Some(pair) = begin_exercise(shell, conn, &session)? else {
+                let Some(exercise) = begin_exercise(shell, conn)? else {
                     return Ok(Some(return_to)); // backed out of the submenu/pickers
                 };
-                (pair.0, pair.1, false)
+                (exercise, None, false)
             }
         };
         loop {
             if !menu_first {
-                ask_set(shell, conn, &exercise, &performance)?;
+                ask_set(shell, conn, session.id, &mut performance, &exercise)?;
             }
             menu_first = false;
             // The performance menu. There is no "back" option on it, so Escape
@@ -126,25 +130,22 @@ pub(super) fn run(
     }
 }
 
-/// Pick the next exercise and start a performance for it — its `created_at`
-/// stamps the moment the exercise was selected. How it is picked is the
-/// submenu's call ([`pick_next_exercise`]). `None` means the user backed out
-/// (of the submenu or a picker), or there is nothing to pick, and the caller
-/// returns to where the flow was launched from.
-fn begin_exercise(
-    shell: &mut Shell,
-    conn: &Connection,
-    session: &Session,
-) -> Result<Option<(Exercise, ExercisePerformance)>, UiError> {
+/// Pick the next exercise. Its performance is deliberately NOT created here —
+/// that is deferred until the first set is completed ([`ask_set`]), so picking
+/// an exercise and then moving on without logging a set leaves no empty
+/// performance behind. How it is picked is the submenu's call
+/// ([`pick_next_exercise`]). `None` means the user backed out (of the submenu
+/// or a picker), or there is nothing to pick, and the caller returns to where
+/// the flow was launched from.
+fn begin_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exercise>, UiError> {
     let Some(exercise) = pick_next_exercise(shell, conn)? else {
         return Ok(None);
     };
-    let performance = ExercisePerformance::create(conn, session.id, exercise.id, Utc::now())?;
     // A picked exercise begins with a plain notice — not a framed section — so
     // a session's log reads as a contiguous stream of set lines with a small
     // marker where each exercise starts.
     shell.log(format!("Moved to next exercise '{}'", exercise.name));
-    Ok(Some((exercise, performance)))
+    Ok(Some(exercise))
 }
 
 /// Ask how the next exercise is picked, then run the chosen picker: the
@@ -207,14 +208,17 @@ fn pick_any_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exer
 }
 
 /// Ask for one set — weight, then rep count, then how tough it was — and
-/// record it with `created_at` stamped when it is logged. Escape anywhere in
-/// the set form cancels the set (nothing is created) and the caller shows the
-/// performance menu.
+/// record it with `created_at` stamped when it is logged. The set's performance
+/// is created here too, on the first completed set, so a performance never
+/// precedes its first set: an exercise that is merely picked has no row until a
+/// set is actually completed. Escape anywhere in the set form cancels the set
+/// (nothing is created) and the caller shows the performance menu.
 fn ask_set(
     shell: &mut Shell,
     conn: &Connection,
+    session_id: i64,
+    performance: &mut Option<ExercisePerformance>,
     exercise: &Exercise,
-    performance: &ExercisePerformance,
 ) -> Result<(), UiError> {
     let Some(weight_kg) = ask_weight(shell)? else {
         return Ok(());
@@ -230,14 +234,30 @@ fn ask_set(
         return Ok(());
     };
     let difficulty = Difficulty::from_label(&choice);
+    // A freshly picked exercise has no performance row yet: it is created on
+    // the first completed set — stamped with the same instant the set is
+    // logged — and the performance this leaves behind carries every later set.
+    // So a performance exists only when its exercise's first set is actually
+    // completed, and picking an exercise without logging a set never leaves an
+    // empty performance in the session (or in its summary).
+    let created_at = Utc::now();
+    let performance_id = match performance.as_ref().map(|p| p.id) {
+        Some(id) => id,
+        None => {
+            let created = ExercisePerformance::create(conn, session_id, exercise.id, created_at)?;
+            let id = created.id;
+            *performance = Some(created);
+            id
+        }
+    };
     let (set, is_personal_best) = Set::create(
         conn,
-        performance.id,
+        performance_id,
         exercise.id,
         weight_kg,
         reps,
         difficulty,
-        Utc::now(),
+        created_at,
     )?;
     // The set as the session log shows it — the e1RM behind a personal best
     // never appears; only the weight, reps and how tough it was do, the
