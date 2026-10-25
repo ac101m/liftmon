@@ -80,7 +80,10 @@ selection and replaces it rather than appending, and Escape at the create-flow
 picker asks whether to cancel the whole add — No keeps the in-progress
 selection, Yes deletes the fresh exercise; the exercise info screen lists the
 assigned groups with coloured markers, "none assigned" when an exercise has
-none), and the command-line path
+none; and the exercises menu's browse pair — "Show all exercises" plus a new
+"Show exercises by muscle group" that picks a group, filters to that group's
+exercises, and lands on the exercise's options, looping back to the group
+picker when a group has no exercises), and the command-line path
 (`--version` prints the
 version Cargo.toml declares — the build version — and `-h`/`--help` print the
 usage, all without `LIFTMON_DB_PATH` set; unknown flags are usage errors).

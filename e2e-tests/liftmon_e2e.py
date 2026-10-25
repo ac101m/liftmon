@@ -538,7 +538,8 @@ def esc_shortcut_path():
     app.check("Esc backs from sessions menu", "─[Main menu]", "Exercises")
 
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
+    app.check("exercise menu", "─[Exercises]", "Show all exercises",
+              "Show exercises by muscle group", "Add exercise", "Back")
     app.send("\x1b")                                    # Esc = back
     app.check("Esc backs from exercises menu", "─[Main menu]", "Sessions")
 
@@ -787,7 +788,8 @@ def personal_best_path():
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                          # -> Exercises
-    app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
+    app.check("exercise menu", "─[Exercises]", "Show all exercises",
+              "Show exercises by muscle group", "Add exercise", "Back")
     app.send("\r")                                    # Show exercises
     app.send("\r")                                          # pick Bench press
     app.check("exercise options", "─[Bench press]", "info", "delete")
@@ -812,7 +814,8 @@ def delete_path():
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
+    app.check("exercise menu", "─[Exercises]", "Show all exercises",
+              "Show exercises by muscle group", "Add exercise", "Back")
     app.send("\r")                                # Show exercises
     app.send("\r")                                      # pick Bench press
     app.check("exercise options", "─[Bench press]", "edit muscle groups", "delete")
@@ -892,8 +895,9 @@ def exercise_muscle_groups_path():
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu", "─[Exercises]", "Show exercises", "Add exercise", "Back")
-    app.send("\x1b[B\r")                                # Add exercise (index 1)
+    app.check("exercise menu", "─[Exercises]", "Show all exercises",
+              "Show exercises by muscle group", "Add exercise", "Back")
+    app.send("\x1b[B\x1b[B\r")                          # Add exercise (index 2, after the browse pair)
     app.send("Deadlift\r")                              # name
     app.send("hinge\r")                                 # description
     # The cycle picker appears after the description; Abs and Biceps are both
@@ -922,7 +926,7 @@ def exercise_muscle_groups_path():
     seed_db()
     app = App()
     app.send("\r")                                      # -> Exercises
-    app.send("\x1b[B\r")                                # Add exercise
+    app.send("\x1b[B\x1b[B\r")                          # Add exercise (index 2, after the browse pair)
     app.send("Row\r")                                   # name
     app.send("\r")                                      # empty description
     app.check("muscle group picker (2nd)", "─[Muscle groups]", " Abs", "Space cycle")
@@ -973,6 +977,33 @@ def exercise_muscle_groups_path():
     if sorted(refs_for(1)) != [("Abs", "secondary")]:
         raise SystemExit(f"FAIL: Bench press refs are {refs_for(1)}, expected only Abs=secondary")
     print("ok   options menu: saving writes refs, a later save replaces the earlier selection (Abs=auxiliary -> Abs=secondary), and info lists the assigned groups ('none assigned' when none)")
+    print()
+
+    # Part 4: browse exercises by muscle group. Bench press (id 1) references
+    # Lats (id 2, secondary); Squat (id 2) references Pecs (id 1, primary) —
+    # group ids match the seed's insertion order. A group with no exercises
+    # logs so and loops back to the group picker.
+    seed_db()
+    con = sqlite3.connect(DB)
+    con.execute(
+        "INSERT INTO muscle_group_reference (exercise_id, muscle_group_id, stimulus_type) "
+        "VALUES (1, 2, 'secondary'), (2, 1, 'primary')"
+    )
+    con.commit(); con.close()
+    app = App()
+    app.send("\r")                                      # -> Exercises
+    app.check("exercise menu (by-group)", "─[Exercises]", "Show all exercises",
+              "Show exercises by muscle group", "Add exercise", "Back")
+    app.send("\x1b[B\r")                                # Show exercises by muscle group (index 1)
+    app.check("group picker", "─[Select muscle group]", " Abs", " Biceps", "Esc back")
+    app.send("\r")                                      # Abs (index 0): no exercises activate it
+    app.check("no exercises for the group", "No exercises activate 'Abs'", "─[Select muscle group]")
+    app.send("\x1b[B" * 7 + "\r")                       # Lats (index 7)
+    app.check("filtered exercise list", "Select exercise · Lats", "type to filter", " Bench press")
+    app.send("\r")                                      # pick Bench press
+    app.check("landed on Bench press options", "─[Bench press]", "edit muscle groups", "delete")
+    app.close()
+    print("ok   by muscle group: the group's exercises list filters, picking one opens its options, and groups with no exercises loop back")
     print()
 
 def cargo_pkg_version():

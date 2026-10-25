@@ -192,13 +192,39 @@ impl Exercise {
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
+
+    /// Load every exercise that stimulates the given muscle group — the
+    /// "show exercises by muscle group" browse — in name order. `[]` when the
+    /// group activates no exercises.
+    pub fn for_muscle_group(
+        conn: &Connection,
+        muscle_group_id: i64,
+    ) -> Result<Vec<Self>, DomainError> {
+        let mut stmt = conn.prepare(
+            "SELECT e.id, e.name, e.description \
+             FROM exercises e \
+             JOIN muscle_group_reference r ON r.exercise_id = e.id \
+             WHERE r.muscle_group_id = ?1 \
+             ORDER BY e.name",
+        )?;
+        let rows = stmt.query_map([muscle_group_id], |row| {
+            Ok(Self {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::apply_schema;
-    use crate::domain::{ExercisePerformance, Session};
+    use crate::db::{apply_schema, seed_muscle_groups};
+    use crate::domain::{
+        ExercisePerformance, MuscleGroup, MuscleGroupReference, Session, Stimulus,
+    };
     use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 
     /// An in-memory database with the full schema applied.
@@ -452,5 +478,55 @@ mod tests {
     fn all_on_empty_db_returns_empty() {
         let conn = test_db();
         assert!(Exercise::all(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn for_muscle_group_lists_only_the_exercises_that_activate_the_group() {
+        let mut conn = test_db();
+        seed_muscle_groups(&mut conn).unwrap();
+        let bench = Exercise::create(&conn, "bench press", "flat").unwrap();
+        Exercise::create(&conn, "deadlift", "conventional").unwrap();
+        let squat = Exercise::create(&conn, "squat", "back squat").unwrap();
+
+        let pecs = MuscleGroup::find_by_name(&conn, "Pecs").unwrap().unwrap();
+        let lats = MuscleGroup::find_by_name(&conn, "Lats").unwrap().unwrap();
+        let calves = MuscleGroup::find_by_name(&conn, "Calves").unwrap().unwrap();
+        // Bench and Squat both activate Pecs; only Squat activates Lats. The
+        // write order differs from name order to prove ordering comes from the
+        // query, not the insertion.
+        MuscleGroupReference::set_for_exercise(
+            &conn,
+            squat.id,
+            &[(lats.id, Stimulus::Auxiliary), (pecs.id, Stimulus::Primary)],
+        )
+        .unwrap();
+        MuscleGroupReference::set_for_exercise(&conn, bench.id, &[(pecs.id, Stimulus::Secondary)])
+            .unwrap();
+
+        let pecs_exercises = Exercise::for_muscle_group(&conn, pecs.id).unwrap();
+        assert_eq!(
+            pecs_exercises
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>(),
+            ["bench press", "squat"],
+            "the group's exercises come back in name order, no duplicates"
+        );
+
+        let lats_exercises = Exercise::for_muscle_group(&conn, lats.id).unwrap();
+        assert_eq!(
+            lats_exercises
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>(),
+            ["squat"]
+        );
+
+        assert!(
+            Exercise::for_muscle_group(&conn, calves.id)
+                .unwrap()
+                .is_empty(),
+            "a group no exercise activates yields an empty list"
+        );
     }
 }
