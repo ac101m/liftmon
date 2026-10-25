@@ -43,6 +43,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
     )
     .down("DROP TABLE app_meta;")
     .comment("Bootstrap schema. Real domain tables arrive with the domain module."),
+    // FROZEN — shipped in liftmon 1.0.0. Do not edit; append a new migration.
     M::up(
         r"
         CREATE TABLE exercises (
@@ -114,6 +115,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          the max of the strictly earlier sets of the same exercise), without a boolean flag. \
          The `epley_` prefix leaves room for other estimators. Backfilled for existing sets.",
     ),
+    // FROZEN — shipped in liftmon 1.1.0. Do not edit; append a new migration.
     M::up(
         r"
         CREATE TABLE muscle_group (
