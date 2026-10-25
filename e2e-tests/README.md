@@ -74,7 +74,7 @@ on the non-filtering group picker; a group's options screen shows its info —
 name and description frame — and back/Escape return to the list and main
 menu), the muscle-group-references path (new in the create flow after the
 description, and amendable from the per-exercise options menu: Space cycles a
-group through unselected/auxiliary/secondary/primary, Enter saves the
+group through unselected/low/medium/high, Enter saves the
 selection to the muscle_group_reference table, re-opening prefills the saved
 selection and replaces it rather than appending, and Escape at the create-flow
 picker asks whether to cancel the whole add — No keeps the in-progress

@@ -123,12 +123,12 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
         );
 
         -- Each (exercise, muscle_group) pair appears once; stimulus_type says
-        -- how strongly the exercise stimulates that group: 'primary' = primary
-        -- mover, 'secondary' = secondary/synergist, 'auxiliary' = minor/supporting.
+        -- how strongly the exercise stimulates that group: 'high' = primary
+        -- mover, 'medium' = secondary/synergist, 'low' = minor/supporting.
         CREATE TABLE muscle_group_reference (
             exercise_id       INTEGER NOT NULL REFERENCES exercises(id)    ON DELETE CASCADE,
             muscle_group_id   INTEGER NOT NULL REFERENCES muscle_group(id) ON DELETE RESTRICT,
-            stimulus_type     TEXT NOT NULL CHECK (stimulus_type IN ('primary', 'secondary', 'auxiliary')),
+            stimulus_type     TEXT NOT NULL CHECK (stimulus_type IN ('low', 'medium', 'high')),
             PRIMARY KEY (exercise_id, muscle_group_id)
         );
         ",
@@ -141,7 +141,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
     )
     .comment(
         "Muscle groups an exercise activates, each tagged with a stimulus \
-         type ('primary' / 'secondary' / 'auxiliary'). The muscle_group table \
+         type ('low' / 'medium' / 'high'). The muscle_group table \
          is seeded from db/muscle_groups.rs' initial/default list \
          (see `seed_muscle_groups` in the migration flow); references are added per \
          exercise. An exercise's references cascade away with it; a muscle group referenced \

@@ -72,7 +72,7 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
     con.execute("""CREATE TABLE muscle_group_reference (
         exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
         muscle_group_id INTEGER NOT NULL REFERENCES muscle_group(id) ON DELETE RESTRICT,
-        stimulus_type TEXT NOT NULL CHECK (stimulus_type IN ('primary', 'secondary', 'auxiliary')),
+        stimulus_type TEXT NOT NULL CHECK (stimulus_type IN ('low', 'medium', 'high')),
         PRIMARY KEY (exercise_id, muscle_group_id))""")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
@@ -99,11 +99,11 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
     ):
         con.execute("INSERT INTO muscle_group (name, description) VALUES (?, ?)", (name, desc))
     # Optional muscle-group references — how the session's by-group exercise
-    # picker finds an exercise under a group. Each becomes a "primary" link.
+    # picker finds an exercise under a group. Each becomes a "high" link.
     for exercise, group in refs:
         con.execute(
             "INSERT INTO muscle_group_reference (exercise_id, muscle_group_id, stimulus_type) "
-            "SELECT e.id, g.id, 'primary' FROM exercises e, muscle_group g "
+            "SELECT e.id, g.id, 'high' FROM exercises e, muscle_group g "
             "WHERE e.name = ? AND g.name = ?", (exercise, group))
     con.execute("PRAGMA user_version = 5"); con.commit(); con.close()
 
@@ -922,8 +922,8 @@ def refs_for(exercise_id):
 
 def exercise_muscle_groups_path():
     print("=== MUSCLE-GROUP REFERENCES PATH: cycle-pick an exercise's groups in the create flow and via options ===")
-    # Part 1: create an exercise, cycle its muscle groups (Abs -> auxiliary,
-    # Biceps -> secondary), and save.
+    # Part 1: create an exercise, cycle its muscle groups (Abs -> low,
+    # Biceps -> medium), and save.
     seed_db()
     app = App()
     app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
@@ -936,12 +936,12 @@ def exercise_muscle_groups_path():
     # The cycle picker appears after the description; Abs and Biceps are both
     # inside the 9 visible rows (groups are sorted by name).
     app.check("muscle group picker", "─[Muscle groups]", " Abs", " Biceps", "Space cycle")
-    app.send(" ")                                       # Abs: unselected -> auxiliary
-    app.check("abs auxiliary", "· auxiliary")
+    app.send(" ")                                       # Abs: unselected -> low
+    app.check("abs low", "· low")
     app.send("\x1b[B")                                  # -> Biceps
-    app.send(" ")                                       # Biceps: unselected -> auxiliary
-    app.send(" ")                                       # Biceps: auxiliary -> secondary
-    app.check("biceps secondary", "· secondary")
+    app.send(" ")                                       # Biceps: unselected -> low
+    app.send(" ")                                       # Biceps: low -> medium
+    app.check("biceps medium", "· medium")
     app.send("\r")                                      # save the selection
     app.check("saved refs, back at exercises", "Saved 2 muscle group(s) for 'Deadlift'", "─[Exercises]")
     app.close()
@@ -950,9 +950,9 @@ def exercise_muscle_groups_path():
     if "Deadlift" not in [n for _, n in d["exercises"]]:
         raise SystemExit("FAIL: Deadlift was not created")
     deadlift_id = [i for i, n in d["exercises"] if n == "Deadlift"][0]
-    if sorted(refs_for(deadlift_id)) != sorted([("Abs", "auxiliary"), ("Biceps", "secondary")]):
-        raise SystemExit(f"FAIL: Deadlift refs are {refs_for(deadlift_id)}, expected Abs=auxiliary + Biceps=secondary")
-    print("ok   create flow: cycling with Space and saving writes Abs=auxiliary and Biceps=secondary")
+    if sorted(refs_for(deadlift_id)) != sorted([("Abs", "low"), ("Biceps", "medium")]):
+        raise SystemExit(f"FAIL: Deadlift refs are {refs_for(deadlift_id)}, expected Abs=low + Biceps=medium")
+    print("ok   create flow: cycling with Space and saving writes Abs=low and Biceps=medium")
 
     # Part 2: Escape at the picker asks to cancel the whole add; No keeps the
     # in-progress selection, Yes deletes the fresh row and leaves nothing behind.
@@ -963,12 +963,12 @@ def exercise_muscle_groups_path():
     app.send("Row\r")                                   # name
     app.send("\r")                                      # empty description
     app.check("muscle group picker (2nd)", "─[Muscle groups]", " Abs", "Space cycle")
-    app.send(" ")                                       # Abs: unselected -> auxiliary
-    app.check("abs auxiliary (2nd)", "· auxiliary")
+    app.send(" ")                                       # Abs: unselected -> low
+    app.check("abs low (2nd)", "· low")
     app.send("\x1b")                                    # Esc: ask whether to cancel the add
     app.check("abandon confirm", "Cancel adding this exercise?", "Yes", "No")
     app.send("\x1b[B\r")                                # No: keep editing
-    app.check("picker re-seeded with progress", "─[Muscle groups]", "· auxiliary")
+    app.check("picker re-seeded with progress", "─[Muscle groups]", "· low")
     app.send("\x1b")                                    # Esc again
     app.check("abandon confirm (2nd)", "Cancel adding this exercise?", "Yes", "No")
     app.send("\r")                                      # Yes: cancel the whole add
@@ -995,32 +995,32 @@ def exercise_muscle_groups_path():
     app.check("info shows none assigned", "Muscle groups:", "none assigned")
     app.send("\x1b[B" * 3 + "\r")                       # muscle groups (index 3)
     app.check("muscle group picker (3rd)", "─[Muscle groups]", " Abs", "Space cycle")
-    app.send(" ")                                       # Abs: unselected -> auxiliary
+    app.send(" ")                                       # Abs: unselected -> low
     app.send("\r")                                      # save
     app.check("saved via options", "Saved 1 muscle group(s) for 'Bench press'")
     app.send("\x1b[B" * 3 + "\r")                       # muscle groups again
-    app.check("picker prefilled from the saved refs", "· auxiliary")
-    app.send(" ")                                       # Abs: auxiliary -> secondary
+    app.check("picker prefilled from the saved refs", "· low")
+    app.send(" ")                                       # Abs: low -> medium
     app.send("\r")                                      # save (replaces the previous selection)
     app.check("saved replaced selection", "Saved 1 muscle group(s) for 'Bench press'")
     app.send("\r")                                      # info: now lists the saved group
-    app.check("info lists the assigned groups", "Muscle groups:", " Abs", "· secondary")
+    app.check("info lists the assigned groups", "Muscle groups:", " Abs", "· medium")
     app.close()
 
-    if sorted(refs_for(1)) != [("Abs", "secondary")]:
-        raise SystemExit(f"FAIL: Bench press refs are {refs_for(1)}, expected only Abs=secondary")
-    print("ok   options menu: saving writes refs, a later save replaces the earlier selection (Abs=auxiliary -> Abs=secondary), and info lists the assigned groups ('none assigned' when none)")
+    if sorted(refs_for(1)) != [("Abs", "medium")]:
+        raise SystemExit(f"FAIL: Bench press refs are {refs_for(1)}, expected only Abs=medium")
+    print("ok   options menu: saving writes refs, a later save replaces the earlier selection (Abs=low -> Abs=medium), and info lists the assigned groups ('none assigned' when none)")
     print()
 
     # Part 4: browse exercises by muscle group. Bench press (id 1) references
-    # Lats (id 2, secondary); Squat (id 2) references Pecs (id 1, primary) —
+    # Lats (id 2, medium); Squat (id 2) references Pecs (id 1, high) —
     # group ids match the seed's insertion order. A group with no exercises
     # logs so and loops back to the group picker.
     seed_db()
     con = sqlite3.connect(DB)
     con.execute(
         "INSERT INTO muscle_group_reference (exercise_id, muscle_group_id, stimulus_type) "
-        "VALUES (1, 2, 'secondary'), (2, 1, 'primary')"
+        "VALUES (1, 2, 'medium'), (2, 1, 'high')"
     )
     con.commit(); con.close()
     app = App()

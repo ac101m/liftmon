@@ -497,10 +497,10 @@ mod tests {
         MuscleGroupReference::set_for_exercise(
             &conn,
             squat.id,
-            &[(lats.id, Stimulus::Auxiliary), (pecs.id, Stimulus::Primary)],
+            &[(lats.id, Stimulus::Low), (pecs.id, Stimulus::High)],
         )
         .unwrap();
-        MuscleGroupReference::set_for_exercise(&conn, bench.id, &[(pecs.id, Stimulus::Secondary)])
+        MuscleGroupReference::set_for_exercise(&conn, bench.id, &[(pecs.id, Stimulus::Medium)])
             .unwrap();
 
         let pecs_exercises = Exercise::for_muscle_group(&conn, pecs.id).unwrap();

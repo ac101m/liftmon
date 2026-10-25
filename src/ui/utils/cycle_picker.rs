@@ -3,11 +3,10 @@
 //!
 //! Rows carry a [`Level`]: unselected, or one of the three stimulus strengths
 //! an exercise can give a muscle group. Space on the highlighted row advances
-//! it `None → Auxiliary → Secondary → Primary → None`, so one key cycles a
-//! group from unselected, through the two supporting levels, up to primary
-//! mover, and back around. The chosen levels render as a name-aligned trailing
-//! label (`· auxiliary`, `· secondary`, `· primary`) coloured green, yellow
-//! and red so the grid reads at a glance.
+//! it `None → Low → Medium → High → None`, so one key cycles a group from
+//! unselected, up through the stronger levels, and back around. The chosen
+//! levels render as a name-aligned trailing label (`· low`, `· medium`,
+//! `· high`) coloured green, yellow and red so the grid reads at a glance.
 //!
 //! Enter submits the whole selection and Escape cancels it; the shell reads the
 //! rows back out of the element afterwards via [`CyclePicker::rows`] — the
@@ -33,20 +32,20 @@ use super::ElementResult;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Level {
     None,
-    Auxiliary,
-    Secondary,
-    Primary,
+    Low,
+    Medium,
+    High,
 }
 
 impl Level {
-    /// The next level after a Space press, wrapping: None → Auxiliary →
-    /// Secondary → Primary → None.
+    /// The next level after a Space press, wrapping: None → Low → Medium →
+    /// High → None.
     fn cycle(self) -> Level {
         match self {
-            Level::None => Level::Auxiliary,
-            Level::Auxiliary => Level::Secondary,
-            Level::Secondary => Level::Primary,
-            Level::Primary => Level::None,
+            Level::None => Level::Low,
+            Level::Low => Level::Medium,
+            Level::Medium => Level::High,
+            Level::High => Level::None,
         }
     }
 
@@ -56,23 +55,23 @@ impl Level {
     pub(crate) fn label(self) -> Option<&'static str> {
         match self {
             Level::None => None,
-            Level::Auxiliary => Some("auxiliary"),
-            Level::Secondary => Some("secondary"),
-            Level::Primary => Some("primary"),
+            Level::Low => Some("low"),
+            Level::Medium => Some("medium"),
+            Level::High => Some("high"),
         }
     }
 
-    /// The colour a selected row's label renders as: green for auxiliary,
-    /// yellow for secondary, red for primary — the same intensity language the
-    /// session summary's difficulty markers use. `None` for an unselected row,
-    /// which shows no label. `pub(crate)` so the menu layer can reuse the
-    /// picker's colour language.
+    /// The colour a selected row's label renders as: green for low, yellow for
+    /// medium, red for high — the same intensity language the session summary's
+    /// difficulty markers use. `None` for an unselected row, which shows no
+    /// label. `pub(crate)` so the menu layer can reuse the picker's colour
+    /// language.
     pub(crate) fn colour(self) -> Option<Color> {
         match self {
             Level::None => None,
-            Level::Auxiliary => Some(Color::Green),
-            Level::Secondary => Some(Color::Yellow),
-            Level::Primary => Some(Color::Red),
+            Level::Low => Some(Color::Green),
+            Level::Medium => Some(Color::Yellow),
+            Level::High => Some(Color::Red),
         }
     }
 }
@@ -216,8 +215,8 @@ mod tests {
             Some("Muscle groups".into()),
             vec![
                 ("Abs".into(), Level::None),
-                ("Biceps".into(), Level::Secondary),
-                ("Front delts".into(), Level::Primary),
+                ("Biceps".into(), Level::Medium),
+                ("Front delts".into(), Level::High),
             ],
         )
     }
@@ -243,31 +242,31 @@ mod tests {
         let space = key(KeyCode::Char(' '));
         assert_eq!(picker.rows()[0].1, Level::None);
 
-        picker.on_key(space); // None -> Auxiliary
-        assert_eq!(picker.rows()[0].1, Level::Auxiliary);
-        picker.on_key(space); // Auxiliary -> Secondary
-        assert_eq!(picker.rows()[0].1, Level::Secondary);
-        picker.on_key(space); // Secondary -> Primary
-        assert_eq!(picker.rows()[0].1, Level::Primary);
-        picker.on_key(space); // Primary -> None, back around
+        picker.on_key(space); // None -> Low
+        assert_eq!(picker.rows()[0].1, Level::Low);
+        picker.on_key(space); // Low -> Medium
+        assert_eq!(picker.rows()[0].1, Level::Medium);
+        picker.on_key(space); // Medium -> High
+        assert_eq!(picker.rows()[0].1, Level::High);
+        picker.on_key(space); // High -> None, back around
         assert_eq!(picker.rows()[0].1, Level::None);
 
         // The other rows are untouched by cycling the highlighted one.
-        assert_eq!(picker.rows()[1].1, Level::Secondary);
-        assert_eq!(picker.rows()[2].1, Level::Primary);
+        assert_eq!(picker.rows()[1].1, Level::Medium);
+        assert_eq!(picker.rows()[2].1, Level::High);
     }
 
     #[test]
     fn cycling_moves_with_the_highlight() {
         let mut picker = picker();
         picker.on_key(key(KeyCode::Down)); // highlight Biceps
-        picker.on_key(key(KeyCode::Char(' '))); // Secondary -> Primary
+        picker.on_key(key(KeyCode::Char(' '))); // Medium -> High
         assert_eq!(
             picker.rows()[0].1,
             Level::None,
             "the first row is untouched"
         );
-        assert_eq!(picker.rows()[1].1, Level::Primary);
+        assert_eq!(picker.rows()[1].1, Level::High);
     }
 
     #[test]
@@ -280,22 +279,18 @@ mod tests {
             Some(ElementResult::Value(String::new())),
             "submit payload is a placeholder; the selection comes from rows()"
         );
-        assert_eq!(picker.rows()[1].1, Level::Primary);
+        assert_eq!(picker.rows()[1].1, Level::High);
     }
 
     #[test]
     fn escape_returns_cancelled_and_leaves_state_intact() {
         let mut picker = picker();
-        picker.on_key(key(KeyCode::Char(' '))); // Abs -> Auxiliary
+        picker.on_key(key(KeyCode::Char(' '))); // Abs -> Low
         assert_eq!(
             picker.on_key(key(KeyCode::Esc)),
             Some(ElementResult::Cancelled)
         );
-        assert_eq!(
-            picker.rows()[0].1,
-            Level::Auxiliary,
-            "the work so far is kept"
-        );
+        assert_eq!(picker.rows()[0].1, Level::Low, "the work so far is kept");
     }
 
     #[test]
@@ -326,13 +321,13 @@ mod tests {
         assert_eq!(char_at(&RowText::at(&buf, 3), label_col), '·');
         assert_eq!(
             RowText::at(&buf, 2).trim_end(),
-            " Biceps     · secondary",
+            " Biceps     · medium",
             "Biceps (6 chars) pads to the 11-char column with five spaces"
         );
-        assert_eq!(RowText::at(&buf, 3).trim_end(), " Front delts· primary");
+        assert_eq!(RowText::at(&buf, 3).trim_end(), " Front delts· high");
 
-        // The label spans carry the level colour: yellow for secondary, red for
-        // primary, and no level colour anywhere on the unselected row (its row
+        // The label spans carry the level colour: yellow for medium, red for
+        // high, and no level colour anywhere on the unselected row (its row
         // is the raw name span plus ratatui's blank padding, neither of which
         // is Reversed).
         assert_eq!(buf[(label_col, 2)].style().fg, Some(Color::Yellow));
@@ -352,7 +347,7 @@ mod tests {
     #[test]
     fn the_highlighted_row_is_reversed_and_keeps_the_label_colour() {
         let mut picker = picker();
-        picker.on_key(key(KeyCode::Down)); // highlight Biceps (secondary label)
+        picker.on_key(key(KeyCode::Down)); // highlight Biceps (medium label)
         let area = Rect::new(0, 0, 30, 5);
         let mut buf = Buffer::empty(area);
         picker.render(area, &mut buf);

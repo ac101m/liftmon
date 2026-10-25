@@ -55,9 +55,9 @@ pub(super) fn rows_for(
 /// The stimulus the stored [`Stimulus`] reads back as, for the picker.
 fn level(stimulus: Stimulus) -> Level {
     match stimulus {
-        Stimulus::Auxiliary => Level::Auxiliary,
-        Stimulus::Secondary => Level::Secondary,
-        Stimulus::Primary => Level::Primary,
+        Stimulus::Low => Level::Low,
+        Stimulus::Medium => Level::Medium,
+        Stimulus::High => Level::High,
     }
 }
 
@@ -66,9 +66,9 @@ fn level(stimulus: Stimulus) -> Level {
 fn stimulus(level: Level) -> Option<Stimulus> {
     match level {
         Level::None => None,
-        Level::Auxiliary => Some(Stimulus::Auxiliary),
-        Level::Secondary => Some(Stimulus::Secondary),
-        Level::Primary => Some(Stimulus::Primary),
+        Level::Low => Some(Stimulus::Low),
+        Level::Medium => Some(Stimulus::Medium),
+        Level::High => Some(Stimulus::High),
     }
 }
 
@@ -206,18 +206,18 @@ mod tests {
     fn stimulus_pairs_drops_unselected_rows_and_maps_the_rest_in_order() {
         let rows = vec![
             ("Abs".to_string(), Level::None),
-            ("Biceps".to_string(), Level::Auxiliary),
-            ("Front delts".to_string(), Level::Secondary),
-            ("Pecs".to_string(), Level::Primary),
+            ("Biceps".to_string(), Level::Low),
+            ("Front delts".to_string(), Level::Medium),
+            ("Pecs".to_string(), Level::High),
             ("Lats".to_string(), Level::None),
         ];
         let pairs = stimulus_pairs(&rows);
         assert_eq!(
             pairs,
             vec![
-                ("Biceps".to_string(), Stimulus::Auxiliary),
-                ("Front delts".to_string(), Stimulus::Secondary),
-                ("Pecs".to_string(), Stimulus::Primary),
+                ("Biceps".to_string(), Stimulus::Low),
+                ("Front delts".to_string(), Stimulus::Medium),
+                ("Pecs".to_string(), Stimulus::High),
             ],
             "unselected rows contribute nothing, and row order is preserved"
         );
@@ -225,21 +225,21 @@ mod tests {
 
     #[test]
     fn muscle_group_line_colours_only_the_marker_word() {
-        // `  Abs · ` is plain; only the "auxiliary" marker carries the level's
-        // colour — the difficulty-marker shape from the session summary.
-        let line = muscle_group_line("Abs", Level::Auxiliary);
+        // `  Abs · ` is plain; only the "low" marker carries the level's colour
+        // — the difficulty-marker shape from the session summary.
+        let line = muscle_group_line("Abs", Level::Low);
         assert_eq!(line.spans.len(), 2);
-        assert_eq!(text(&line), "  Abs · auxiliary");
+        assert_eq!(text(&line), "  Abs · low");
         assert_eq!(line.spans[1].style.fg, Some(Color::Green));
         assert_eq!(line.spans[0].style.fg, None, "the name is plain");
 
-        let secondary = muscle_group_line("Biceps", Level::Secondary);
-        assert_eq!(text(&secondary), "  Biceps · secondary");
-        assert_eq!(secondary.spans[1].style.fg, Some(Color::Yellow));
+        let medium = muscle_group_line("Biceps", Level::Medium);
+        assert_eq!(text(&medium), "  Biceps · medium");
+        assert_eq!(medium.spans[1].style.fg, Some(Color::Yellow));
 
-        let primary = muscle_group_line("Pecs", Level::Primary);
-        assert_eq!(text(&primary), "  Pecs · primary");
-        assert_eq!(primary.spans[1].style.fg, Some(Color::Red));
+        let high = muscle_group_line("Pecs", Level::High);
+        assert_eq!(text(&high), "  Pecs · high");
+        assert_eq!(high.spans[1].style.fg, Some(Color::Red));
     }
 
     #[test]
@@ -268,7 +268,7 @@ mod tests {
         MuscleGroupReference::set_for_exercise(
             &conn,
             exercise.id,
-            &[(abs.id, Stimulus::Auxiliary), (pecs.id, Stimulus::Primary)],
+            &[(abs.id, Stimulus::Low), (pecs.id, Stimulus::High)],
         )
         .unwrap();
 
@@ -280,9 +280,9 @@ mod tests {
             3,
             "bold heading plus one line per assigned group"
         );
-        assert_eq!(text(&lines[1]), "  Abs · auxiliary");
+        assert_eq!(text(&lines[1]), "  Abs · low");
         assert_eq!(lines[1].spans[1].style.fg, Some(Color::Green));
-        assert_eq!(text(&lines[2]), "  Pecs · primary");
+        assert_eq!(text(&lines[2]), "  Pecs · high");
         assert_eq!(lines[2].spans[1].style.fg, Some(Color::Red));
     }
 }

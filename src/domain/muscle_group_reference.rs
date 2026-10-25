@@ -1,7 +1,7 @@
 //! An exercise's muscle-group references: which groups it activates, and how
 //! strongly. Backed by the `muscle_group_reference` table (migration v5) — the
 //! cross-reference between exercises and the seeded `muscle_group` rows. The
-//! stored `stimulus_type` is one of `primary`, `secondary`, `auxiliary`; the
+//! stored `stimulus_type` is one of `low`, `medium`, `high`; the
 //! picker's fourth "not selected" state has no row here, so a saved selection
 //! stores exactly one row per assigned group.
 //!
@@ -21,22 +21,22 @@ use rusqlite::{Connection, params};
 use crate::domain::DomainError;
 
 /// How strongly an exercise stimulates a muscle group. The stored spelling —
-/// `primary`, `secondary`, `auxiliary` — is the schema's `stimulus_type` CHECK
-/// text, and the labels the cycle picker shows.
+/// `low`, `medium`, `high` — is the schema's `stimulus_type` CHECK text, and
+/// the labels the cycle picker shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stimulus {
-    Auxiliary,
-    Secondary,
-    Primary,
+    Low,
+    Medium,
+    High,
 }
 
 impl Stimulus {
     /// The stored spelling in `muscle_group_reference.stimulus_type`.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Stimulus::Auxiliary => "auxiliary",
-            Stimulus::Secondary => "secondary",
-            Stimulus::Primary => "primary",
+            Stimulus::Low => "low",
+            Stimulus::Medium => "medium",
+            Stimulus::High => "high",
         }
     }
 }
@@ -47,9 +47,9 @@ impl Stimulus {
 impl FromSql for Stimulus {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         match value.as_str()? {
-            "auxiliary" => Ok(Stimulus::Auxiliary),
-            "secondary" => Ok(Stimulus::Secondary),
-            "primary" => Ok(Stimulus::Primary),
+            "low" => Ok(Stimulus::Low),
+            "medium" => Ok(Stimulus::Medium),
+            "high" => Ok(Stimulus::High),
             other => Err(FromSqlError::Other(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("unknown stimulus stored as {other:?}"),
@@ -142,9 +142,9 @@ mod tests {
         let (conn, exercise) = test_db();
         let groups = crate::domain::MuscleGroup::all(&conn).unwrap();
         let mut pairs = [
-            (groups[0].id, Stimulus::Primary),
-            (groups[5].id, Stimulus::Secondary),
-            (groups[9].id, Stimulus::Auxiliary),
+            (groups[0].id, Stimulus::High),
+            (groups[5].id, Stimulus::Medium),
+            (groups[9].id, Stimulus::Low),
         ];
         // `for_exercise` reads back in muscle-group id order, so assert against
         // the pairs that way too (the write order is irrelevant).
@@ -170,8 +170,8 @@ mod tests {
             &conn,
             exercise.id,
             &[
-                (groups[0].id, Stimulus::Primary),
-                (groups[1].id, Stimulus::Secondary),
+                (groups[0].id, Stimulus::High),
+                (groups[1].id, Stimulus::Medium),
             ],
         )
         .unwrap();
@@ -180,14 +180,14 @@ mod tests {
         MuscleGroupReference::set_for_exercise(
             &conn,
             exercise.id,
-            &[(groups[1].id, Stimulus::Primary)],
+            &[(groups[1].id, Stimulus::High)],
         )
         .unwrap();
 
         let refs = MuscleGroupReference::for_exercise(&conn, exercise.id).unwrap();
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].muscle_group_id, groups[1].id);
-        assert_eq!(refs[0].stimulus, Stimulus::Primary);
+        assert_eq!(refs[0].stimulus, Stimulus::High);
     }
 
     #[test]
@@ -197,7 +197,7 @@ mod tests {
         MuscleGroupReference::set_for_exercise(
             &conn,
             exercise.id,
-            &[(groups[0].id, Stimulus::Primary)],
+            &[(groups[0].id, Stimulus::High)],
         )
         .unwrap();
 
@@ -227,7 +227,7 @@ mod tests {
         MuscleGroupReference::set_for_exercise(
             &conn,
             exercise.id,
-            &[(groups[0].id, Stimulus::Primary)],
+            &[(groups[0].id, Stimulus::High)],
         )
         .unwrap();
 

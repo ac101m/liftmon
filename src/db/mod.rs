@@ -582,9 +582,9 @@ mod tests {
             )
         };
 
-        // A 'secondary' reference is fine; anything outside the three kinds
+        // A 'medium' reference is fine; anything outside the three kinds
         // (fresh pairs each time, so only the CHECK can reject them) is not.
-        assert!(insert("secondary", 1).is_ok());
+        assert!(insert("medium", 1).is_ok());
         assert!(insert("everything", 2).is_err());
         assert!(insert("", 3).is_err());
     }
@@ -606,7 +606,7 @@ mod tests {
         conn.execute(
             "INSERT INTO muscle_group_reference
                  (exercise_id, muscle_group_id, stimulus_type)
-             VALUES (1, 1, 'primary')",
+             VALUES (1, 1, 'high')",
             [],
         )
         .unwrap();
@@ -615,7 +615,7 @@ mod tests {
         let dup = conn.execute(
             "INSERT INTO muscle_group_reference
                  (exercise_id, muscle_group_id, stimulus_type)
-             VALUES (1, 1, 'auxiliary')",
+             VALUES (1, 1, 'low')",
             [],
         );
         assert!(dup.is_err());
