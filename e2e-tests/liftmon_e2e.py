@@ -114,6 +114,16 @@ def stored_local_date(s):
     s = re.sub(r"\.\d+", "", s)   # drop sub-second digits; fromisoformat caps at 6
     return datetime.fromisoformat(s.replace(" ", "T")).astimezone().date()
 
+# Pacing for the scripted keystrokes. This is a smoke suite, not a benchmark of
+# the app's speed, so the delays are tuned to be generous-but-not-wasteful: the
+# app processes queued input strictly in order, and every `check()` polls the
+# replayed screen for up to 3s, so a short key delay just makes `check()` wait
+# out a lagging redraw under load instead of paying a fixed 0.6s per keystroke
+# up front.
+SPAWN_SETTLE = 0.15   # let the first frame render after spawn (the first check polls anyway)
+KEY_DELAY     = 0.02   # gap after writing each keystroke batch, before the next send/check
+CHECK_POLL    = 0.05   # how often `check()` re-reads the screen while it waits
+
 class App:
     W = 60
     def __init__(self):
@@ -145,7 +155,7 @@ class App:
         fcntl.ioctl(master, termios.TIOCSWINSZ, winsz)
         self.raw = bytearray(); self.stop = threading.Event()
         threading.Thread(target=self._reader, daemon=True).start()
-        time.sleep(0.8)
+        time.sleep(SPAWN_SETTLE)
     def _reader(self):
         while not self.stop.is_set():
             try:
@@ -155,7 +165,7 @@ class App:
                     if not d: break
                     self.raw.extend(d)
             except OSError: break
-    def send(self, s, delay=0.6):
+    def send(self, s, delay=KEY_DELAY):
         os.write(self.master, s.encode()); time.sleep(delay)
     def grid(self):
         stream = bytes(self.raw).decode("utf-8","replace")
@@ -216,7 +226,7 @@ class App:
                 self.diagnose(missing)
                 self.snapshot()
                 self.close(); sys.exit(1)
-            time.sleep(0.2)
+            time.sleep(CHECK_POLL)
         print(f"ok   {label}")
 
     def diagnose(self, missing):

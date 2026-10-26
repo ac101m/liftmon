@@ -104,13 +104,16 @@ usage, all without `LIFTMON_DB_PATH` set; unknown flags are usage errors).
   scratch file afterwards; a failed run leaves it in place for inspection. A
   `liftmon.sqlite` in the repo root comes from manual runs of the app against
   its working directory, not from this suite.
-- **It is timing-tolerant by design.** Each keystroke waits ~0.6s for the app
-  to draw, and every assertion polls the screen for up to 3s rather than
-  snapshotting once, so a slow redraw under load can't flake a run. Don't run
-  other terminal-heavy work in the same session while it runs. Two concurrent
-  runs no longer share a scratch DB (each gets its own random name and the
-  lockout fires cleanly only if one lands on an occupied path), but stacking
-  full suites is still wasteful and timing-flaky — run one at a time.
+- **It is timing-tolerant by design.** Keystrokes are written back-to-back
+  (tens of milliseconds apart), and every assertion polls the screen for up to
+  3s rather than snapshotting once, so a slow redraw under load can't flake a
+  run — the poll just waits out a lagging redraw instead of a fixed
+  per-keystroke sleep. The pacing constants live together in one block above
+  `class App` (`SPAWN_SETTLE`/`KEY_DELAY`/`CHECK_POLL`). Don't run other
+  terminal-heavy work in the same session while it runs. Two concurrent runs no
+  longer share a scratch DB (each gets its own random name and the lockout
+  fires cleanly only if one lands on an occupied path), but stacking full
+  suites is still wasteful and timing-flaky — run one at a time.
 - **Assertions are content-first.** Where output style matters it is checked
   too (e.g. bold vs plain spans), but the suite's job is flow and persistence,
   so most checks look at what is on screen and in the DB, not pixel-perfect
