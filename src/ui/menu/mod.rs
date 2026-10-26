@@ -73,14 +73,19 @@ pub(crate) enum Menu {
 
 /// The lines of an exercise's info section: the bold exercise name (with a
 /// trailing colon, like any section heading) over its indented description.
+/// A blank description (empty or whitespace-only) prints `No description.` in
+/// its place, so every exercise's section names something beneath the heading.
 pub(super) fn exercise_lines(exercise: &Exercise) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(vec![Span::styled(
         format!("{}:", exercise.name),
         Style::new().add_modifier(Modifier::BOLD),
     )])];
-    if !exercise.description.is_empty() {
-        lines.push(Line::from(format!("  {}", exercise.description)));
-    }
+    let description = if exercise.description.trim().is_empty() {
+        "No description."
+    } else {
+        &exercise.description
+    };
+    lines.push(Line::from(format!("  {description}")));
     lines
 }
 
@@ -128,6 +133,56 @@ impl Menu {
             Menu::SelectSession => select_session::run(shell, conn),
             Menu::SessionOptions { session_id } => session_options::run(shell, conn, session_id),
             Menu::FreeformSession { session_id } => freeform_session::run(shell, conn, session_id),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The exercise's info lines as plain text, so the tests assert the
+    /// content rather than the styling.
+    fn lines_text(lines: &[Line<'_>]) -> Vec<String> {
+        lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn exercise_lines_list_name_and_description() {
+        let exercise = Exercise {
+            id: 1,
+            name: "Bench press".into(),
+            description: "flat barbell press".into(),
+        };
+        let lines = exercise_lines(&exercise);
+        assert_eq!(lines_text(&lines), ["Bench press:", "  flat barbell press"]);
+        // The name line is bold; the description line is plain.
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        assert_eq!(lines[0].spans[0].style, bold);
+        assert_eq!(lines[1].spans[0].style, Style::new());
+    }
+
+    #[test]
+    fn exercise_lines_prints_no_description_in_place_of_a_blank_one() {
+        for description in ["", "   ", "\t"] {
+            let exercise = Exercise {
+                id: 1,
+                name: "Squat".into(),
+                description: description.into(),
+            };
+            assert_eq!(
+                lines_text(&exercise_lines(&exercise)),
+                ["Squat:", "  No description."],
+                "description {description:?} reads as none"
+            );
         }
     }
 }
