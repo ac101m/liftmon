@@ -309,7 +309,13 @@ fn render_history(buf: &mut Buffer, area: Rect, history: &[LogLine]) {
     // occupies. Lines are collected newest-first, each wrapped line's pieces
     // gathered reversed along with them, and the whole tail is flipped at the
     // end.
+    //
+    // Back-to-back rules (e.g. the closing divider of one framed section and
+    // the opening of the next) print as one line: a divider is only drawn when
+    // the line directly beneath it — the one already pushed, which since we
+    // walk newest-first is the previous row — is not itself a divider.
     let mut rows: Vec<Line> = Vec::new();
+    let mut previous_was_rule = false;
     for entry in history.iter().rev() {
         let entry_rows = match entry {
             LogLine::Text(line) => wrap_line(line.clone(), area.width).len(),
@@ -323,9 +329,14 @@ fn render_history(buf: &mut Buffer, area: Rect, history: &[LogLine]) {
                 let mut wrapped = wrap_line(line.clone(), area.width);
                 wrapped.reverse();
                 rows.extend(wrapped);
+                previous_was_rule = false;
             }
             LogLine::Rule => {
+                if previous_was_rule {
+                    continue; // a divider straight beneath another adds nothing
+                }
                 rows.push(Line::from("─".repeat(area.width as usize)));
+                previous_was_rule = true;
             }
         }
     }
@@ -483,6 +494,51 @@ mod tests {
             "description sits directly beneath the name"
         );
         assert_eq!(row(3), "─".repeat(40), "closing divider");
+    }
+
+    #[test]
+    fn history_collapses_back_to_back_rules() {
+        // Two summaries printed one after another leave a closing rule directly
+        // beneath an opening rule; they print as a single divider, so the
+        // second section still frames itself top and bottom.
+        let history = vec![
+            LogLine::Rule,
+            LogLine::Text(Line::from("One")),
+            LogLine::Rule,
+            LogLine::Rule,
+            LogLine::Text(Line::from("Two")),
+            LogLine::Rule,
+        ];
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 5));
+        render_history(&mut buf, Rect::new(0, 0, 40, 5), &history);
+
+        let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0), "─".repeat(40), "first summary opens with a rule");
+        assert_eq!(row(1).trim_end(), "One");
+        assert_eq!(
+            row(2),
+            "─".repeat(40),
+            "one divider between sections, not two"
+        );
+        assert_eq!(row(3).trim_end(), "Two");
+        assert_eq!(row(4), "─".repeat(40), "second summary closes with a rule");
+    }
+
+    #[test]
+    fn history_collapses_a_trailing_double_rule() {
+        // A section ending and another opening at the very bottom of the story
+        // (e.g. an empty section) still prints a single divider.
+        let history = vec![
+            LogLine::Text(Line::from("last set")),
+            LogLine::Rule,
+            LogLine::Rule,
+        ];
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 2));
+        render_history(&mut buf, Rect::new(0, 0, 40, 2), &history);
+
+        let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0).trim_end(), "last set");
+        assert_eq!(row(1), "─".repeat(40), "pair of rules draws one divider");
     }
 
     #[test]
