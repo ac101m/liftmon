@@ -282,7 +282,7 @@ def end_path():
     app.send("5\r")
     app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm set 1", "100kg x 5 (failure) - Correct?", "Yes", "No")
+    app.check("confirm set 1", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu", "next set", "next exercise", "exit session")
     app.send("\r")                                          # next set
@@ -290,7 +290,7 @@ def end_path():
     app.send("102.5\r")
     app.send("4\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
-    app.check("confirm set 2", "102.5kg x 4 (hard) - Correct?", "Yes", "No")
+    app.check("confirm set 2", "102.5kg x 4 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (again)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
@@ -305,7 +305,7 @@ def end_path():
     app.send("60\r")
     app.send("10\r")                                        # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm squat set", "60kg x 10 (failure) - Correct?", "Yes", "No")
+    app.check("confirm squat set", "60kg x 10 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (squat)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
@@ -347,7 +347,7 @@ def leave_path():
     app.send("100\r")                                       # weight
     app.send("5\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm set", "100kg x 5 (failure) - Correct?", "Yes", "No")
+    app.check("confirm set", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
@@ -421,7 +421,7 @@ def resume_path():
     app.send("100\r")                                       # weight
     app.send("5\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm bench set", "100kg x 5 (failure) - Correct?", "Yes", "No")
+    app.check("confirm bench set", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (bench)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
@@ -432,7 +432,7 @@ def resume_path():
     app.send("60\r")                                        # weight
     app.send("10\r")                                        # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm squat set", "60kg x 10 (failure) - Correct?", "Yes", "No")
+    app.check("confirm squat set", "60kg x 10 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (squat)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
@@ -483,7 +483,7 @@ def resume_path():
     app.send("70\r")                                        # weight
     app.send("8\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm resumed set", "70kg x 8 (failure) - Correct?", "Yes", "No")
+    app.check("confirm resumed set", "70kg x 8 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (resumed)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
@@ -575,7 +575,7 @@ def no_empty_performance_path():
     app.send("100\r")                                       # weight
     app.send("5\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm bench set", "100kg x 5 (failure) - Correct?", "Yes", "No")
+    app.check("confirm bench set", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (bench)", "next set", "next exercise", "exit session")
     # Move on to Squat but log nothing: escape the set form and leave the
@@ -647,7 +647,7 @@ def duplicate_exercise_path():
     app.send("100\r")                                       # weight
     app.send("5\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm bench set", "100kg x 5 (failure) - Correct?", "Yes", "No")
+    app.check("confirm bench set", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (bench)", "next set", "next exercise", "exit session")
     # Try to pick Bench press again: it is already the current exercise, so no
@@ -665,7 +665,7 @@ def duplicate_exercise_path():
     app.send("60\r")                                        # weight
     app.send("8\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm 2nd bench set", "60kg x 8 (failure) - Correct?", "Yes", "No")
+    app.check("confirm 2nd bench set", "60kg x 8 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (again)", "next set", "next exercise", "exit session")
     app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
@@ -846,7 +846,7 @@ def esc_shortcut_path():
     app.send("60\r")                                    # weight
     app.send("8\r")                                     # reps
     app.send("\x1b[B\x1b[B\r")                          # difficulty: failure
-    app.check("confirm set", "60kg x 8 (failure) - Correct?", "Yes", "No")
+    app.check("confirm set", "60kg x 8 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                      # Yes: commit the set
     app.check("performance menu", "next set", "next exercise", "exit session")
     app.send("\x1b[B\x1b[B\r")                          # exit session (index 2)
@@ -944,7 +944,7 @@ def personal_best_path():
     app.send("5\r")
     app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
-    app.check("confirm set 1", "100kg x 5 (hard) - Correct?", "Yes", "No")
+    app.check("confirm set 1", "100kg x 5 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("first set is a personal best", "100 kg × 5 · hard · New PR!", "next set")
 
@@ -954,7 +954,7 @@ def personal_best_path():
     app.send("102.5\r")
     app.send("3\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
-    app.check("confirm set 2", "102.5kg x 3 (hard) - Correct?", "Yes", "No")
+    app.check("confirm set 2", "102.5kg x 3 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("102.5 kg × 3 logged", "102.5 kg × 3 · hard", "next set")
     grid = app.grid()
@@ -966,7 +966,7 @@ def personal_best_path():
     app.send("100\r")                                       # weight
     app.send("6\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
-    app.check("confirm set 3", "100kg x 6 (hard) - Correct?", "Yes", "No")
+    app.check("confirm set 3", "100kg x 6 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("100 kg × 6 is a personal best", "100 kg × 6 · hard · New PR!", "next set")
 
@@ -975,7 +975,7 @@ def personal_best_path():
     app.send("110\r")                                       # weight
     app.send("5\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
-    app.check("confirm set 4", "110kg x 5 (hard) - Correct?", "Yes", "No")
+    app.check("confirm set 4", "110kg x 5 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("110 kg × 5 is a personal best", "110 kg × 5 · hard · New PR!", "next set")
 
@@ -1286,7 +1286,7 @@ def weight_default_path():
     app.send("100\r")                                       # weight
     app.send("5\r")                                         # reps
     app.send("\r")                                          # difficulty: easy (index 0)
-    app.check("confirm set 1", "100kg x 5 (easy) - Correct?", "Yes", "No")
+    app.check("confirm set 1", "100kg x 5 (easy) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("first set logged", "100 kg × 5 · easy", "next set")
     app.send("\r")                                          # next set
@@ -1296,7 +1296,7 @@ def weight_default_path():
     app.send("\r")                                          # accept the default weight
     app.send("6\r")                                         # reps
     app.send("\r")                                          # difficulty: easy (index 0)
-    app.check("confirm set 2", "100kg x 6 (easy) - Correct?", "Yes", "No")
+    app.check("confirm set 2", "100kg x 6 (easy) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("second set accepted the default", "100 kg × 6 · easy", "exit session")
     app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
@@ -1330,7 +1330,7 @@ def confirm_set_path():
     app.send("5\r")                                         # reps
     app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm set A", "100kg x 5 (failure) - Correct?", "Yes", "No")
+    app.check("confirm set A", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\x1b[B\r")                                    # No: back to the beginning
     # Back at the start of the set form — and since nothing was committed, the
     # weight field has no default to show.
@@ -1338,7 +1338,7 @@ def confirm_set_path():
     app.send("110\r")                                       # the corrected weight
     app.send("5\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm set B", "110kg x 5 (failure) - Correct?", "Yes", "No")
+    app.check("confirm set B", "110kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("set logged", "110 kg × 5 · failure", "exit session")
     # Escape on the confirmation also cancels (nothing written): a second set
@@ -1348,7 +1348,7 @@ def confirm_set_path():
     app.send("120\r")                                       # weight
     app.send("6\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
-    app.check("confirm set C", "120kg x 6 (failure) - Correct?", "Yes", "No")
+    app.check("confirm set C", "120kg x 6 (failure) - Add to session?", "Yes", "No")
     app.send("\x1b")                                        # Esc cancels the set
     app.check("esc cancelled back at menu", "next set", "next exercise", "exit session")
     app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)

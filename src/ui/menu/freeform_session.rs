@@ -261,7 +261,7 @@ fn ask_set(
         // — compactly, as `50kg x 10 (hard)` — and ask to confirm it. "No"
         // re-asks the set from the weight; Escape cancels it entirely.
         let summary = format!("{}kg x {} ({})", weight_kg, reps, difficulty.as_str());
-        match shell.ask(Some(format!("{summary} - Correct?")), ["Yes", "No"])? {
+        match shell.ask(Some(format!("{summary} - Add to session?")), ["Yes", "No"])? {
             Some(answer) if answer == "Yes" => {}
             Some(_) => continue,   // "No": re-enter the set from the weight
             None => return Ok(()), // Escape: cancel the set
