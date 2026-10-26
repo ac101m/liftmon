@@ -16,7 +16,10 @@
 //! * "next set" starts another set for the same exercise,
 //! * "next exercise" breaks back to picking the next exercise. Beginning a
 //!   session and moving on both ask first how to pick — a submenu offering the
-//!   all-exercises list or the per-muscle-group browse — then run that picker,
+//!   all-exercises list or the per-muscle-group browse — then run that picker.
+//!   Picking the exercise that is already the current one does not start a new
+//!   performance: it is called out and the menu is re-asked, so a repeated
+//!   pick never doubles an exercise up in the session summary,
 //! * "exit session" leaves the workout and returns to the session's options
 //!   screen. Sessions are never "ended" — there is no end date, so exiting
 //!   records nothing and the session can be resumed again later.
@@ -83,48 +86,64 @@ pub(super) fn run(
         ));
         shell.log(format!("Current exercise '{}'", exercise.name));
     }
-    'exercises: loop {
-        // A session with a last exercise lands on that exercise's performance
-        // menu rather than straight into the weight form, so the user chooses
-        // whether to add a set, move on, or exit. Every later (picked)
-        // exercise keeps asking a set first, as before. The performance for the
-        // current exercise is `None` until its first set is logged — it has no
-        // row yet, since picking an exercise no longer creates one.
-        let (exercise, mut performance, mut menu_first) = match current.take() {
-            Some(seeded) => (seeded.0, Some(seeded.1), true),
-            None => {
-                let Some(exercise) = begin_exercise(shell, conn)? else {
-                    return Ok(Some(return_to)); // backed out of the submenu/pickers
-                };
-                (exercise, None, false)
-            }
-        };
+    // The active exercise and its performance, driven by one loop: ask a set
+    // (unless freshly resumed onto an existing performance, which shows the
+    // menu first), then re-ask the performance menu. "next exercise" picks the
+    // following exercise in place, so picking the one the user is already on
+    // can be caught before anything advances — it is called out and the menu
+    // re-asked, rather than starting a second performance for the same
+    // exercise. The performance is `None` until its first set is logged: no
+    // row exists for a picked-but-unworked exercise.
+    let (mut exercise, mut performance, mut menu_first) = match current.take() {
+        Some((ex, perf)) => (ex, Some(perf), true),
+        None => {
+            let Some(ex) = begin_exercise(shell, conn)? else {
+                return Ok(Some(return_to)); // backed out of the submenu/pickers
+            };
+            (ex, None, false)
+        }
+    };
+    'active: loop {
+        if !menu_first {
+            ask_set(shell, conn, session.id, &mut performance, &exercise)?;
+        }
+        menu_first = false;
+        // The performance menu. There is no "back" option on it, so Escape
+        // just re-asks the menu rather than starting another set.
         loop {
-            if !menu_first {
-                ask_set(shell, conn, session.id, &mut performance, &exercise)?;
-            }
-            menu_first = false;
-            // The performance menu. There is no "back" option on it, so Escape
-            // just re-asks the menu rather than starting another set.
-            loop {
-                match shell
-                    .ask(
-                        Some(exercise.name.clone()),
-                        ["next set", "next exercise", "exit session"],
-                    )?
-                    .as_deref()
-                {
-                    // Another set for the same exercise.
-                    Some("next set") => break,
-                    // Break back to the picker for the next exercise — which
-                    // first asks how to pick it.
-                    Some("next exercise") => continue 'exercises,
-                    // "exit session": leave the workout, session intact, and
-                    // land back on this session's options screen.
-                    Some("exit session") => return Ok(Some(return_to)),
-                    // Escape: no back option here — re-ask the menu.
-                    _ => {}
-                }
+            match shell
+                .ask(
+                    Some(exercise.name.clone()),
+                    ["next set", "next exercise", "exit session"],
+                )?
+                .as_deref()
+            {
+                // Another set for the same exercise.
+                Some("next set") => break,
+                // Pick the next exercise.
+                Some("next exercise") => match pick_next_exercise(shell, conn)? {
+                    // Backed out of the submenu (or a picker, after re-asking):
+                    // leave the flow.
+                    None => return Ok(Some(return_to)),
+                    // The exercise the user is already on: no new performance,
+                    // just say so and re-ask the menu.
+                    Some(picked) if picked.id == exercise.id => {
+                        shell.log(format!("'{}' is already selected", exercise.name));
+                    }
+                    // A genuinely new exercise: move to it and ask a set. Its
+                    // performance is still deferred until the first set.
+                    Some(picked) => {
+                        shell.log(format!("Moved to next exercise '{}'", picked.name));
+                        performance = None;
+                        exercise = picked;
+                        continue 'active;
+                    }
+                },
+                // "exit session": leave the workout, session intact, and
+                // land back on this session's options screen.
+                Some("exit session") => return Ok(Some(return_to)),
+                // Escape: no back option here — re-ask the menu.
+                _ => {}
             }
         }
     }

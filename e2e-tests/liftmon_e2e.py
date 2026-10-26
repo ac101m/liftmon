@@ -605,6 +605,80 @@ def no_empty_performance_path():
     app.close()
     print()
 
+def duplicate_exercise_path():
+    print("=== DUPLICATE EXERCISE PATH: re-picking the current exercise merges into its existing performance, with a note ===")
+    seed_db()
+    app = App()
+    app.send("\x1b[B\r")                                    # -> Sessions
+    app.send("\x1b[B\r")                                    # new session
+    app.check("new session options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
+    app.send("\r")                                          # begin (index 0)
+    app.check("submenu", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
+    app.check("exercise picker", "Select exercise", " Bench press", " Squat")
+    app.send("\r")                                          # pick Bench press
+    app.check("moved to Bench press", "Moved to next exercise 'Bench press'")
+    app.send("100\r")                                       # weight
+    app.send("5\r")                                         # reps
+    app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
+    app.check("performance menu (bench)", "next set", "next exercise", "exit session")
+    # Try to pick Bench press again: it is already the current exercise, so no
+    # new performance starts — a note is printed and the menu is re-asked.
+    app.send("\x1b[B\r")                                    # next exercise (index 1)
+    app.check("submenu (2nd)", "─[Next exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
+    app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
+    app.send("\r")                                          # pick Bench press again
+    app.check("already selected note", "'Bench press' is already selected",
+              "─[Bench press]", "next set", "next exercise", "exit session")
+    # The next set still lands on the SAME performance.
+    app.send("\r")                                          # next set
+    app.check("weight prompt (2nd set)", "─[Weight (kg)]", "e.g. 100")
+    app.send("60\r")                                        # weight
+    app.send("8\r")                                         # reps
+    app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
+    app.check("performance menu (again)", "next set", "next exercise", "exit session")
+    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
+              "resume", "summary", "back")
+    app.send("\x1b")                                        # Esc on options = back to the session list
+    app.check("back at the session list", "─[Select session]", "type to filter", "Esc back")
+    app.send("\x1b")                                        # Esc on the list = back to the session menu
+    app.check("back at session menu", "─[Sessions]", "new session", "back")
+    app.close()
+
+    d = db()
+    print(f"  performances = {d['performances']}")
+    print(f"  sets         = {d['sets']}")
+    if len(d["performances"]) != 1: raise SystemExit(f"FAIL: expected exactly 1 performance (both sets merged), got {len(d['performances'])}")
+    bench_id = [i for i, n in d["exercises"] if n == "Bench press"][0]
+    perf = d["performances"][0]
+    if perf[2] != bench_id: raise SystemExit(f"FAIL: the lone performance should be Bench press, got exercise_id {perf[2]}")
+    if len(d["sets"]) != 2: raise SystemExit(f"FAIL: expected 2 sets, got {len(d['sets'])}")
+    if any(s[1] != perf[0] for s in d["sets"]):
+        raise SystemExit("FAIL: both sets must attach to the single Bench press performance")
+    got = sorted((s[4], s[5], s[6]) for s in d["sets"])
+    want = sorted([(100.0, 5, "failure"), (60.0, 8, "failure")])
+    if got != want: raise SystemExit(f"FAIL: set rows {got} != {want}")
+
+    # The user-visible proof: the summary shows one 'Bench press' heading with
+    # both sets beneath, not two Bench press sections.
+    app = App()
+    app.send("\x1b[B\r")                                    # -> Sessions
+    app.send("\r")                                    # show sessions
+    app.send("\r")                                      # pick the session
+    app.send("\x1b[B\r")                                    # summary (index 1)
+    app.check("summary shows one Bench press section",
+              "Freeform session on " + date.today().strftime("%Y/%m/%d"),
+              "Bench press", "100 kg × 5 · failure", "60 kg × 8 · failure")
+    grid = app.grid()
+    bench_headings = [row for row in grid if row.strip() == "Bench press"]
+    if len(bench_headings) != 1:
+        raise SystemExit(f"FAIL: expected exactly one 'Bench press' heading in the summary, got {len(bench_headings)}")
+    print("ok   re-picking the current exercise prints a note, adds sets to the same performance, and shows once in the summary")
+    app.close()
+    print()
+
 def no_sessions_path():
     print("=== NO SESSIONS PATH: no sessions at all, list is a no-op ===")
     seed_db()
@@ -1169,6 +1243,7 @@ empty_path()
 resume_path()
 stale_confirm_path()
 no_empty_performance_path()
+duplicate_exercise_path()
 no_sessions_path()
 esc_shortcut_path()
 delete_session_path()
