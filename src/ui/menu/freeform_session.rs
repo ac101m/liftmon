@@ -226,12 +226,14 @@ fn pick_any_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exer
     Ok(Some(exercise))
 }
 
-/// Ask for one set — weight, then rep count, then how tough it was — and
-/// record it with `created_at` stamped when it is logged. The set's performance
-/// is created here too, on the first completed set, so a performance never
-/// precedes its first set: an exercise that is merely picked has no row until a
-/// set is actually completed. Escape anywhere in the set form cancels the set
-/// (nothing is created) and the caller shows the performance menu.
+/// Ask for one set — weight, then rep count, then how tough it was — show the
+/// set back for a Yes/No confirmation before anything reaches the database,
+/// and record it with `created_at` stamped when it is confirmed and logged.
+/// "No" on the confirmation re-enters the set from the weight; Escape anywhere
+/// in the form cancels the set (nothing is created) and the caller shows the
+/// performance menu. The set's performance is created on the first confirmed
+/// set, so a performance never precedes its first set: an exercise that is
+/// merely picked has no row until a set is actually completed.
 fn ask_set(
     shell: &mut Shell,
     conn: &Connection,
@@ -239,59 +241,73 @@ fn ask_set(
     performance: &mut Option<ExercisePerformance>,
     exercise: &Exercise,
 ) -> Result<(), UiError> {
-    let Some(weight_kg) = ask_weight(shell, conn, exercise.id)? else {
-        return Ok(());
-    };
-    let Some(reps) = ask_reps(shell)? else {
-        return Ok(());
-    };
-    let Some(choice) = shell.ask(
-        Some("How tough was that?".to_string()),
-        Difficulty::ALL.map(Difficulty::menu_label),
-    )?
-    else {
-        return Ok(());
-    };
-    let difficulty = Difficulty::from_label(&choice);
-    // A freshly picked exercise has no performance row yet: it is created on
-    // the first completed set — stamped with the same instant the set is
-    // logged — and the performance this leaves behind carries every later set.
-    // So a performance exists only when its exercise's first set is actually
-    // completed, and picking an exercise without logging a set never leaves an
-    // empty performance in the session (or in its summary).
-    let created_at = Utc::now();
-    let performance_id = match performance.as_ref().map(|p| p.id) {
-        Some(id) => id,
-        None => {
-            let created = ExercisePerformance::create(conn, session_id, exercise.id, created_at)?;
-            let id = created.id;
-            *performance = Some(created);
-            id
+    loop {
+        let Some(weight_kg) = ask_weight(shell, conn, exercise.id)? else {
+            return Ok(());
+        };
+        let Some(reps) = ask_reps(shell)? else {
+            return Ok(());
+        };
+        let Some(choice) = shell.ask(
+            Some("How tough was that?".to_string()),
+            Difficulty::ALL.map(Difficulty::menu_label),
+        )?
+        else {
+            return Ok(());
+        };
+        let difficulty = Difficulty::from_label(&choice);
+
+        // Before a byte is written, show the set back as it will be recorded
+        // — compactly, as `50kg x 10 (hard)` — and ask to confirm it. "No"
+        // re-asks the set from the weight; Escape cancels it entirely.
+        let summary = format!("{}kg x {} ({})", weight_kg, reps, difficulty.as_str());
+        match shell.ask(Some(format!("{summary} - Correct?")), ["Yes", "No"])? {
+            Some(answer) if answer == "Yes" => {}
+            Some(_) => continue,   // "No": re-enter the set from the weight
+            None => return Ok(()), // Escape: cancel the set
         }
-    };
-    let (set, is_personal_best) = Set::create(
-        conn,
-        performance_id,
-        exercise.id,
-        weight_kg,
-        reps,
-        difficulty,
-        created_at,
-    )?;
-    // The set as the session log shows it — the e1RM behind a personal best
-    // never appears; only the weight, reps and how tough it was do, the
-    // difficulty marker coloured (green easy, yellow hard, red failure) like
-    // the session summary's. A personal best rides at the end of the line
-    // rather than on its own.
-    let mut spans = vec![
-        Span::raw(format!("{} kg × {} · ", set.weight_kg, set.reps)),
-        Span::styled(set.difficulty.as_str(), difficulty_style(set.difficulty)),
-    ];
-    if is_personal_best {
-        spans.push(Span::raw(" · New PR!"));
+
+        // A freshly picked exercise has no performance row yet: it is created on
+        // the first completed set — stamped with the same instant the set is
+        // logged — and the performance this leaves behind carries every later set.
+        // So a performance exists only when its exercise's first set is actually
+        // completed, and picking an exercise without logging a set never leaves an
+        // empty performance in the session (or in its summary).
+        let created_at = Utc::now();
+        let performance_id = match performance.as_ref().map(|p| p.id) {
+            Some(id) => id,
+            None => {
+                let created =
+                    ExercisePerformance::create(conn, session_id, exercise.id, created_at)?;
+                let id = created.id;
+                *performance = Some(created);
+                id
+            }
+        };
+        let (set, is_personal_best) = Set::create(
+            conn,
+            performance_id,
+            exercise.id,
+            weight_kg,
+            reps,
+            difficulty,
+            created_at,
+        )?;
+        // The set as the session log shows it — the e1RM behind a personal best
+        // never appears; only the weight, reps and how tough it was do, the
+        // difficulty marker coloured (green easy, yellow hard, red failure) like
+        // the session summary's. A personal best rides at the end of the line
+        // rather than on its own.
+        let mut spans = vec![
+            Span::raw(format!("{} kg × {} · ", set.weight_kg, set.reps)),
+            Span::styled(set.difficulty.as_str(), difficulty_style(set.difficulty)),
+        ];
+        if is_personal_best {
+            spans.push(Span::raw(" · New PR!"));
+        }
+        shell.log(Line::from(spans));
+        return Ok(());
     }
-    shell.log(Line::from(spans));
-    Ok(())
 }
 
 /// Ask for the set's weight in kg, re-asking (with what was typed prefilled)
