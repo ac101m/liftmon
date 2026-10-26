@@ -182,7 +182,7 @@ fn pick_next_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exe
     loop {
         match shell
             .ask(
-                Some("Next exercise".to_string()),
+                Some("Select exercise".to_string()),
                 ["all exercises", "exercises by muscle group"],
             )?
             .as_deref()
