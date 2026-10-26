@@ -284,7 +284,7 @@ def end_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("performance menu", "next set", "next exercise", "exit session")
     app.send("\r")                                          # next set
-    app.check("weight prompt (2nd set)", "─[Weight (kg)]", "e.g. 100")
+    app.check("weight prompt (2nd set)", "─[Weight (kg)]", "> 100")
     app.send("102.5\r")
     app.send("4\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
@@ -467,7 +467,7 @@ def resume_path():
               "Current exercise 'Squat'",
               "─[Squat]", "next set", "next exercise", "exit session")
     app.send("\r")                                          # next set
-    app.check("weight prompt (resumed)", "─[Weight (kg)]", "e.g. 100")
+    app.check("weight prompt (resumed)", "─[Weight (kg)]", "> 60")
     app.send("70\r")                                        # weight
     app.send("8\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
@@ -643,7 +643,7 @@ def duplicate_exercise_path():
               "─[Bench press]", "next set", "next exercise", "exit session")
     # The next set still lands on the SAME performance.
     app.send("\r")                                          # next set
-    app.check("weight prompt (2nd set)", "─[Weight (kg)]", "e.g. 100")
+    app.check("weight prompt (2nd set)", "─[Weight (kg)]", "> 100")
     app.send("60\r")                                        # weight
     app.send("8\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
@@ -1200,6 +1200,81 @@ def exercise_muscle_groups_path():
     print("ok   by muscle group: the group's exercises list filters, picking one opens its options, and groups with no exercises loop back")
     print()
 
+def text_edit_keys_path():
+    print("=== TEXT EDIT KEYS PATH: Home/End move the caret in entry fields (front-insert and append) ===")
+    seed_db()
+    app = App()
+    app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
+    app.send("\r")                                      # -> Exercises
+    app.check("exercise menu", "─[Exercises]", "Show all exercises",
+              "Show exercises by muscle group", "Add exercise", "Back")
+    app.send("\x1b[B\x1b[B\r")                          # Add exercise (index 2, after the browse pair)
+    # The name is typed tail-first; Home then jumps the caret to the start so
+    # "Dea" lands in front. Only a working Home yields "Deadlift" (a broken one
+    # leaves "dliftDea").
+    app.send("dlift")                                   # the tail of the name
+    app.send("\x1b[H")                                  # Home: caret to the start
+    app.send("Dea\r")                                   # front-insert -> "Deadlift"
+    # The description is typed, then Home (to the start) and End (back past the
+    # text): only a working End lets "!" append instead of front-inserting.
+    app.send("hinge")                                   # description
+    app.send("\x1b[H")                                  # Home: caret to the start
+    app.send("\x1b[F")                                  # End: caret past the text
+    app.send("!\r")                                     # append -> "hinge!"
+    app.check("muscle group picker after the fields", "─[Muscle groups]", " Abs", "Space cycle")
+    app.send("\r")                                      # save the selection (no groups)
+    app.check("exercise saved with the edited name", "Saved 0 muscle group(s) for 'Deadlift'",
+              "Deadlift:", "hinge!")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    row = con.execute("SELECT name, description FROM exercises WHERE name = 'Deadlift'").fetchone()
+    con.close()
+    if row != ("Deadlift", "hinge!"):
+        raise SystemExit(f"FAIL: expected ('Deadlift', 'hinge!'), got {row}")
+    print("ok   Home front-inserts in the name and End appends in the description")
+    print()
+
+def weight_default_path():
+    print("=== WEIGHT DEFAULT PATH: the weight field prefills with the last weight used for that exercise ===")
+    seed_db()
+    app = App()
+    app.check("main menu", "─[Main menu]", "Exercises", "Sessions", "Exit")
+    app.send("\x1b[B\r")                                    # -> Sessions
+    app.check("session menu", "─[Sessions]", "new session", "back")
+    app.send("\x1b[B\r")                                          # new session
+    app.check("new session lands on its options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
+              "begin", "summary", "back")
+    app.send("\r")                                          # begin (index 0)
+    app.check("submenu", "─[Select exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                          # all exercises (index 0)
+    app.check("exercise picker", "Select exercise", " Bench press", " Squat")
+    app.send("\r")                                          # pick Bench press
+    # First set of the exercise: no last weight yet, so the field is empty
+    # (the suggestion shows) and the weight still has to be typed.
+    app.check("weight prompt", "─[Weight (kg)]", "e.g. 100")
+    app.send("100\r")                                       # weight
+    app.send("5\r")                                         # reps
+    app.send("\r")                                          # difficulty: easy (index 0)
+    app.check("first set logged", "100 kg × 5 · easy", "next set")
+    app.send("\r")                                          # next set
+    # The weight field now defaults to 100 — the last weight used — and Enter
+    # accepts it without any typing.
+    app.check("weight prefilled with the last weight", "─[Weight (kg)]", "> 100")
+    app.send("\r")                                          # accept the default weight
+    app.send("6\r")                                         # reps
+    app.send("\r")                                          # difficulty: easy (index 0)
+    app.check("second set accepted the default", "100 kg × 6 · easy", "exit session")
+    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.close()
+
+    d = db()
+    weights_reps = sorted((s[4], s[5]) for s in d["sets"])
+    if weights_reps != [(100.0, 5), (100.0, 6)]:
+        raise SystemExit(f"FAIL: expected two 100 kg sets (x5, x6), got {weights_reps}")
+    print("ok   the weight field prefills with the last weight and Enter accepts it")
+    print()
+
 def cargo_pkg_version():
     """The version Cargo.toml declares. `liftmon --version` is wired to
     CARGO_PKG_VERSION at compile time, so the harness asserts exact parity."""
@@ -1261,6 +1336,8 @@ personal_best_path()
 delete_path()
 muscle_groups_path()
 exercise_muscle_groups_path()
+weight_default_path()
+text_edit_keys_path()
 cli_path()
 missing_env_path()
 print("ALL SCENARIOS PASSED")

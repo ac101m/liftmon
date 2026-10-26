@@ -172,6 +172,21 @@ impl Set {
         ))
     }
 
+    /// The weight of the exercise's most recent set, if it has ever been
+    /// performed — the default the weight ask prefills with, so a repeated
+    /// weight needs no typing. `None` for an exercise with no sets at all.
+    pub fn last_weight(conn: &Connection, exercise_id: i64) -> Result<Option<f64>, DomainError> {
+        match conn.query_row(
+            "SELECT weight_kg FROM sets WHERE exercise_id = ?1 ORDER BY id DESC LIMIT 1",
+            [exercise_id],
+            |row| row.get(0),
+        ) {
+            Ok(weight) => Ok(Some(weight)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
     /// The exercise's personal bests — the sets that beat every strictly
     /// earlier set's Epley e1RM at the time they were done — newest first, up
     /// to `limit`. Because each new best must strictly beat all that came
@@ -567,6 +582,63 @@ mod tests {
 
         // An exercise that has never been performed has no bests.
         assert!(Set::personal_bests(&conn, 999, 3).unwrap().is_empty());
+    }
+
+    #[test]
+    fn last_weight_returns_the_most_recent_set_of_that_exercise() {
+        let conn = test_db();
+        let perf = seed_performance(&conn); // a session for exercise 1
+        assert_eq!(
+            Set::last_weight(&conn, 1).unwrap(),
+            None,
+            "an unperformed exercise has no last weight"
+        );
+
+        for w in [100.0, 102.5, 60.0] {
+            Set::create(
+                &conn,
+                perf,
+                1,
+                w,
+                5,
+                Difficulty::Easy,
+                dt(2026, 10, 20, 9, 0),
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            Set::last_weight(&conn, 1).unwrap(),
+            Some(60.0),
+            "the newest set, not the first or the heaviest"
+        );
+
+        // The exercise's own history decides it: a set of another exercise —
+        // even logged later — does not leak into this one's default.
+        let squat = crate::domain::Exercise::create(&conn, "squat", "").unwrap();
+        let second_session =
+            crate::domain::Session::create(&conn, dt(2026, 10, 20, 10, 0)).unwrap();
+        let perf2 = crate::domain::ExercisePerformance::create(
+            &conn,
+            second_session.id,
+            squat.id,
+            dt(2026, 10, 20, 10, 0),
+        )
+        .unwrap();
+        Set::create(
+            &conn,
+            perf2.id,
+            squat.id,
+            200.0,
+            1,
+            Difficulty::Easy,
+            dt(2026, 10, 20, 10, 1),
+        )
+        .unwrap();
+        assert_eq!(
+            Set::last_weight(&conn, 1).unwrap(),
+            Some(60.0),
+            "another exercise's set leaves this one's last weight alone"
+        );
     }
 
     #[test]

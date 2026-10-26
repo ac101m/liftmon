@@ -137,6 +137,16 @@ impl Picker {
         }
     }
 
+    /// Move the caret to the very start of the filter.
+    fn move_cursor_home(&mut self) {
+        self.filter_cursor = 0;
+    }
+
+    /// Move the caret past the last character (to the end of the filter).
+    fn move_cursor_end(&mut self) {
+        self.filter_cursor = self.filter.len();
+    }
+
     /// The filter changed, so the matches may have narrowed: start the
     /// highlight back at the top of the new list.
     fn filter_changed(&mut self) {
@@ -240,6 +250,8 @@ impl Element for Picker {
             }
             KeyCode::Left => self.move_cursor_left(),
             KeyCode::Right => self.move_cursor_right(),
+            KeyCode::Home => self.move_cursor_home(),
+            KeyCode::End => self.move_cursor_end(),
             KeyCode::Up => self.move_selected(-1),
             KeyCode::Down => self.move_selected(1),
             KeyCode::Enter => {
@@ -406,6 +418,26 @@ mod tests {
         // Backspace removes the char before the caret (the 'x').
         picker.on_key(key(KeyCode::Backspace));
         assert_eq!(picker.filter, "abc");
+    }
+
+    #[test]
+    fn home_and_end_jump_the_filter_caret() {
+        let mut picker = picker();
+        type_text(&mut picker, "be");
+        picker.on_key(key(KeyCode::Down)); // selected = 1 (incline bench)
+        picker.on_key(key(KeyCode::Home));
+        assert_eq!(picker.filter_cursor, 0);
+        picker.on_key(key(KeyCode::End));
+        assert_eq!(picker.filter_cursor, 2);
+        assert_eq!(
+            picker.selected, 1,
+            "a bare caret jump needs no re-filter, so the highlight is untouched"
+        );
+
+        // Home then typing inserts at the front of the filter.
+        picker.on_key(key(KeyCode::Home));
+        type_text(&mut picker, "flat ");
+        assert_eq!(picker.filter, "flat be");
     }
 
     #[test]

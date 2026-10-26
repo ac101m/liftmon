@@ -28,6 +28,12 @@ pub(crate) struct TextInput {
     /// Column width of the last render; the caret's row/column (and hence how
     /// tall the box needs to be) is computed against this width.
     last_width: u16,
+    /// Whether the seeded text is a *default* to be overwritten: the first
+    /// character typed (or a Backspace) replaces it wholesale, so accepting
+    /// the default is just Enter and entering a new value overwrites it.
+    replace_on_type: bool,
+    /// Whether `buffer` is still the untouched seeded default.
+    replacing: bool,
 }
 
 impl TextInput {
@@ -38,7 +44,24 @@ impl TextInput {
             buffer: initial.to_owned(),
             cursor: initial.len(),
             last_width: 0,
+            replace_on_type: false,
+            replacing: false,
         }
+    }
+
+    /// Like [`Self::new`], but `initial` is presented as a replaceable default
+    /// (e.g. the last weight used): Enter accepts it as-is, while the first
+    /// character typed — or a Backspace — clears it and starts the entry over.
+    /// Moving the caret ends the replacement, so the text can still be edited.
+    pub(crate) fn with_default(
+        title: Option<String>,
+        prompt: Option<String>,
+        default: &str,
+    ) -> Self {
+        let mut input = Self::new(title, prompt, default);
+        input.replace_on_type = true;
+        input.replacing = true;
+        input
     }
 
     /// What the user has typed, for the shell to harvest after an Escape.
@@ -63,6 +86,26 @@ impl TextInput {
                 .next()
                 .map(|c| c.len_utf8())
                 .unwrap_or(0);
+        }
+    }
+
+    /// Move the caret to the very start of the text.
+    fn move_cursor_home(&mut self) {
+        self.cursor = 0;
+    }
+
+    /// Move the caret past the last character (to the end of the text).
+    fn move_cursor_end(&mut self) {
+        self.cursor = self.buffer.len();
+    }
+
+    /// Clear the seeded default the first time the user edits it (typing or
+    /// Backspace), so the field is overwritten rather than appended to.
+    fn replace_default(&mut self) {
+        if self.replacing {
+            self.buffer.clear();
+            self.cursor = 0;
+            self.replacing = false;
         }
     }
 }
@@ -116,7 +159,7 @@ impl Element for TextInput {
     }
 
     fn hint(&self) -> String {
-        "type · ←/→ move · Esc cancel · Enter confirm · Ctrl+C quit".into()
+        "type · ←/→/Home/End move · Esc cancel · Enter confirm · Ctrl+C quit".into()
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
@@ -169,20 +212,42 @@ impl Element for TextInput {
     fn on_key(&mut self, key: KeyEvent) -> Option<ElementResult> {
         match key.code {
             KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                // The first character typed replaces a replaceable default
+                // wholesale, so a prefilled field reads as "Enter to accept".
+                self.replace_default();
                 self.buffer.insert(self.cursor, c);
                 self.cursor += c.len_utf8();
             }
-            KeyCode::Backspace if self.cursor > 0 => {
-                let start = self.buffer[..self.cursor]
-                    .char_indices()
-                    .next_back()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                self.buffer.replace_range(start..self.cursor, "");
-                self.cursor = start;
+            KeyCode::Backspace => {
+                self.replace_default();
+                if self.cursor > 0 {
+                    let start = self.buffer[..self.cursor]
+                        .char_indices()
+                        .next_back()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
+                    self.buffer.replace_range(start..self.cursor, "");
+                    self.cursor = start;
+                }
             }
-            KeyCode::Left => self.move_cursor_left(),
-            KeyCode::Right => self.move_cursor_right(),
+            // A caret move declines the default and edits the text from where
+            // it now stands.
+            KeyCode::Left => {
+                self.replacing = false;
+                self.move_cursor_left();
+            }
+            KeyCode::Right => {
+                self.replacing = false;
+                self.move_cursor_right();
+            }
+            KeyCode::Home => {
+                self.replacing = false;
+                self.move_cursor_home();
+            }
+            KeyCode::End => {
+                self.replacing = false;
+                self.move_cursor_end();
+            }
             KeyCode::Enter => return Some(ElementResult::Value(self.buffer.clone())),
             KeyCode::Esc => return Some(ElementResult::Cancelled),
             _ => {}
@@ -272,6 +337,87 @@ mod tests {
         input.on_key(key(KeyCode::Right));
         input.on_key(key(KeyCode::Right));
         assert_eq!(input.cursor, 2);
+    }
+
+    #[test]
+    fn home_and_end_jump_the_caret() {
+        let mut input = TextInput::new(None, None, "");
+        type_text(&mut input, "hello");
+        input.on_key(key(KeyCode::Home));
+        assert_eq!(input.cursor, 0, "Home walks to the start");
+        input.on_key(key(KeyCode::End));
+        assert_eq!(input.cursor, 5, "End walks to past the last char");
+
+        // Home then typing inserts at the front; End then typing appends.
+        input.on_key(key(KeyCode::Home));
+        type_text(&mut input, "say ");
+        assert_eq!(input.buffer, "say hello");
+        input.on_key(key(KeyCode::End));
+        type_text(&mut input, "!");
+        assert_eq!(input.buffer, "say hello!");
+        assert_eq!(input.cursor, input.buffer.len());
+    }
+
+    #[test]
+    fn home_and_end_land_on_char_boundaries() {
+        let mut input = TextInput::new(None, None, "");
+        type_text(&mut input, "héllo"); // 'é' spans two bytes
+        input.on_key(key(KeyCode::Home));
+        assert_eq!(input.cursor, 0);
+        input.on_key(key(KeyCode::End));
+        assert_eq!(
+            input.cursor,
+            input.buffer.len(),
+            "End lands past the last char, a valid boundary even with multibyte text"
+        );
+    }
+
+    #[test]
+    fn typing_replaces_a_seeded_default() {
+        let mut input = TextInput::with_default(Some("Weight (kg)".into()), None, "100");
+        assert_eq!(input.buffer, "100");
+        type_text(&mut input, "50");
+        assert_eq!(
+            input.buffer, "50",
+            "the first character overwrote the default, so the rest appended"
+        );
+        assert_eq!(input.cursor, 2);
+        // Enter accepts what now stands.
+        assert_eq!(
+            input.on_key(key(KeyCode::Enter)),
+            Some(ElementResult::Value("50".into()))
+        );
+    }
+
+    #[test]
+    fn backspace_clears_a_seeded_default() {
+        let mut input = TextInput::with_default(None, None, "100");
+        input.on_key(key(KeyCode::Backspace));
+        assert_eq!(
+            input.buffer, "",
+            "Backspace wipes the default for a fresh entry"
+        );
+        assert_eq!(input.cursor, 0);
+        type_text(&mut input, "80");
+        assert_eq!(input.buffer, "80");
+    }
+
+    #[test]
+    fn a_caret_move_ends_the_default_replacement() {
+        let mut input = TextInput::with_default(None, None, "100");
+        input.on_key(key(KeyCode::End)); // no longer accepting the default
+        type_text(&mut input, "0"); // appends like an ordinary edit
+        assert_eq!(input.buffer, "1000");
+    }
+
+    #[test]
+    fn enter_accepts_a_seeded_default_untouched() {
+        let mut input = TextInput::with_default(Some("Weight (kg)".into()), None, "100");
+        assert_eq!(
+            input.on_key(key(KeyCode::Enter)),
+            Some(ElementResult::Value("100".into())),
+            "Enter takes the default without any typing"
+        );
     }
 
     #[test]

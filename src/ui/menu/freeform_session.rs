@@ -239,7 +239,7 @@ fn ask_set(
     performance: &mut Option<ExercisePerformance>,
     exercise: &Exercise,
 ) -> Result<(), UiError> {
-    let Some(weight_kg) = ask_weight(shell)? else {
+    let Some(weight_kg) = ask_weight(shell, conn, exercise.id)? else {
         return Ok(());
     };
     let Some(reps) = ask_reps(shell)? else {
@@ -295,15 +295,37 @@ fn ask_set(
 }
 
 /// Ask for the set's weight in kg, re-asking (with what was typed prefilled)
-/// until it parses. `None` when the user backed out with Escape.
-fn ask_weight(shell: &mut Shell) -> Result<Option<f64>, UiError> {
-    let mut pending = String::new();
+/// until it parses. `None` when the user backed out with Escape. The field
+/// defaults to the last weight used for this exercise, so a repeated weight
+/// is just Enter — typing a new value overwrites the default.
+fn ask_weight(
+    shell: &mut Shell,
+    conn: &Connection,
+    exercise_id: i64,
+) -> Result<Option<f64>, UiError> {
+    let default = Set::last_weight(conn, exercise_id)?
+        .map(|weight| format!("{weight}"))
+        .unwrap_or_default();
+    let mut pending = default;
+    let mut first_ask = true;
     loop {
-        match shell.read_line(
-            Some("Weight (kg)".to_string()),
-            Some("e.g. 100".to_string()),
-            &pending,
-        )? {
+        // Only the first ask presents the prefill as a replaceable default; a
+        // re-ask after a bad parse edits what was typed instead.
+        let outcome = if first_ask {
+            first_ask = false;
+            shell.read_line_default(
+                Some("Weight (kg)".to_string()),
+                Some("e.g. 100".to_string()),
+                &pending,
+            )?
+        } else {
+            shell.read_line(
+                Some("Weight (kg)".to_string()),
+                Some("e.g. 100".to_string()),
+                &pending,
+            )?
+        };
+        match outcome {
             ReadOutcome::Value(raw) => match parse_weight(&raw) {
                 Some(weight) => return Ok(Some(weight)),
                 None => {
