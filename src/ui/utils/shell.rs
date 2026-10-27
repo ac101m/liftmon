@@ -71,6 +71,9 @@ pub(crate) enum LogLine {
     Text(Line<'static>),
     /// A full-width horizontal rule.
     Rule,
+    /// A full-width horizontal rule in the heavier double-line weight — the
+    /// menu dividers' — used to frame the startup splash.
+    DoubleRule,
 }
 
 /// A running terminal session.
@@ -130,6 +133,16 @@ impl Shell {
         self.history.push(LogLine::Rule);
         self.history.extend(lines.into_iter().map(LogLine::Text));
         self.history.push(LogLine::Rule);
+        self.scroll = 0;
+    }
+
+    /// Begin a new section framed by double rules — the same weight as the
+    /// menu dividers. The startup splash uses this so it reads as part of the
+    /// app's double-line language rather than as an ordinary framed block.
+    pub(crate) fn log_double_section(&mut self, lines: Vec<Line<'static>>) {
+        self.history.push(LogLine::DoubleRule);
+        self.history.extend(lines.into_iter().map(LogLine::Text));
+        self.history.push(LogLine::DoubleRule);
         self.scroll = 0;
     }
 
@@ -421,18 +434,20 @@ fn history_rows(history: &[LogLine], width: u16) -> Vec<Line<'static>> {
     let mut rows: Vec<Line> = Vec::new();
     let mut previous_was_rule = false;
     for entry in history {
-        match entry {
+        let rule = match entry {
             LogLine::Text(line) => {
                 rows.extend(wrap_line(line.clone(), width));
-                previous_was_rule = false;
+                None
             }
-            LogLine::Rule => {
-                if !previous_was_rule {
-                    rows.push(Line::from("─".repeat(width as usize)));
-                }
-                previous_was_rule = true;
-            }
+            LogLine::Rule => Some("─".repeat(width as usize)),
+            LogLine::DoubleRule => Some("═".repeat(width as usize)),
+        };
+        if let Some(rule) = rule
+            && !previous_was_rule
+        {
+            rows.push(Line::from(rule));
         }
+        previous_was_rule = !matches!(entry, LogLine::Text(_));
     }
     rows
 }
@@ -442,7 +457,10 @@ fn history_rows(history: &[LogLine], width: u16) -> Vec<Line<'static>> {
 /// rule, which is allowed to meet the element below), otherwise one fewer so a
 /// blank spacer row always sits between the log and the element.
 fn history_fill(history: &[LogLine], area_height: u16) -> usize {
-    let spare = u16::from(!matches!(history.last(), Some(LogLine::Rule)));
+    let spare = u16::from(!matches!(
+        history.last(),
+        Some(LogLine::Rule | LogLine::DoubleRule)
+    ));
     area_height.saturating_sub(spare) as usize
 }
 
@@ -499,7 +517,7 @@ fn render_history(buf: &mut Buffer, area: Rect, history: &[LogLine], scroll: usi
 /// selection, so it reads in the terminal's usual highlight colour rather than
 /// a hard-coded one.
 fn render_scroll_indicator(buf: &mut Buffer, area: Rect) {
-    const LABEL: &str = " ↓ More messages ↓ ";
+    const LABEL: &str = " ↓ More lines ↓ ";
     let width = area.width as usize;
     if width == 0 {
         return;
@@ -653,6 +671,55 @@ mod tests {
             "description sits directly beneath the name"
         );
         assert_eq!(row(3), "─".repeat(40), "closing divider");
+    }
+
+    #[test]
+    fn history_renders_the_splash_framed_by_double_rules() {
+        // The startup splash is framed by double rules — the menu dividers'
+        // weight — rather than the single rules ordinary sections use.
+        let history = vec![
+            LogLine::DoubleRule,
+            LogLine::Text(Line::from(" LIFTMON  v1.1.1  ||-||")),
+            LogLine::Text(Line::from(" Database schema v5.")),
+            LogLine::DoubleRule,
+        ];
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 4));
+        render_history(&mut buf, Rect::new(0, 0, 40, 4), &history, 0);
+
+        let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0), "═".repeat(40), "top edge is a double rule");
+        assert_eq!(row(1).trim_end(), " LIFTMON  v1.1.1  ||-||");
+        assert_eq!(row(2).trim_end(), " Database schema v5.");
+        assert_eq!(row(3), "═".repeat(40), "bottom edge is a double rule");
+    }
+
+    #[test]
+    fn a_double_rule_swallows_a_following_rule_like_any_rule_pair() {
+        // If an ordinary section is logged right after the splash, its opening
+        // single rule is dropped the way two back-to-back single rules always
+        // are: the splash's closing double rule does double duty as the
+        // section's top edge, and the section still closes with its own.
+        let history = vec![
+            LogLine::DoubleRule,
+            LogLine::Text(Line::from("splash")),
+            LogLine::DoubleRule,
+            LogLine::Rule,
+            LogLine::Text(Line::from("section")),
+            LogLine::Rule,
+        ];
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 5));
+        render_history(&mut buf, Rect::new(0, 0, 40, 5), &history, 0);
+
+        let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0), "═".repeat(40), "splash opens double");
+        assert_eq!(row(1).trim_end(), "splash");
+        assert_eq!(
+            row(2),
+            "═".repeat(40),
+            "the splash close doubles as the section's top edge"
+        );
+        assert_eq!(row(3).trim_end(), "section");
+        assert_eq!(row(4), "─".repeat(40), "the section closes single");
     }
 
     #[test]
@@ -811,7 +878,7 @@ mod tests {
         // The newest-in-window line sits directly above the spacer, with the
         // scrolled badge floating on the spacer row.
         assert_eq!(row(2).trim_end(), "third");
-        assert!(row(3).contains("More messages"), "scrolled badge is on it");
+        assert!(row(3).contains("More lines"), "scrolled badge is on it");
     }
 
     #[test]
@@ -829,7 +896,7 @@ mod tests {
             "the window ends at the oldest rows, clamped before the top"
         );
         assert!(
-            row(2).contains("More messages"),
+            row(2).contains("More lines"),
             "the scrolled badge floats on the blank spacer"
         );
     }
@@ -878,7 +945,7 @@ mod tests {
         render_history(&mut buf, Rect::new(0, 0, 40, 4), &history, 2);
 
         let row3: String = (0..40).map(|x| buf[(x, 3)].symbol()).collect();
-        let label = " ↓ More messages ↓ ";
+        let label = " ↓ More lines ↓ ";
         let centre = (40 - label.chars().count()) / 2;
         let badge: String = row3
             .chars()

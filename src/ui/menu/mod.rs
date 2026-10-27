@@ -95,6 +95,21 @@ pub(super) fn log_exercise(shell: &mut Shell, exercise: &Exercise) {
     shell.log_section(exercise_lines(exercise));
 }
 
+/// Print the startup splash into the history: the all-caps title, version, a
+/// little dumbbell, and the database's schema version, framed by double rules
+/// (the menu dividers' weight) so the run's log opens with its brand. Called
+/// once from `main.rs` before the first screen.
+pub(crate) fn log_splash(shell: &mut Shell, version: &str, schema_version: usize) {
+    shell.log_double_section(vec![
+        Line::from(vec![
+            Span::raw(" "),
+            Span::styled("LIFTMON", Style::new().add_modifier(Modifier::BOLD)),
+            Span::raw(format!(" v{version}  ||-||")),
+        ]),
+        Line::from(format!(" Database schema v{schema_version}.")),
+    ]);
+}
+
 /// The foreground colour a set's difficulty marker reads as: green for easy,
 /// yellow for hard, red for a failed set. Placed on the difficulty span so it
 /// survives the history's line-level dimming (span styles ride on top of it) —

@@ -103,6 +103,15 @@ fn main_menu(database: &Database) -> ExitCode {
         Err(err) => return fail(format!("could not start the terminal UI: {err}")),
     };
 
+    // Open the run's log with its brand: the startup splash — all-caps title,
+    // version, a little dumbbell, and the database's schema version — framed
+    // by double rules.
+    ui::log_splash(
+        &mut shell,
+        env!("CARGO_PKG_VERSION"),
+        database.version().unwrap_or(0),
+    );
+
     // "Exit" (and Ctrl+C) end the walk; every other choice steps the machine
     // on to the next screen. The connection goes along so screens can persist.
     let mut menu = ui::Menu::Main;

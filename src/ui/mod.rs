@@ -18,6 +18,7 @@ mod menu;
 mod utils;
 
 pub(crate) use menu::Menu;
+pub(crate) use menu::log_splash;
 pub(crate) use utils::Shell;
 pub(crate) use utils::UiError;
 pub use utils::get_user_selection;

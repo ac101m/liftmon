@@ -40,6 +40,11 @@ if os.path.exists(DB):
     )
 os.chdir("/tmp")
 
+# The newest schema version this build knows. seed_db stamps it, and the splash
+# path asserts the startup splash reports it, so a schema migration both bumps
+# the seed and flips the assertion in the same run.
+SCHEMA_VERSION = 5
+
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat")),
             refs=()):
     """Rebuild the on-disk DB to the exact v5 schema (delete rules included) —
@@ -105,7 +110,7 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
             "INSERT INTO muscle_group_reference (exercise_id, muscle_group_id, stimulus_type) "
             "SELECT e.id, g.id, 'high' FROM exercises e, muscle_group g "
             "WHERE e.name = ? AND g.name = ?", (exercise, group))
-    con.execute("PRAGMA user_version = 5"); con.commit(); con.close()
+    con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}"); con.commit(); con.close()
 
 def stored_local_date(s):
     """Parse a stored created_at text (fmt '%F %T%.f%:z', e.g.
@@ -1361,6 +1366,26 @@ def confirm_set_path():
     print("ok   No re-enters the set, Yes commits, Esc cancels — nothing unconfirmed is written")
     print()
 
+def splash_path():
+    print("=== SPLASH PATH: the startup history opens with the brand — version and schema version ===")
+    seed_db()
+    app = App()
+    # Every launch's first history lines are the splash: the all-caps title
+    # with the build version (must match Cargo.toml byte-for-byte) and the
+    # dumbbell, plus the database's schema version (must match what seed_db
+    # stamped — the SCHEMA_VERSION constant). The main menu beneath proves the
+    # app booted past the splash into the TUI.
+    app.check(
+        "startup splash",
+        f"LIFTMON v{cargo_pkg_version()}",
+        "||-||",
+        f"Database schema v{SCHEMA_VERSION}.",
+        "═[Main menu]",
+    )
+    app.close()
+    print(f"ok   splash shows LIFTMON v{cargo_pkg_version()} and schema v{SCHEMA_VERSION} on startup")
+    print()
+
 def cargo_pkg_version():
     """The version Cargo.toml declares. `liftmon --version` is wired to
     CARGO_PKG_VERSION at compile time, so the harness asserts exact parity."""
@@ -1408,6 +1433,7 @@ def missing_env_path():
     print("ok   refused to start; stderr prompts to set LIFTMON_DB_PATH")
     print()
 
+splash_path()
 end_path()
 leave_path()
 empty_path()

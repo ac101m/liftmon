@@ -62,7 +62,11 @@ What happens on a run:
    prints `FAIL <scenario>` with a screen dump and exits 1.
 
 The scenarios currently covered are the *path* functions at the bottom of the
-harness: starting/ending a session, leaving one mid-flow, the empty-exercise
+harness: every launch opens the history with the startup splash — the all-caps
+title, version and `||-||` dumbbell, plus the database schema version,
+bracketed by double rules (a dedicated splash path asserts the version equals
+the `--version` build version and the schema version matches the seed) — then
+starting/ending a session, leaving one mid-flow, the empty-exercise
 no-op path, resuming a session (with the 6-hour stale confirmation), the
 no-sessions path, the Escape-shortcut path, deleting a session (with its
 history), the personal-best path (a set beating the exercise's prior Epley e1RM gets
