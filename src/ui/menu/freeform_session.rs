@@ -103,6 +103,10 @@ pub(super) fn run(
             (ex, None, false)
         }
     };
+    // The highlight on the performance menu is remembered across its re-asks —
+    // after logging a set, after moving to another exercise, after an Escape —
+    // since none of those leave the menu. It only resets on entering the flow.
+    let mut menu_selected = 0;
     'active: loop {
         if !menu_first {
             ask_set(shell, conn, session.id, &mut performance, &exercise)?;
@@ -111,13 +115,13 @@ pub(super) fn run(
         // The performance menu. There is no "back" option on it, so Escape
         // just re-asks the menu rather than starting another set.
         loop {
-            match shell
-                .ask(
-                    Some(exercise.name.clone()),
-                    ["next set", "next exercise", "exit session"],
-                )?
-                .as_deref()
-            {
+            let (menu_choice, menu_here) = shell.ask_selected(
+                Some(exercise.name.clone()),
+                ["next set", "next exercise", "exit session"],
+                menu_selected,
+            )?;
+            menu_selected = menu_here;
+            match menu_choice.as_deref() {
                 // Another set for the same exercise.
                 Some("next set") => break,
                 // Pick the next exercise.
@@ -179,14 +183,17 @@ fn pick_next_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exe
         shell.log("No exercises yet — add one first");
         return Ok(None);
     }
+    // Escaping a picker re-asks this submenu; the highlight stays on the
+    // method that was just used rather than jumping back to "all exercises".
+    let mut selected = 0;
     loop {
-        match shell
-            .ask(
-                Some("Select exercise".to_string()),
-                ["all exercises", "exercises by muscle group"],
-            )?
-            .as_deref()
-        {
+        let (choice, selected_here) = shell.ask_selected(
+            Some("Select exercise".to_string()),
+            ["all exercises", "exercises by muscle group"],
+            selected,
+        )?;
+        selected = selected_here;
+        match choice.as_deref() {
             None => return Ok(None), // Escape: leave the flow
             Some("all exercises") => {
                 if let Some(exercise) = pick_any_exercise(shell, conn)? {

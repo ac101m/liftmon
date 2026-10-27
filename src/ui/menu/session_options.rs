@@ -43,23 +43,27 @@ pub(super) fn run(
     // A session with nothing performed yet reads "begin", not "resume" — the
     // flow is the same either way; only the honest label differs.
     let begin = info.performance_count == 0;
+    // Only leaving this menu (resuming, deleting, backing out) resets the
+    // highlight: actions that stay here — the summary, a declined delete —
+    // re-ask with the cursor where it was.
+    let mut selected = 0;
     loop {
-        match shell
-            .ask(
-                Some(format!(
-                    "{} · {}",
-                    format_date(local_date(info.created_at)),
-                    FREEFORM_LABEL
-                )),
-                [
-                    begin_or_resume(info.performance_count),
-                    "summary",
-                    "delete",
-                    "back",
-                ],
-            )?
-            .as_deref()
-        {
+        let (choice, selected_here) = shell.ask_selected(
+            Some(format!(
+                "{} · {}",
+                format_date(local_date(info.created_at)),
+                FREEFORM_LABEL
+            )),
+            [
+                begin_or_resume(info.performance_count),
+                "summary",
+                "delete",
+                "back",
+            ],
+            selected,
+        )?;
+        selected = selected_here;
+        match choice.as_deref() {
             // "begin" (nothing performed yet) or "resume" both enter the
             // freeform flow, which loads the session itself and falls into the
             // pick flow for an empty one.

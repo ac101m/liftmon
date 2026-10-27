@@ -308,7 +308,7 @@ def end_path():
     app.check("confirm squat set", "60kg x 10 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (squat)", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.send("\x1b[B\r")                                    # exit session (next-exercise stays highlighted; one down)
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -435,7 +435,7 @@ def resume_path():
     app.check("confirm squat set", "60kg x 10 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (squat)", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\r")                                    # next exercise (index 1)
+    app.send("\r")                                          # next exercise (still highlighted: stays in place)
     app.check("submenu (3rd)", "─[Select exercise]", "all exercises", "exercises by muscle group")
     app.send("\x1b")                                        # escape the submenu: leave open
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
@@ -473,7 +473,7 @@ def resume_path():
               "Bench press", "100 kg × 5 · failure", "Squat", "60 kg × 10 · failure")
     app.check("summary leaves the options menu up", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
-    app.send("\r")                                          # resume (index 0)
+    app.send("\x1b[A\r")                                    # resume: up to it (summary stays highlighted)
     app.check("resumed on last exercise's menu (no confirm)",
               "Resumed freeform session from " + date.today().strftime("%Y/%m/%d"),
               "Current exercise 'Squat'",
@@ -591,7 +591,7 @@ def no_empty_performance_path():
     app.check("moved to Squat logged", "Moved to next exercise 'Squat'")
     app.send("\x1b")                                        # Esc at the weight form cancels the set
     app.check("performance menu (squat)", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.send("\x1b[B\r")                                    # exit session (next-exercise stays highlighted; one down)
     app.check("back at the session's options", "─[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -660,7 +660,7 @@ def duplicate_exercise_path():
     app.check("already selected note", "'Bench press' is already selected",
               "─[Bench press]", "next set", "next exercise", "exit session")
     # The next set still lands on the SAME performance.
-    app.send("\r")                                          # next set
+    app.send("\x1b[A\r")                                    # next set: up to it (next-exercise stays highlighted)
     app.check("weight prompt (2nd set)", "─[Weight (kg)]", "> 100")
     app.send("60\r")                                        # weight
     app.send("8\r")                                         # reps
@@ -901,7 +901,7 @@ def delete_session_path():
     app.check("delete confirm", "Delete session from " + doomed_label + "?", "Yes", "No")
     app.send("\r")                                          # No is the default: keeps the session
     app.check("No keeps the session", "─[" + doomed_label + " · freeform session]", "resume", "summary", "delete", "back")
-    app.send("\x1b[B\x1b[B\r")                              # delete again
+    app.send("\r")                                          # delete again (still highlighted: stays in place)
     app.check("delete confirm (again)", "Delete session from " + doomed_label + "?", "Yes", "No")
     app.send("\x1b[A\r")                                    # Yes: up to it, delete it
     app.check("deleted + back at the session list", "Deleted session from " + doomed_label,
@@ -1189,12 +1189,12 @@ def exercise_muscle_groups_path():
     app.send(" ")                                       # Abs: unselected -> low
     app.send("\r")                                      # save
     app.check("saved via options", "Saved 1 muscle group(s) for 'Bench press'")
-    app.send("\x1b[B" * 3 + "\r")                       # muscle groups again
+    app.send("\r")                                      # edit muscle groups again (still highlighted)
     app.check("picker prefilled from the saved refs", "· low")
     app.send(" ")                                       # Abs: low -> medium
     app.send("\r")                                      # save (replaces the previous selection)
     app.check("saved replaced selection", "Saved 1 muscle group(s) for 'Bench press'")
-    app.send("\r")                                      # info: now lists the saved group
+    app.send("\x1b[A" * 3 + "\r")                       # info: up to it (edit muscle groups stays highlighted)
     app.check("info lists the assigned groups", "Muscle groups:", " Abs", "· medium")
     app.close()
 

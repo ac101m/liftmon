@@ -20,15 +20,18 @@ pub(super) fn run(
     conn: &Connection,
     name: String,
 ) -> Result<Option<Menu>, UiError> {
+    let mut selected = 0;
     loop {
         let Some(group) = MuscleGroup::find_by_name(conn, &name)? else {
             shell.log("That muscle group is no longer there");
             return Ok(Some(Menu::SelectMuscleGroup));
         };
-        match shell
-            .ask(Some(group.name.clone()), ["info", "back"])?
-            .as_deref()
-        {
+        // "info" stays on this menu, so the re-ask keeps the highlight where
+        // it was; only backing out resets it on the way back in.
+        let (choice, selected_here) =
+            shell.ask_selected(Some(group.name.clone()), ["info", "back"], selected)?;
+        selected = selected_here;
+        match choice.as_deref() {
             // Read-only: print the group as a framed section — divider, bold
             // name with a trailing colon, indented description, divider.
             Some("info") => shell.log_section(muscle_group_lines(&group)),

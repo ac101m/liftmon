@@ -25,25 +25,29 @@ pub(super) fn run(
     conn: &Connection,
     mut name: String,
 ) -> Result<Option<Menu>, UiError> {
+    // Only leaving this menu (backing out, deleting) resets the highlight:
+    // actions that stay here — info, an edit, a refused or declined delete —
+    // re-ask with the cursor where it was.
+    let mut selected = 0;
     loop {
         let Some(exercise) = Exercise::find_by_name(conn, &name)? else {
             shell.log(format!("Exercise '{name}' no longer exists"));
             return Ok(Some(Menu::Exercises));
         };
-        match shell
-            .ask(
-                Some(exercise.name.clone()),
-                [
-                    "info",
-                    "edit name",
-                    "edit description",
-                    "edit muscle groups",
-                    "delete",
-                    "back",
-                ],
-            )?
-            .as_deref()
-        {
+        let (choice, selected_here) = shell.ask_selected(
+            Some(exercise.name.clone()),
+            [
+                "info",
+                "edit name",
+                "edit description",
+                "edit muscle groups",
+                "delete",
+                "back",
+            ],
+            selected,
+        )?;
+        selected = selected_here;
+        match choice.as_deref() {
             // Read-only: print the exercise as a framed section — divider,
             // bold name with a trailing colon, indented description, the
             // assigned muscle groups (only their marker words coloured, like a

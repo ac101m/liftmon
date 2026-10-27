@@ -72,12 +72,16 @@ impl Choice {
     /// Build a choice list with `selected` as the row the highlight rests on
     /// before any key is pressed — the answer that sits under Enter. Used by
     /// [`Shell::confirm`] to default destructive confirmations to "No", so an
-    /// accidental Enter doesn't trigger the irreversible option.
+    /// accidental Enter doesn't trigger the irreversible option, and by
+    /// [`Shell::ask_selected`] to keep a re-asked menu on the option just used.
+    /// The seed is clamped into range, so a stale index from a menu whose
+    /// option list has since changed length cannot point past the end.
     pub(crate) fn with_selected(
         title: Option<String>,
         options: Vec<String>,
         selected: usize,
     ) -> Self {
+        let selected = selected.min(options.len().saturating_sub(1));
         let mut state = ListState::default();
         state.select(Some(selected));
         Self {
@@ -94,6 +98,13 @@ impl Choice {
         let next = (self.selected as isize + delta).rem_euclid(len as isize) as usize;
         self.selected = next;
         self.state.select(Some(next));
+    }
+
+    /// The index of the highlighted row — reported back by
+    /// [`Shell::ask_selected`] so a re-asked menu picks up where the user left
+    /// off.
+    pub(crate) fn selected(&self) -> usize {
+        self.selected
     }
 }
 

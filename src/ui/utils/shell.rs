@@ -155,6 +155,36 @@ impl Shell {
         }
     }
 
+    /// Ask a menu question, starting the highlight on `selected` — the index
+    /// this method reported last time this same menu was asked — so a menu
+    /// that stays open after an action (a read-only view, a declined confirm)
+    /// keeps the cursor on the option that was just used instead of springing
+    /// back to the top. Returns the choice, and the index it was highlighted
+    /// at, which the caller feeds straight back into the next re-ask. The seed
+    /// is clamped into range for the (possibly changed) option list.
+    ///
+    /// Only menus that re-ask themselves without moving to a new screen use
+    /// this; a menu a transition lands on starts fresh at the top, where
+    /// [`ask`](Self::ask) is the right call.
+    pub(crate) fn ask_selected<S: AsRef<str>>(
+        &mut self,
+        title: Option<String>,
+        options: impl IntoIterator<Item = S>,
+        selected: usize,
+    ) -> Result<(Option<String>, usize), UiError> {
+        let options: Vec<String> = options.into_iter().map(|s| s.as_ref().to_owned()).collect();
+        assert!(
+            !options.is_empty(),
+            "cannot ask a question with no options to choose from"
+        );
+        let mut choice = Choice::with_selected(title, options, selected);
+        let chosen = match self.run(&mut choice)? {
+            ElementResult::Value(value) => Some(value),
+            ElementResult::Cancelled => None,
+        };
+        Ok((chosen, choice.selected()))
+    }
+
     /// Ask a confirm-or-decline question — a "Yes" / "No" list with "No" as
     /// the highlighted default, so the safe answer rests under Enter and only
     /// an explicit "Yes" proceeds. Escape counts as "No".
