@@ -8,7 +8,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Widget};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Widget};
 
 use super::{Element, ElementResult};
 
@@ -164,8 +164,8 @@ impl Element for TextInput {
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
         let title = self.title.clone().unwrap_or_else(|| "Enter text".into());
-        // Same look as the choice box: a ─[header] that reads as part of the
-        // top edge, and a plain bottom rule, with no side bars. The entry row
+        // Same look as the choice box: a ═[header] that reads as part of the
+        // top edge, and a double bottom rule, with no side bars. The entry row
         // starts with the "> " prompt gutter (see [`super::prompt_row`]), then
         // the typed text or, when the field is empty and the input has one,
         // its dimmed suggestion.
@@ -193,7 +193,8 @@ impl Element for TextInput {
         Paragraph::new(lines)
             .block(
                 Block::default()
-                    .title(format!("─[{title}]"))
+                    .title(format!("═[{title}]"))
+                    .border_type(BorderType::Double)
                     .borders(Borders::TOP | Borders::BOTTOM),
             )
             .render(area, buf);
@@ -482,14 +483,14 @@ mod tests {
         input.render(area, &mut buf);
 
         let row = |y: u16| (0..20).map(|x| buf[(x, y)].symbol()).collect::<String>();
-        assert!(row(0).starts_with("─[name]"), "header like the choice box");
+        assert!(row(0).starts_with("═[name]"), "header like the choice box");
         assert!(
             row(1).starts_with("> squat"),
             "typed text on the input row after the '> ' prompt"
         );
         assert!(
-            row(2).chars().all(|c| c == '─'),
-            "bottom edge is a plain rule, no corners"
+            row(2).chars().all(|c| c == '═'),
+            "bottom edge is a double rule, no corners"
         );
     }
 

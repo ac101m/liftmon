@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, StatefulWidget};
+use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState, StatefulWidget};
 
 use super::Element;
 use super::ElementResult;
@@ -128,14 +128,16 @@ impl Element for Choice {
             .title
             .clone()
             .unwrap_or_else(|| "Select an option".into());
-        // Title is bracketed to read as a header (─[Main menu]), led by a single
-        // border glyph so it reads as part of the top edge; only the top/bottom
-        // edges are drawn, since side │bars would eat two columns for nothing on
-        // a narrow terminal (e.g. a phone over ssh).
+        // Title is bracketed to read as a header (═[Main menu]), led by a
+        // double border glyph so it reads as part of the top edge; only the
+        // top/bottom edges are drawn as double rules, since side ║bars would
+        // eat two columns for nothing on a narrow terminal (e.g. a phone over
+        // ssh).
         let list = List::new(items)
             .block(
                 Block::default()
-                    .title(format!("─[{title}]"))
+                    .title(format!("═[{title}]"))
+                    .border_type(BorderType::Double)
                     .borders(Borders::TOP | Borders::BOTTOM),
             )
             .highlight_style(Style::new().reversed());
@@ -251,12 +253,12 @@ mod tests {
 
         // Bracketed header on the top border row, led by one border glyph;
         // no side bars anywhere.
-        assert!(RowText::at(&buf, 0).starts_with("─[pick]"));
+        assert!(RowText::at(&buf, 0).starts_with("═[pick]"));
         assert!(RowText::at(&buf, 1).contains(" bench press"));
         assert!(RowText::at(&buf, 2).contains(" squat"));
         assert!(
-            RowText::at(&buf, 5).chars().all(|c| c == '─'),
-            "bottom edge is a plain rule, no corners"
+            RowText::at(&buf, 5).chars().all(|c| c == '═'),
+            "bottom edge is a double rule, no corners"
         );
 
         // The first option (selected) is reversed; the second is not.

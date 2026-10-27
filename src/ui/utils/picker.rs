@@ -15,7 +15,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{
-    Block, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget,
+    Block, BorderType, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget,
 };
 
 use super::{Element, ElementResult};
@@ -174,10 +174,11 @@ impl Element for Picker {
         // (`self.state` is kept in sync with `self.selected` by the editing
         // methods, so the List has nothing extra to set here.)
 
-        // Same look as the choice box: a ─[header] top edge and a plain bottom
+        // Same look as the choice box: a ═[header] top edge and a double bottom
         // rule, with no side bars.
         let block = Block::default()
-            .title(format!("─[{title}]"))
+            .title(format!("═[{title}]"))
+            .border_type(BorderType::Double)
             .borders(Borders::TOP | Borders::BOTTOM);
         let inner = block.inner(area);
         block.render(area, buf);
@@ -476,7 +477,7 @@ mod tests {
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(2).trim_end(), " exercise 00");
         assert_eq!(row(6).trim_end(), " exercise 04", "box fits five rows");
-        assert!(row(7).chars().all(|c| c == '─'), "bottom rule");
+        assert!(row(7).chars().all(|c| c == '═'), "bottom rule");
 
         // March the highlight off the bottom edge; the list scrolls to keep
         // the selection in view without the box changing size.
@@ -500,7 +501,7 @@ mod tests {
 
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert!(
-            row(0).starts_with("─[Select]"),
+            row(0).starts_with("═[Select]"),
             "header like the choice box"
         );
         assert_eq!(
@@ -526,9 +527,9 @@ mod tests {
                 .contains(Modifier::REVERSED)
         );
 
-        // The bottom edge is a plain rule, no corners.
+        // The bottom edge is a double rule, no corners.
         let bottom = area.height - 1;
-        assert!(row(bottom).chars().all(|c| c == '─'));
+        assert!(row(bottom).chars().all(|c| c == '═'));
     }
 
     #[test]

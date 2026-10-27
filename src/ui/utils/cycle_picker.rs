@@ -21,7 +21,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, StatefulWidget};
+use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState, StatefulWidget};
 
 use super::Element;
 use super::ElementResult;
@@ -157,14 +157,16 @@ impl Element for CyclePicker {
             .title
             .clone()
             .unwrap_or_else(|| "Select an option".into());
-        // Title is bracketed to read as a header (─[Main menu]), led by a single
-        // border glyph so it reads as part of the top edge; only the top/bottom
-        // edges are drawn, since side │bars would eat two columns for nothing on
-        // a narrow terminal (e.g. a phone over ssh).
+        // Title is bracketed to read as a header (═[Main menu]), led by a
+        // double border glyph so it reads as part of the top edge; only the
+        // top/bottom edges are drawn as double rules, since side ║bars would
+        // eat two columns for nothing on a narrow terminal (e.g. a phone over
+        // ssh).
         let list = List::new(items)
             .block(
                 Block::default()
-                    .title(format!("─[{title}]"))
+                    .title(format!("═[{title}]"))
+                    .border_type(BorderType::Double)
                     .borders(Borders::TOP | Borders::BOTTOM),
             )
             .highlight_style(Style::new().reversed());
@@ -308,9 +310,9 @@ mod tests {
         let mut buf = Buffer::empty(area);
         picker.render(area, &mut buf);
 
-        // Bracketed header on the top border row; bottom edge is a plain rule.
-        assert!(RowText::at(&buf, 0).starts_with("─[Muscle groups]"));
-        assert!(RowText::at(&buf, 4).chars().all(|c| c == '─'));
+        // Bracketed header on the top border row; bottom edge is a double rule.
+        assert!(RowText::at(&buf, 0).starts_with("═[Muscle groups]"));
+        assert!(RowText::at(&buf, 4).chars().all(|c| c == '═'));
 
         // Each selected row puts its label in the aligned column (one leading
         // space + the longest name "Front delts", 11 chars). Unselected "Abs"
