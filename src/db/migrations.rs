@@ -149,8 +149,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          exercise. An exercise's references cascade away with it; a muscle group referenced \
          by any exercise can't be deleted.",
     ),
-    // Not yet frozen — the migration that adds the "Hip adductors" default
-    // group to databases that predate it. Freeze it when it ships.
+    // FROZEN — shipped in liftmon 1.2.0. Do not edit; append a new migration.
     M::up(
         r"
         INSERT INTO muscle_group (name, description)
