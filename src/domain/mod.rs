@@ -33,7 +33,7 @@ pub use self::error::DomainError;
 pub use self::exercise::Exercise;
 // The workout entities are the public surface for the session screens.
 pub use self::exercise_performance::ExercisePerformance;
-pub use self::muscle_group::MuscleGroup;
+pub use self::muscle_group::{MuscleGroup, MuscleGroupCount};
 pub use self::muscle_group_reference::{MuscleGroupReference, Stimulus};
 pub use self::session::{Session, SessionInfo};
 pub use self::set::{Difficulty, Set};

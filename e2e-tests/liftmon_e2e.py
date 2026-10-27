@@ -289,19 +289,27 @@ def end_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm set 1", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu", "next set", "next exercise", "exit session")
-    app.send("\r")                                          # next set
+    app.check("performance menu", "next set", "next exercise", "show exercise info", "exit session")
+    # "show exercise info" re-frames the current exercise as a section — the
+    # same info the per-exercise screen shows (description, muscle groups,
+    # personal records) — and re-asks the menu: read-only, so nothing advances
+    # and the highlight stays on the option just picked.
+    app.send("\x1b[B\x1b[B\r")                              # show exercise info (index 2)
+    app.check("exercise info framed in the session", "Bench press:", "flat barbell press",
+              "Muscle groups:", " Abs · high", "Personal records:", "100 kg × 5 · set on")
+    app.check("info leaves the performance menu up", "next set", "next exercise", "show exercise info", "exit session")
+    app.send("\x1b[A\x1b[A\r")                              # next set: back up to index 0 (info stays highlighted)
     app.check("weight prompt (2nd set)", "═[Weight (kg)]", "> 100")
     app.send("102.5\r")
     app.send("4\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("confirm set 2", "102.5kg x 4 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu (again)", "next set", "next exercise", "exit session")
+    app.check("performance menu (again)", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
     app.check("submenu (2nd)", "═[Select exercise]", "all exercises", "exercises by muscle group")
     app.send("\x1b[B\r")                                    # exercises by muscle group (index 1)
-    app.check("muscle group picker", "Select muscle group", " Abs", "Esc back")
+    app.check("muscle group picker", "Select muscle group", " Abs (2 exercises)", "Esc back")
     app.send("\r")                                          # Abs (index 0)
     app.check("exercise picker (2nd)", "Select exercise · Abs", "type to filter", " Bench press", " Squat")
     app.send("\x1b[B\r")                                    # pick Squat
@@ -312,8 +320,8 @@ def end_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm squat set", "60kg x 10 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu (squat)", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\r")                                    # exit session (next-exercise stays highlighted; one down)
+    app.check("performance menu (squat)", "next set", "next exercise", "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\r")                                    # exit session (next-exercise stays highlighted; two down)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -354,7 +362,7 @@ def leave_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm set", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu", "next set", "next exercise", "exit session")
+    app.check("performance menu", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
     app.check("submenu (2nd)", "═[Select exercise]", "all exercises", "exercises by muscle group")
     app.send("\r")                                          # all exercises (index 0)
@@ -428,7 +436,7 @@ def resume_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm bench set", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu (bench)", "next set", "next exercise", "exit session")
+    app.check("performance menu (bench)", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b[B\r")                                    # next exercise (index 1)
     app.check("submenu (2nd)", "═[Select exercise]", "all exercises", "exercises by muscle group")
     app.send("\r")                                          # all exercises (index 0)
@@ -439,7 +447,7 @@ def resume_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm squat set", "60kg x 10 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu (squat)", "next set", "next exercise", "exit session")
+    app.check("performance menu (squat)", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\r")                                          # next exercise (still highlighted: stays in place)
     app.check("submenu (3rd)", "═[Select exercise]", "all exercises", "exercises by muscle group")
     app.send("\x1b")                                        # escape the submenu: leave open
@@ -482,7 +490,7 @@ def resume_path():
     app.check("resumed on last exercise's menu (no confirm)",
               "Resumed freeform session from " + date.today().strftime("%Y/%m/%d"),
               "Current exercise 'Squat'",
-              "═[Squat]", "next set", "next exercise", "exit session")
+              "═[Squat]", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\r")                                          # next set
     app.check("weight prompt (resumed)", "═[Weight (kg)]", "> 60")
     app.send("70\r")                                        # weight
@@ -490,8 +498,8 @@ def resume_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm resumed set", "70kg x 8 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu (resumed)", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.check("performance menu (resumed)", "next set", "next exercise", "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
     # Exiting a resumed workout returns to that session's options screen, not
     # the root session menu.
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
@@ -554,7 +562,7 @@ def stale_confirm_path():
     app.check("resumed at its exercise",
               "Resumed freeform session from " + created_label,
               "Current exercise 'Bench press'",
-              "═[Bench press]", "next set", "next exercise", "exit session")
+              "═[Bench press]", "next set", "next exercise", "show exercise info", "exit session")
     app.close()
 
     d = db()
@@ -582,7 +590,7 @@ def no_empty_performance_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm bench set", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu (bench)", "next set", "next exercise", "exit session")
+    app.check("performance menu (bench)", "next set", "next exercise", "show exercise info", "exit session")
     # Move on to Squat but log nothing: escape the set form and leave the
     # session. With the old behaviour this left an empty Squat performance —
     # created the moment the exercise was picked — visible in the summary as a
@@ -595,8 +603,8 @@ def no_empty_performance_path():
     app.send("\x1b[B\r")                                    # pick Squat
     app.check("moved to Squat logged", "Moved to next exercise 'Squat'")
     app.send("\x1b")                                        # Esc at the weight form cancels the set
-    app.check("performance menu (squat)", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\r")                                    # exit session (next-exercise stays highlighted; one down)
+    app.check("performance menu (squat)", "next set", "next exercise", "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\r")                                    # exit session (next-exercise stays highlighted; two down)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -654,7 +662,7 @@ def duplicate_exercise_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm bench set", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu (bench)", "next set", "next exercise", "exit session")
+    app.check("performance menu (bench)", "next set", "next exercise", "show exercise info", "exit session")
     # Try to pick Bench press again: it is already the current exercise, so no
     # new performance starts — a note is printed and the menu is re-asked.
     app.send("\x1b[B\r")                                    # next exercise (index 1)
@@ -663,7 +671,7 @@ def duplicate_exercise_path():
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press again
     app.check("already selected note", "'Bench press' is already selected",
-              "═[Bench press]", "next set", "next exercise", "exit session")
+              "═[Bench press]", "next set", "next exercise", "show exercise info", "exit session")
     # The next set still lands on the SAME performance.
     app.send("\x1b[A\r")                                    # next set: up to it (next-exercise stays highlighted)
     app.check("weight prompt (2nd set)", "═[Weight (kg)]", "> 100")
@@ -672,8 +680,8 @@ def duplicate_exercise_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm 2nd bench set", "60kg x 8 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("performance menu (again)", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.check("performance menu (again)", "next set", "next exercise", "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -780,9 +788,9 @@ def esc_shortcut_path():
     app.send("5\r")                                     # reps
     app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
     app.send("\x1b")                                    # Esc cancels the set
-    app.check("set cancelled", "next set", "next exercise", "exit session")
+    app.check("set cancelled", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b")                                    # Esc is a no-op here
-    app.check("still on performance menu", "next set", "next exercise", "exit session")
+    app.check("still on performance menu", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b[B\r")                                # next exercise (index 1) -> submenu
     app.check("submenu (2nd)", "═[Select exercise]", "all exercises", "exercises by muscle group")
     app.send("\r")                                      # all exercises (index 0)
@@ -842,9 +850,9 @@ def esc_shortcut_path():
     app.check("moved to Bench press", "Moved to next exercise 'Bench press'")
     app.check("weight prompt", "═[Weight (kg)]", "e.g. 100")
     app.send("\x1b")                                    # Esc at the weight form cancels the set
-    app.check("set cancelled back to menu", "next set", "next exercise", "exit session")
+    app.check("set cancelled back to menu", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b")                                    # Esc on the menu: no back — re-asks
-    app.check("still on performance menu", "next set", "next exercise", "exit session")
+    app.check("still on performance menu", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\r")                                      # next set
     app.check("weight prompt (2nd)", "═[Weight (kg)]", "e.g. 100")
     app.send("60\r")                                    # weight
@@ -852,8 +860,8 @@ def esc_shortcut_path():
     app.send("\x1b[B\x1b[B\r")                          # difficulty: failure
     app.check("confirm set", "60kg x 8 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                      # Yes: commit the set
-    app.check("performance menu", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\x1b[B\r")                          # exit session (index 2)
+    app.check("performance menu", "next set", "next exercise", "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\x1b[B\r")                          # exit session (index 3)
     # Exiting the resumed workout lands back on that session's options screen.
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
@@ -983,7 +991,7 @@ def personal_record_path():
     app.send("\r")                                          # Yes: commit the set
     app.check("110 kg × 5 is a personal record", "110 kg × 5 · hard · New PR!", "next set")
 
-    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "delete", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -1083,6 +1091,11 @@ def muscle_groups_path():
     # only what is visible initially — and, crucially, not "Pecs" yet.
     app.check("select muscle group", "═[Select muscle group]", "Abs", "Biceps",
               "Obliques", "Esc back")
+    # The dedicated "Muscle groups" picker stays plain — no exercise counts.
+    # (Only the exercise-selection pickers carry them.)
+    grid = app.grid()
+    if any("(" in row and "exercise" in row for row in grid):
+        raise SystemExit("FAIL: the main muscle-groups picker must not show exercise counts")
     app.send("\x1b[B" * 9 + "\r")              # scroll down to Pecs (index 9)
     app.check("muscle group options", "═[Pecs]", "info", "back")
     app.send("\r")                             # info
@@ -1205,14 +1218,15 @@ def exercise_muscle_groups_path():
     print()
 
     # Part 4: browse exercises by muscle group. Bench press (id 1) references
-    # Lats (id 2, medium); Squat (id 2) references Pecs (id 1, high) —
-    # group ids match the seed's insertion order. A group with no exercises
-    # logs so and loops back to the group picker.
+    # Lats (id 2, high); Squat (id 2) references Pecs (id 1, high) — group ids
+    # match the seed's insertion order. The picker lists only groups that an
+    # exercise trains as a primary mover, each with its count, so a group with
+    # no exercises — like Abs — never appears.
     seed_db()
     con = sqlite3.connect(DB)
     con.execute(
         "INSERT INTO muscle_group_reference (exercise_id, muscle_group_id, stimulus_type) "
-        "VALUES (1, 2, 'medium'), (2, 1, 'high')"
+        "VALUES (1, 2, 'high'), (2, 1, 'high')"
     )
     con.commit(); con.close()
     app = App()
@@ -1224,15 +1238,17 @@ def exercise_muscle_groups_path():
     app.send("\x1b")                                    # Esc off the submenu: back to the exercises menu
     app.check("esc drops back to the exercises menu", "═[Exercises]", "Browse exercises", "Back")
     app.send("\r\x1b[B\r")                              # Browse -> submenu -> exercises by muscle group (index 1)
-    app.check("group picker", "═[Select muscle group]", " Abs", " Biceps", "Esc back")
-    app.send("\r")                                      # Abs (index 0): no exercises activate it
-    app.check("no exercises for the group", "No exercises activate 'Abs'", "═[Select muscle group]")
-    app.send("\x1b[B" * 7 + "\r")                       # Lats (index 7)
+    app.check("group picker lists only groups with exercises",
+              "═[Select muscle group]", " Lats (1 exercise)", " Pecs (1 exercise)", "Esc back")
+    grid = app.grid()
+    if any(" Abs" in row for row in grid):
+        raise SystemExit("FAIL: a group no exercise trains as a primary mover must not appear in the picker")
+    app.send("\r")                                      # Lats (index 0)
     app.check("filtered exercise list", "Select exercise · Lats", "type to filter", " Bench press")
     app.send("\r")                                      # pick Bench press
     app.check("landed on Bench press options", "═[Bench press]", "edit muscle groups", "delete")
     app.close()
-    print("ok   by muscle group: the group's exercises list filters, picking one opens its options, and groups with no exercises loop back")
+    print("ok   by muscle group: the picker lists only groups with exercises (with their counts), the group's list filters, and picking one opens its options")
     print()
 
 def text_edit_keys_path():
@@ -1303,7 +1319,7 @@ def weight_default_path():
     app.check("confirm set 2", "100kg x 6 (easy) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("second set accepted the default", "100 kg × 6 · easy", "exit session")
-    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
     app.close()
 
     d = db()
@@ -1354,8 +1370,8 @@ def confirm_set_path():
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm set C", "120kg x 6 (failure) - Add to session?", "Yes", "No")
     app.send("\x1b")                                        # Esc cancels the set
-    app.check("esc cancelled back at menu", "next set", "next exercise", "exit session")
-    app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
+    app.check("esc cancelled back at menu", "next set", "next exercise", "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
     app.close()
 
     d = db()

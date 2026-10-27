@@ -18,6 +18,16 @@ pub struct MuscleGroup {
     pub description: String,
 }
 
+/// A muscle group paired with how many exercises currently reference it at
+/// `'high'` stimulus — the row the exercise-selection group pickers show, so
+/// each group's count is visible without a per-group query.
+pub struct MuscleGroupCount {
+    /// The group itself.
+    pub group: MuscleGroup,
+    /// Exercises with a `'high'` reference to this group.
+    pub high_exercise_count: i64,
+}
+
 impl MuscleGroup {
     /// Load the muscle group with the given unique `name`, if one exists.
     pub fn find_by_name(conn: &Connection, name: &str) -> Result<Option<Self>, DomainError> {
@@ -69,6 +79,40 @@ impl MuscleGroup {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 description: row.get(2)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Load every muscle group that at least one exercise trains as a primary
+    /// mover — in name order, with how many exercises reference it at `'high'`
+    /// stimulus. The join itself drops groups with no `'high'` reference (a
+    /// group referenced only at `'medium'`/`'low'`, or not at all, does not
+    /// appear), and the count is a live aggregate over
+    /// `muscle_group_reference` — never stored. The exercise-selection group
+    /// pickers show exactly these rows (the "Muscle groups" main-menu picker
+    /// shows plain names).
+    pub fn with_high_exercises(conn: &Connection) -> Result<Vec<MuscleGroupCount>, DomainError> {
+        // The INNER JOIN (with the stimulus filter in the ON) keeps exactly the
+        // groups a 'high' reference points to; COUNT of the joined exercise_id
+        // counts those references. One aggregate over the reference table, in
+        // the same single pass as all pickers.
+        let mut stmt = conn.prepare(
+            "SELECT mg.id, mg.name, mg.description, COUNT(mgr.exercise_id) \
+             FROM muscle_group mg \
+             JOIN muscle_group_reference mgr \
+                  ON mgr.muscle_group_id = mg.id AND mgr.stimulus_type = 'high' \
+             GROUP BY mg.id, mg.name, mg.description \
+             ORDER BY mg.name",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(MuscleGroupCount {
+                group: Self {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                },
+                high_exercise_count: row.get(3)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -148,5 +192,51 @@ mod tests {
             .unwrap();
         assert_eq!(found, first[0]);
         assert!(MuscleGroup::find_by_id(&conn, 999).unwrap().is_none());
+    }
+
+    #[test]
+    fn with_high_exercises_lists_only_primary_mover_groups_with_their_counts() {
+        let conn = test_db();
+
+        // Two exercises; the first trains Abs at 'high' and Biceps at 'medium'
+        // (which must be ignored), the second trains Abs at 'high' and Biceps
+        // at 'high' too — so Abs counts 2 and Biceps 1, and the other fourteen
+        // groups (no high reference at all) do not appear.
+        conn.execute(
+            "INSERT INTO exercises (name, description) VALUES ('bench', ''), ('squat', '')",
+            [],
+        )
+        .unwrap();
+        let abs_id: i64 = conn
+            .query_row(
+                "SELECT id FROM muscle_group WHERE name = ?1",
+                ["Abs"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let biceps_id: i64 = conn
+            .query_row(
+                "SELECT id FROM muscle_group WHERE name = ?1",
+                ["Biceps"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        conn.execute(
+            "INSERT INTO muscle_group_reference (exercise_id, muscle_group_id, stimulus_type) \
+             VALUES (1, ?1, 'high'), (1, ?2, 'medium'), (2, ?1, 'high'), (2, ?2, 'high')",
+            [abs_id, biceps_id],
+        )
+        .unwrap();
+
+        let counts = MuscleGroup::with_high_exercises(&conn).unwrap();
+        let pairs: Vec<(&str, i64)> = counts
+            .iter()
+            .map(|c| (c.group.name.as_str(), c.high_exercise_count))
+            .collect();
+        assert_eq!(
+            pairs,
+            [("Abs", 2), ("Biceps", 1)],
+            "only groups with high references appear, in name order, counting only the high refs"
+        );
     }
 }

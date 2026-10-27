@@ -10,7 +10,7 @@
 //! set entry plus the performance menu:
 //!
 //! ```text
-//! pick exercise ─► log sets ─► (next set | next exercise | exit session)
+//! pick exercise ─► log sets ─► (next set | next exercise | show exercise info | exit session)
 //! ```
 //!
 //! * "next set" starts another set for the same exercise,
@@ -20,6 +20,10 @@
 //!   Picking the exercise that is already the current one does not start a new
 //!   performance: it is called out and the menu is re-asked, so a repeated
 //!   pick never doubles an exercise up in the session summary,
+//! * "show exercise info" frames the current exercise as a section — the same
+//!   name, description, muscle groups and recent personal records the
+//!   per-exercise info screen shows — then re-asks the menu. Read-only, so it
+//!   never advances the flow and the highlight stays where it was,
 //! * "exit session" leaves the workout and returns to the session's options
 //!   screen. Sessions are never "ended" — there is no end date, so exiting
 //!   records nothing and the session can be resumed again later.
@@ -104,20 +108,28 @@ pub(super) fn run(
         }
     };
     // The highlight on the performance menu is remembered across its re-asks —
-    // after logging a set, after moving to another exercise, after an Escape —
-    // since none of those leave the menu. It only resets on entering the flow.
+    // after logging a set, after moving to another exercise, after showing
+    // info, after an Escape — since none of those leave the menu. It only
+    // resets on entering the flow.
     let mut menu_selected = 0;
     'active: loop {
         if !menu_first {
             ask_set(shell, conn, session.id, &mut performance, &exercise)?;
         }
         menu_first = false;
-        // The performance menu. There is no "back" option on it, so Escape
-        // just re-asks the menu rather than starting another set.
+        // The performance menu. "show exercise info" is read-only — it frames
+        // the exercise and re-asks, so the highlight stays — and there is no
+        // "back" option on it, so Escape just re-asks the menu rather than
+        // starting another set.
         loop {
             let (menu_choice, menu_here) = shell.ask_selected(
                 Some(exercise.name.clone()),
-                ["next set", "next exercise", "exit session"],
+                [
+                    "next set",
+                    "next exercise",
+                    "show exercise info",
+                    "exit session",
+                ],
                 menu_selected,
             )?;
             menu_selected = menu_here;
@@ -143,6 +155,12 @@ pub(super) fn run(
                         continue 'active;
                     }
                 },
+                // "show exercise info": read-only — frame the current exercise
+                // (the same section the per-exercise "info" shows) and re-ask
+                // the menu, highlight where it was.
+                Some("show exercise info") => {
+                    super::exercise_options::log_exercise_info(shell, conn, &exercise)?;
+                }
                 // "exit session": leave the workout, session intact, and
                 // land back on this session's options screen.
                 Some("exit session") => return Ok(Some(return_to)),

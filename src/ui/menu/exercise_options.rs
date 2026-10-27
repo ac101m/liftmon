@@ -48,19 +48,10 @@ pub(super) fn run(
         )?;
         selected = selected_here;
         match choice.as_deref() {
-            // Read-only: print the exercise as a framed section — divider,
-            // bold name with a trailing colon, indented description, the
-            // assigned muscle groups (only their marker words coloured, like a
-            // set's difficulty marker), then the last few personal records (the
-            // sets, newest first, that beat every earlier set's e1RM) listed
-            // inside the same frame as weight × reps, when the record was set,
-            // and how long ago that was. The e1RM itself never appears, and
-            // there's no difficulty marker.
+            // Read-only: frame the exercise as a section and re-ask the menu —
+            // see [`log_exercise_info`] for what the section holds.
             Some("info") => {
-                let mut lines = super::exercise_lines(&exercise);
-                super::exercise_muscle_groups::append_muscle_groups(&mut lines, conn, exercise.id)?;
-                append_personal_records(&mut lines, conn, &exercise)?;
-                shell.log_section(lines);
+                log_exercise_info(shell, conn, &exercise)?;
             }
             // Renaming reloads the loop under the new name so the prompt keeps
             // tracking the exercise.
@@ -107,6 +98,28 @@ pub(super) fn run(
 
 /// How many personal records the info screen lists.
 const PERSONAL_RECORDS_LIMIT: usize = 3;
+
+/// Print the exercise's whole info as one framed section — the bold name over
+/// its indented description, the assigned muscle groups (only their marker
+/// words coloured, like a set's difficulty marker), then the last few personal
+/// records: the sets, newest first, that beat every earlier set's e1RM, listed
+/// as weight × reps with when the record was set and how long ago that was. The
+/// e1RM itself never appears, and there's no difficulty marker. This is the
+/// section both the per-exercise menu's "info" and the session flow's "show
+/// exercise info" print, so an exercise reads exactly the same wherever it is
+/// shown. Purely read-only — the caller re-asks its menu afterwards, highlight
+/// where it was.
+pub(super) fn log_exercise_info(
+    shell: &mut Shell,
+    conn: &Connection,
+    exercise: &Exercise,
+) -> Result<(), UiError> {
+    let mut lines = super::exercise_lines(exercise);
+    super::exercise_muscle_groups::append_muscle_groups(&mut lines, conn, exercise.id)?;
+    append_personal_records(&mut lines, conn, exercise)?;
+    shell.log_section(lines);
+    Ok(())
+}
 
 /// Append a bold `Personal records:` heading and the exercise's last few
 /// personal records — newest first, weight × reps with when the record was set
