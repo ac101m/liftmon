@@ -100,9 +100,12 @@ pub(crate) fn log_splash(shell: &mut Shell, version: &str, schema_version: usize
         Line::from(vec![
             Span::raw(" "),
             Span::styled("LIFTMON", Style::new().add_modifier(Modifier::BOLD)),
-            Span::raw(format!(" v{version}  ||-||")),
+            Span::raw(format!(" v{version}")),
         ]),
         Line::from(format!(" Database schema v{schema_version}.")),
+        // The dumbbell sits on its own line at the bottom of the splash,
+        // left-aligned with the block, rather than trailing the version above.
+        Line::from(" ||-||"),
     ]);
 }
 

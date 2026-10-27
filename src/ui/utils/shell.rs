@@ -670,21 +670,28 @@ mod tests {
     #[test]
     fn history_renders_the_splash_framed_by_double_rules() {
         // The startup splash is framed by double rules — the menu dividers'
-        // weight — rather than the single rules ordinary sections use.
+        // weight — rather than the single rules ordinary sections use. The
+        // dumbbell rides on its own bottom line, left-aligned with the block.
         let history = vec![
             LogLine::DoubleRule,
-            LogLine::Text(Line::from(" LIFTMON  v1.1.1  ||-||")),
+            LogLine::Text(Line::from(" LIFTMON  v1.1.1")),
             LogLine::Text(Line::from(" Database schema v5.")),
+            LogLine::Text(Line::from(" ||-||")),
             LogLine::DoubleRule,
         ];
-        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 4));
-        render_history(&mut buf, Rect::new(0, 0, 40, 4), &history, 0);
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 5));
+        render_history(&mut buf, Rect::new(0, 0, 40, 5), &history, 0);
 
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0), "═".repeat(40), "top edge is a double rule");
-        assert_eq!(row(1).trim_end(), " LIFTMON  v1.1.1  ||-||");
+        assert_eq!(row(1).trim_end(), " LIFTMON  v1.1.1");
         assert_eq!(row(2).trim_end(), " Database schema v5.");
-        assert_eq!(row(3), "═".repeat(40), "bottom edge is a double rule");
+        assert_eq!(
+            row(3).trim_end(),
+            " ||-||",
+            "the dumbbell is its own row at the bottom"
+        );
+        assert_eq!(row(4), "═".repeat(40), "bottom edge is a double rule");
     }
 
     #[test]
