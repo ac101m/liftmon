@@ -7,8 +7,10 @@
 //! across elements. The scroll wheel scrolls the history back into its earlier
 //! lines while keys keep driving the element; a centred badge on the history's
 //! bottom row marks when the view is not at the newest, and a new log line
-//! always springs the view back down to it. Every frame the screen is laid out
-//! as three horizontal bands:
+//! always springs the view back down to it. The history keeps its last row
+//! blank as a spacer above the element, unless the newest logged line is a
+//! section's closing divider, which keeps the bottom row. Every frame the
+//! screen is laid out as three horizontal bands:
 //!
 //! ```text
 //! (history)     the log of past actions, newest at the bottom
@@ -349,7 +351,7 @@ impl Shell {
             return Ok(()); // degenerate terminal; nothing to scroll
         }
         let total = history_rows(&self.history, history_area.width).len();
-        let max = total.saturating_sub(history_area.height as usize);
+        let max = total.saturating_sub(history_fill(&self.history, history_area.height));
         self.scroll = adjust_scroll(self.scroll, delta, max);
         Ok(())
     }
@@ -435,6 +437,15 @@ fn history_rows(history: &[LogLine], width: u16) -> Vec<Line<'static>> {
     rows
 }
 
+/// How many of the history area's rows the view fills with log lines: all of
+/// them when the newest logged line is a closing divider (a section's trailing
+/// rule, which is allowed to meet the element below), otherwise one fewer so a
+/// blank spacer row always sits between the log and the element.
+fn history_fill(history: &[LogLine], area_height: u16) -> usize {
+    let spare = u16::from(!matches!(history.last(), Some(LogLine::Rule)));
+    area_height.saturating_sub(spare) as usize
+}
+
 /// The history-scroll position after moving by `delta` rows from `scroll`,
 /// clamped to `[0, max]`. `max` is how far back the oldest line sits with the
 /// view at its full height, so the clamp tracks the current window.
@@ -447,7 +458,11 @@ fn adjust_scroll(scroll: usize, delta: isize, max: usize) -> usize {
 /// clipped, and a [`LogLine::Rule`] draws a full-width divider so sections
 /// (e.g. exercise info) frame themselves.
 ///
-/// The view is a window of `area.height` rows into the whole log. At
+/// The bottom row of the area stays blank as a spacer above the element —
+/// unless the newest logged line is a closing divider, which keeps the bottom
+/// row so a framed section ends flush against the element.
+///
+/// The view is a window of [`history_fill`] rows into the whole log. At
 /// `scroll == 0` that is the newest lines that fit; a larger `scroll` pulls
 /// the window up into earlier lines, and a centred badge on the bottom row
 /// then marks that there is more below.
@@ -456,10 +471,11 @@ fn render_history(buf: &mut Buffer, area: Rect, history: &[LogLine], scroll: usi
         return;
     }
     let rows = history_rows(history, area.width);
+    let fill = history_fill(history, area.height);
     // Clamp so the window can never move above the oldest line (with a log
     // shorter than the window there is nothing to scroll).
-    let scroll = scroll.min(rows.len().saturating_sub(area.height as usize));
-    let start = rows.len().saturating_sub(area.height as usize + scroll);
+    let scroll = scroll.min(rows.len().saturating_sub(fill));
+    let start = rows.len().saturating_sub(fill + scroll);
     let end = rows.len() - scroll;
     // Each line keeps its own span styles (a bold section title), dimmed as a
     // base so plain lines read subdued while a styled heading still pops.
@@ -686,25 +702,27 @@ mod tests {
 
     #[test]
     fn history_scrolls_the_oldest_lines_off() {
-        // Four lines on a three-row screen: "first" gives up its row so the
-        // newest lines sit at the bottom.
+        // Four lines on a three-row screen: the bottom row stays blank as the
+        // spacer above the element, so the oldest two lines give up their rows
+        // and the newest two sit above it.
         let history = entries(["first", "second", "third", "fourth"].map(Line::from));
         let mut buf = Buffer::empty(Rect::new(0, 0, 40, 3));
         render_history(&mut buf, Rect::new(0, 0, 40, 3), &history, 0);
 
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
-        assert_eq!(row(0).trim_end(), "second");
-        assert_eq!(row(1).trim_end(), "third");
-        assert_eq!(row(2).trim_end(), "fourth");
+        assert_eq!(row(0).trim_end(), "third");
+        assert_eq!(row(1).trim_end(), "fourth");
+        assert_eq!(row(2).trim_end(), "", "the row above the element is blank");
     }
 
     #[test]
     fn history_wraps_a_long_line_onto_more_rows() {
         // A 15-char description on a 5-wide log area wraps across three rows
-        // instead of truncating past the fifth column.
+        // instead of truncating past the fifth column, with the bottom row
+        // left blank as the spacer above the element.
         let history = vec![LogLine::Text(Line::from("0123456789abcde"))];
-        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 3));
-        render_history(&mut buf, Rect::new(0, 0, 5, 3), &history, 0);
+        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 4));
+        render_history(&mut buf, Rect::new(0, 0, 5, 4), &history, 0);
 
         let row = |y: u16| (0..5).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0), "01234");
@@ -712,22 +730,33 @@ mod tests {
         assert_eq!(
             row(2),
             "abcde",
-            "the tail tails out on its own row, not clipped"
+            "the tail sits on its own row above the spacer, not clipped"
+        );
+        assert_eq!(
+            row(3).trim_end(),
+            "",
+            "bottom row stays blank above the element"
         );
     }
 
     #[test]
     fn history_budget_counts_wrapped_rows() {
         // With no blanks, "0123456789abcde"'s two wrapped rows at 10 cols sit
-        // directly beneath the older line, and all three rows are used.
+        // directly beneath the older line, with the bottom row left as the
+        // spacer above the element.
         let history = entries(["old", "0123456789abcde"].map(Line::from));
-        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 3));
-        render_history(&mut buf, Rect::new(0, 0, 10, 3), &history, 0);
+        let mut buf = Buffer::empty(Rect::new(0, 0, 10, 4));
+        render_history(&mut buf, Rect::new(0, 0, 10, 4), &history, 0);
 
         let row = |y: u16| (0..10).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0).trim_end(), "old");
         assert_eq!(row(1), "0123456789");
         assert_eq!(row(2).trim_end(), "abcde");
+        assert_eq!(
+            row(3).trim_end(),
+            "",
+            "bottom row stays blank above the element"
+        );
     }
 
     #[test]
@@ -737,8 +766,8 @@ mod tests {
             "abcdef",
             Modifier::BOLD,
         )]))];
-        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 2));
-        render_history(&mut buf, Rect::new(0, 0, 5, 2), &history, 0);
+        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 3));
+        render_history(&mut buf, Rect::new(0, 0, 5, 3), &history, 0);
 
         assert_eq!(buf[(0, 0)].symbol(), "a");
         assert_eq!(buf[(4, 0)].symbol(), "e");
@@ -762,42 +791,46 @@ mod tests {
 
     #[test]
     fn history_scrolls_a_window_through_the_log() {
-        // Five lines in a three-row window: at the bottom the newest three
-        // show; scrolling back two rows shifts the window up to the oldest.
+        // Five lines in a four-row window: at the bottom the newest three show
+        // above the blank spacer; scrolling back two shifts the window up to
+        // the oldest.
         let history = entries(["first", "second", "third", "fourth", "fifth"].map(Line::from));
-        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 3));
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 4));
 
-        render_history(&mut buf, Rect::new(0, 0, 40, 3), &history, 0);
+        render_history(&mut buf, Rect::new(0, 0, 40, 4), &history, 0);
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0).trim_end(), "third");
         assert_eq!(row(2).trim_end(), "fifth");
+        assert_eq!(row(3).trim_end(), "", "spacer stays blank at the bottom");
 
         buf.reset();
-        render_history(&mut buf, Rect::new(0, 0, 40, 3), &history, 2);
+        render_history(&mut buf, Rect::new(0, 0, 40, 4), &history, 2);
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0).trim_end(), "first", "top of the log at max scroll");
         assert_eq!(row(1).trim_end(), "second");
-        // The bottom row holds the newest-in-window line, with the scrolled
-        // badge overlapping its centre.
-        assert!(
-            row(2).starts_with("third"),
-            "the third line is the window's bottom row"
-        );
-        assert!(row(2).contains("More messages"), "scrolled badge is on it");
+        // The newest-in-window line sits directly above the spacer, with the
+        // scrolled badge floating on the spacer row.
+        assert_eq!(row(2).trim_end(), "third");
+        assert!(row(3).contains("More messages"), "scrolled badge is on it");
     }
 
     #[test]
     fn history_clamps_scroll_at_the_first_line() {
-        // A scroll deeper than the log has rows stops at the oldest line.
+        // A scroll deeper than the log has rows stops at the oldest line, on
+        // the rows above the spacer.
         let history = entries(["first", "second", "third", "fourth"].map(Line::from));
-        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 2));
-        render_history(&mut buf, Rect::new(0, 0, 40, 2), &history, 99);
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 3));
+        render_history(&mut buf, Rect::new(0, 0, 40, 3), &history, 99);
 
         let row = |y: u16| (0..40).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0).trim_end(), "first");
         assert!(
             row(1).starts_with("second"),
             "the window ends at the oldest rows, clamped before the top"
+        );
+        assert!(
+            row(2).contains("More messages"),
+            "the scrolled badge floats on the blank spacer"
         );
     }
 

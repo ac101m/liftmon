@@ -168,7 +168,7 @@ fn edit_name(
                 updated.name = name.clone();
                 match updated.save(conn) {
                     Ok(()) => {
-                        super::log_exercise(shell, &updated);
+                        shell.log(format!("Updated name of '{}' to '{}'", exercise.name, name));
                         return Ok(Some(name));
                     }
                     // Only the name is UNIQUE, so this is a duplicate name:
@@ -205,7 +205,7 @@ fn edit_description(
             let mut updated = exercise.clone();
             updated.description = description;
             updated.save(conn)?;
-            super::log_exercise(shell, &updated);
+            shell.log(format!("Updated description of '{}'", exercise.name));
             Ok(Some(()))
         }
         ReadOutcome::Cancelled { .. } => Ok(None),
