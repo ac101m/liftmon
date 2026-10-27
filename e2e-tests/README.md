@@ -69,10 +69,10 @@ the `--version` build version and the schema version matches the seed) — then
 starting/ending a session, leaving one mid-flow, the empty-exercise
 no-op path, resuming a session (with the 6-hour stale confirmation), the
 no-sessions path, the Escape-shortcut path, deleting a session (with its
-history), the personal-best path (a set beating the exercise's prior Epley e1RM gets
+history), the personal-record path (a set beating the exercise's prior Epley e1RM gets
 " · New PR!" appended to its own log line at set time, the e1RM is stored per
 set, and the exercise info screen frames the exercise with rules and lists its
-last three personal bests as weight × reps with when each record was set), the
+last three personal records as weight × reps with when each record was set), the
 in-use-exercise delete path, the muscle-groups path (the main menu's item lands
 on the non-filtering group picker; a group's options screen shows its info —
 name and description frame — and back/Escape return to the list and main

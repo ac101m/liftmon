@@ -229,7 +229,7 @@ fn ask_set(
                 id
             }
         };
-        let (set, is_personal_best) = Set::create(
+        let (set, is_personal_record) = Set::create(
             conn,
             performance_id,
             exercise.id,
@@ -238,16 +238,16 @@ fn ask_set(
             difficulty,
             created_at,
         )?;
-        // The set as the session log shows it — the e1RM behind a personal best
+        // The set as the session log shows it — the e1RM behind a personal record
         // never appears; only the weight, reps and how tough it was do, the
         // difficulty marker coloured (green easy, yellow hard, red failure) like
-        // the session summary's. A personal best rides at the end of the line
+        // the session summary's. A personal record rides at the end of the line
         // rather than on its own.
         let mut spans = vec![
             Span::raw(format!("{} kg × {} · ", set.weight_kg, set.reps)),
             Span::styled(set.difficulty.as_str(), difficulty_style(set.difficulty)),
         ];
-        if is_personal_best {
+        if is_personal_record {
             spans.push(Span::raw(" · New PR!"));
         }
         shell.log(Line::from(spans));

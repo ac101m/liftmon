@@ -925,8 +925,8 @@ def delete_session_path():
     print("ok   a session deletes with its performances/sets on Yes; No keeps it; the survivor and exercises remain")
     print()
 
-def personal_best_path():
-    print("=== PERSONAL BEST PATH: a set beating the exercise's prior Epley e1RM is a PB at set time; info frames the last three personal bests ===")
+def personal_record_path():
+    print("=== PERSONAL RECORD PATH: a set beating the exercise's prior Epley e1RM is a PR at set time; info frames the last three personal records ===")
     seed_db()
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Exit")
@@ -942,7 +942,7 @@ def personal_best_path():
     app.send("\r")                                          # pick Bench press
     app.check("weight prompt", "═[Weight (kg)]", "e.g. 100")
 
-    # Set 1: 100 × 5 — the exercise's first set, so a personal best.
+    # Set 1: 100 × 5 — the exercise's first set, so a personal record.
     app.send("100\r")
     app.check("reps prompt", "═[Reps]", "e.g. 5")
     app.send("5\r")
@@ -950,9 +950,9 @@ def personal_best_path():
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("confirm set 1", "100kg x 5 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("first set is a personal best", "100 kg × 5 · hard · New PR!", "next set")
+    app.check("first set is a personal record", "100 kg × 5 · hard · New PR!", "next set")
 
-    # Set 2: 102.5 × 3 — heavier but a lower e1RM (112.75 < 116.67), so NOT a PB.
+    # Set 2: 102.5 × 3 — heavier but a lower e1RM (112.75 < 116.67), so NOT a PR.
     app.send("\r")                                          # next set
     app.check("weight prompt (2nd set)", "═[Weight (kg)]")
     app.send("102.5\r")
@@ -963,7 +963,7 @@ def personal_best_path():
     app.check("102.5 kg × 3 logged", "102.5 kg × 3 · hard", "next set")
     grid = app.grid()
     if any("102.5 kg × 3 · New PR!" in row for row in grid):
-        raise SystemExit("FAIL: 102.5×3 ranks lower (e1RM 112.75) than the prior best 100×5 (e1RM 116.67), so it must not log a personal best")
+        raise SystemExit("FAIL: 102.5×3 ranks lower (e1RM 112.75) than the prior best 100×5 (e1RM 116.67), so it must not log a personal record")
 
     # Set 3: 100 × 6 — same weight, more reps → e1RM 120, a new best.
     app.send("\r")                                          # next set
@@ -972,7 +972,7 @@ def personal_best_path():
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("confirm set 3", "100kg x 6 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("100 kg × 6 is a personal best", "100 kg × 6 · hard · New PR!", "next set")
+    app.check("100 kg × 6 is a personal record", "100 kg × 6 · hard · New PR!", "next set")
 
     # Set 4: 110 × 5 — e1RM 128.33, the best yet.
     app.send("\r")                                          # next set
@@ -981,7 +981,7 @@ def personal_best_path():
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("confirm set 4", "110kg x 5 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
-    app.check("110 kg × 5 is a personal best", "110 kg × 5 · hard · New PR!", "next set")
+    app.check("110 kg × 5 is a personal record", "110 kg × 5 · hard · New PR!", "next set")
 
     app.send("\x1b[B\x1b[B\r")                              # exit session (index 2)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
@@ -1005,14 +1005,14 @@ def personal_best_path():
             (110.0, 5, round(110.0 * (1 + 5/30), 2))]
     if got != want: raise SystemExit(f"FAIL: stored e1RM values {got} != {want}")
     values = [s[7] for s in d["sets"]]
-    pbs = [i for i, v in enumerate(values) if v > max(values[:i] or [0.0])]
-    if pbs != [0, 2, 3]: raise SystemExit(f"FAIL: expected sets 1, 3, 4 to be the personal bests, got {pbs}")
+    prs = [i for i, v in enumerate(values) if v > max(values[:i] or [0.0])]
+    if prs != [0, 2, 3]: raise SystemExit(f"FAIL: expected sets 1, 3, 4 to be the personal records, got {prs}")
 
     # A fresh app over the same DB: the exercise's info screen frames the
     # exercise as a section — bold name, indented description, a "Personal
-    # bests:" list inside the same frame — newest first, weight × reps · set
+    # records:" list inside the same frame — newest first, weight × reps · set
     # on date (seconds ago, so "just now"), no difficulty marker, no e1RM.
-    # All three PBs (110×5, 100×6, 100×5) were logged today.
+    # All three PRs (110×5, 100×6, 100×5) were logged today.
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                          # -> Exercises
@@ -1021,12 +1021,12 @@ def personal_best_path():
     app.send("\r")                                          # pick Bench press
     app.check("exercise options", "═[Bench press]", "info", "delete")
     app.send("\r")                                          # info
-    app.check("info frames the section with the last three personal bests",
-              "Personal bests:", "flat barbell press",
+    app.check("info frames the section with the last three personal records",
+              "Personal records:", "flat barbell press",
               f"110 kg × 5 · set on {date.today().strftime('%Y/%m/%d')} (just now)")
     app.close()
 
-    print("ok   PBs logged at set time, e1RM stored per set (1, 3, 4 beat the rest), and info frames the last three (110×5, 100×6, 100×5)")
+    print("ok   PRs logged at set time, e1RM stored per set (1, 3, 4 beat the rest), and info frames the last three (110×5, 100×6, 100×5)")
     print()
 
 def delete_path():
@@ -1443,7 +1443,7 @@ duplicate_exercise_path()
 no_sessions_path()
 esc_shortcut_path()
 delete_session_path()
-personal_best_path()
+personal_record_path()
 delete_path()
 muscle_groups_path()
 exercise_muscle_groups_path()

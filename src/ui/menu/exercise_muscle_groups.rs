@@ -135,9 +135,9 @@ pub(super) fn edit_muscle_groups(
 /// Append a bold `Muscle groups:` heading and each assigned group as
 /// `  {name} · {marker}`, the marker word coloured like the difficulty markers
 /// in the session summary (only the word carries the colour), in name order —
-/// the info screen shows it between the description and personal bests. `  none
+/// the info screen shows it between the description and personal records. `  none
 /// assigned` when the exercise references no groups. The heading always shows,
-/// mirroring how "Personal bests:" always shows (with `  none yet`).
+/// mirroring how "Personal records:" always shows (with `  none yet`).
 pub(super) fn append_muscle_groups(
     lines: &mut Vec<Line<'static>>,
     conn: &Connection,
@@ -149,7 +149,7 @@ pub(super) fn append_muscle_groups(
         .collect();
     // Bold goes on the heading's span, not its line, so only the heading word
     // reads bold while the rest of the line stays plain — the same trick the
-    // exercise info screen's "Personal bests:" heading uses.
+    // exercise info screen's "Personal records:" heading uses.
     lines.push(Line::from(vec![Span::styled(
         "Muscle groups:".to_string(),
         Style::new().add_modifier(Modifier::BOLD),

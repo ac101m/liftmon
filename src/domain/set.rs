@@ -96,7 +96,7 @@ pub struct Set {
     /// How tough the set was: easy, hard, or taken to failure.
     pub difficulty: Difficulty,
     /// The set's Epley estimated one-rep max (`weight_kg × (1 + reps / 30)`):
-    /// the internal scalar that ranks sets and decides personal bests. Stored
+    /// the internal scalar that ranks sets and decides personal records. Stored
     /// so ordering needs no recompute, but the UI always surfaces weight and
     /// reps, never this number.
     pub epley_e1rm: f64,
@@ -114,7 +114,7 @@ fn epley_e1rm(weight_kg: f64, reps: u32) -> f64 {
 
 impl Set {
     /// Insert a new set row, and return the persisted entity together with
-    /// whether it is a personal best: its Epley e1RM strictly exceeds the best
+    /// whether it is a personal record: its Epley e1RM strictly exceeds the best
     /// of every prior set of the same exercise. An exercise's first set always
     /// is one (nothing precedes it); an equal e1RM is not (strictly `>`).
     ///
@@ -131,7 +131,7 @@ impl Set {
         created_at: DateTime<Utc>,
     ) -> Result<(Self, bool), DomainError> {
         // The e1RM decides the flag and is stored on the row, so ranking and
-        // personal-best history need no recompute later.
+        // personal-record history need no recompute later.
         let epley = epley_e1rm(weight_kg, reps);
         // Every already-existing set is prior to this insert, so the best of
         // the exercise so far is one MAX query; COALESCE makes a never-
@@ -141,7 +141,7 @@ impl Set {
             [exercise_id],
             |row| row.get(0),
         )?;
-        let is_personal_best = epley > prior_best;
+        let is_personal_record = epley > prior_best;
         conn.execute(
             "INSERT INTO sets
              (exercise_performance_id, exercise_id, created_at, weight_kg, reps, difficulty, epley_e1rm)
@@ -168,7 +168,7 @@ impl Set {
                 difficulty,
                 epley_e1rm: epley,
             },
-            is_personal_best,
+            is_personal_record,
         ))
     }
 
@@ -187,12 +187,12 @@ impl Set {
         }
     }
 
-    /// The exercise's personal bests — the sets that beat every strictly
+    /// The exercise's personal records — the sets that beat every strictly
     /// earlier set's Epley e1RM at the time they were done — newest first, up
-    /// to `limit`. Because each new best must strictly beat all that came
+    /// to `limit`. Because each new record must strictly beat all that came
     /// before, they run in strictly rising e1RM order and the first is the
     /// current best. (An exercise's first-ever set is always one.)
-    pub fn personal_bests(
+    pub fn personal_records(
         conn: &Connection,
         exercise_id: i64,
         limit: usize,
@@ -291,7 +291,7 @@ mod tests {
         let performance_id = seed_performance(&conn);
         let exercise_id = 1;
 
-        let (set, is_personal_best) = Set::create(
+        let (set, is_personal_record) = Set::create(
             &conn,
             performance_id,
             exercise_id,
@@ -310,7 +310,7 @@ mod tests {
         assert_eq!(set.reps, 5);
         assert_eq!(set.difficulty, Difficulty::Failure);
         assert!(
-            is_personal_best,
+            is_personal_record,
             "an exercise's first set starts its record"
         );
 
@@ -418,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn create_flags_a_personal_best_only_when_it_beats_prior_sets() {
+    fn create_flags_a_personal_record_only_when_it_beats_prior_sets() {
         let conn = test_db();
         let perf1 = seed_performance(&conn); // a session for exercise 1
 
@@ -427,7 +427,7 @@ mod tests {
         // < 100×5 → 116.67), adding reps does (100×6 → 120), a light set
         // doesn't, more weight and reps does (110×5 → 128.33), and an
         // equal-e1RM repeat of an earlier set is not a best (strictly `>`).
-        let (s1, pb1) = Set::create(
+        let (s1, pr1) = Set::create(
             &conn,
             perf1,
             1,
@@ -437,10 +437,10 @@ mod tests {
             dt(2026, 10, 20, 9, 0),
         )
         .unwrap();
-        assert!(pb1, "first set of an exercise is a personal best");
+        assert!(pr1, "first set of an exercise is a personal record");
         assert_eq!(s1.epley_e1rm, epley_e1rm(100.0, 5));
 
-        let (_, pb2) = Set::create(
+        let (_, pr2) = Set::create(
             &conn,
             perf1,
             1,
@@ -450,9 +450,9 @@ mod tests {
             dt(2026, 10, 20, 9, 1),
         )
         .unwrap();
-        assert!(!pb2, "heavier at fewer reps can rank lower");
+        assert!(!pr2, "heavier at fewer reps can rank lower");
 
-        let (_, pb3) = Set::create(
+        let (_, pr3) = Set::create(
             &conn,
             perf1,
             1,
@@ -462,9 +462,9 @@ mod tests {
             dt(2026, 10, 20, 9, 2),
         )
         .unwrap();
-        assert!(pb3);
+        assert!(pr3);
 
-        let (_, pb4) = Set::create(
+        let (_, pr4) = Set::create(
             &conn,
             perf1,
             1,
@@ -474,9 +474,9 @@ mod tests {
             dt(2026, 10, 20, 9, 3),
         )
         .unwrap();
-        assert!(!pb4);
+        assert!(!pr4);
 
-        let (s5, pb5) = Set::create(
+        let (s5, pr5) = Set::create(
             &conn,
             perf1,
             1,
@@ -486,10 +486,10 @@ mod tests {
             dt(2026, 10, 20, 9, 4),
         )
         .unwrap();
-        assert!(pb5);
+        assert!(pr5);
         assert_eq!(s5.epley_e1rm, epley_e1rm(110.0, 5));
 
-        let (_, pb6) = Set::create(
+        let (_, pr6) = Set::create(
             &conn,
             perf1,
             1,
@@ -499,7 +499,7 @@ mod tests {
             dt(2026, 10, 20, 9, 5),
         )
         .unwrap();
-        assert!(!pb6, "an equal e1RM ties, and a tie is not a new best");
+        assert!(!pr6, "an equal e1RM ties, and a tie is not a new record");
 
         // A different exercise — even one started later, with the first
         // exercise's record already set — starts its own: comparison is per
@@ -529,7 +529,7 @@ mod tests {
     }
 
     #[test]
-    fn personal_bests_lists_the_sets_that_beat_everything_before_newest_first() {
+    fn personal_records_lists_the_sets_that_beat_everything_before_newest_first() {
         let conn = test_db();
         let perf = seed_performance(&conn);
         // The same progression as the at-create flag test: of these six sets,
@@ -556,23 +556,23 @@ mod tests {
             .unwrap();
         }
 
-        let bests = Set::personal_bests(&conn, 1, 3).unwrap();
+        let records = Set::personal_records(&conn, 1, 3).unwrap();
         assert_eq!(
-            bests
+            records
                 .iter()
                 .map(|s| (s.weight_kg, s.reps))
                 .collect::<Vec<_>>(),
             vec![(110.0, 5), (100.0, 6), (100.0, 5)],
-            "the last three personal bests, newest first"
+            "the last three personal records, newest first"
         );
         assert_eq!(
-            bests.first().unwrap().epley_e1rm,
+            records.first().unwrap().epley_e1rm,
             epley_e1rm(110.0, 5),
-            "the newest best carries the highest e1RM"
+            "the newest record carries the highest e1RM"
         );
 
         // The limit is respected: ask for two, get the newer two.
-        let two = Set::personal_bests(&conn, 1, 2).unwrap();
+        let two = Set::personal_records(&conn, 1, 2).unwrap();
         assert_eq!(
             two.iter()
                 .map(|s| (s.weight_kg, s.reps))
@@ -580,8 +580,8 @@ mod tests {
             vec![(110.0, 5), (100.0, 6)]
         );
 
-        // An exercise that has never been performed has no bests.
-        assert!(Set::personal_bests(&conn, 999, 3).unwrap().is_empty());
+        // An exercise that has never been performed has no records.
+        assert!(Set::personal_records(&conn, 999, 3).unwrap().is_empty());
     }
 
     #[test]

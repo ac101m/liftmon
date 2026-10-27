@@ -128,7 +128,7 @@ impl Shell {
 
     /// Begin a new section in the history area: `lines` framed by a full-width
     /// horizontal rule above and below (e.g. exercise info — title, indented
-    /// description, and on the info screen a personal-bests list).
+    /// description, and on the info screen a personal-records list).
     pub(crate) fn log_section(&mut self, lines: Vec<Line<'static>>) {
         self.history.push(LogLine::Rule);
         self.history.extend(lines.into_iter().map(LogLine::Text));

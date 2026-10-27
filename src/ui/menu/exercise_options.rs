@@ -51,7 +51,7 @@ pub(super) fn run(
             // Read-only: print the exercise as a framed section — divider,
             // bold name with a trailing colon, indented description, the
             // assigned muscle groups (only their marker words coloured, like a
-            // set's difficulty marker), then the last few personal bests (the
+            // set's difficulty marker), then the last few personal records (the
             // sets, newest first, that beat every earlier set's e1RM) listed
             // inside the same frame as weight × reps, when the record was set,
             // and how long ago that was. The e1RM itself never appears, and
@@ -59,7 +59,7 @@ pub(super) fn run(
             Some("info") => {
                 let mut lines = super::exercise_lines(&exercise);
                 super::exercise_muscle_groups::append_muscle_groups(&mut lines, conn, exercise.id)?;
-                append_personal_bests(&mut lines, conn, &exercise)?;
+                append_personal_records(&mut lines, conn, &exercise)?;
                 shell.log_section(lines);
             }
             // Renaming reloads the loop under the new name so the prompt keeps
@@ -105,32 +105,32 @@ pub(super) fn run(
     }
 }
 
-/// How many personal bests the info screen lists.
-const PERSONAL_BESTS_LIMIT: usize = 3;
+/// How many personal records the info screen lists.
+const PERSONAL_RECORDS_LIMIT: usize = 3;
 
-/// Append a bold `Personal bests:` heading and the exercise's last few
-/// personal bests — newest first, weight × reps with when the record was set
+/// Append a bold `Personal records:` heading and the exercise's last few
+/// personal records — newest first, weight × reps with when the record was set
 /// (its local date, and how long ago that was), no difficulty marker — to the
 /// tail of a section.
-pub(super) fn append_personal_bests(
+pub(super) fn append_personal_records(
     lines: &mut Vec<Line<'static>>,
     conn: &Connection,
     exercise: &Exercise,
 ) -> Result<(), UiError> {
-    let bests = Set::personal_bests(conn, exercise.id, PERSONAL_BESTS_LIMIT)?;
+    let records = Set::personal_records(conn, exercise.id, PERSONAL_RECORDS_LIMIT)?;
     // One "now", re-used for every line, so a slow render can't skew the ages
     // against each other.
     let now = Local::now().naive_local();
     // Bold goes on the span, not the line, so only the heading word reads
     // bold while the rest of the line stays plain.
     lines.push(Line::from(vec![Span::styled(
-        "Personal bests:".to_string(),
+        "Personal records:".to_string(),
         Style::new().add_modifier(Modifier::BOLD),
     )]));
-    if bests.is_empty() {
+    if records.is_empty() {
         lines.push(Line::from("  none yet"));
     } else {
-        for set in bests {
+        for set in records {
             lines.push(Line::from(format!(
                 "  {} kg × {} · set on {} ({})",
                 set.weight_kg,

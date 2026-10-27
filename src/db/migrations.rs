@@ -110,7 +110,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
     .down("ALTER TABLE sets DROP COLUMN epley_e1rm;")
     .comment(
         "Each set's Epley estimated one-rep max (weight_kg * (1 + reps / 30)), stored so \
-         ordering needs no recompute. It ranks sets for personal bests and makes their \
+         ordering needs no recompute. It ranks sets for personal records and makes their \
          at-the-time best status derivable (a set was a best when its value strictly exceeded \
          the max of the strictly earlier sets of the same exercise), without a boolean flag. \
          The `epley_` prefix leaves room for other estimators. Backfilled for existing sets.",
