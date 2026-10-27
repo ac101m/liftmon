@@ -72,11 +72,9 @@ pub(super) fn run(
                 super::exercise_muscle_groups::edit_muscle_groups(shell, conn, &exercise)?;
             }
             Some("delete") => {
-                let sure = shell.ask(
-                    Some(format!("Delete exercise '{}'?", exercise.name)),
-                    ["Yes", "No"],
-                )?;
-                if sure.as_deref() == Some("Yes") {
+                // Defaults to "No": deleting is destructive, so an explicit
+                // "Yes" is required even for an accidental Enter.
+                if shell.confirm(Some(format!("Delete exercise '{}'?", exercise.name)))? {
                     match exercise.delete(conn) {
                         Ok(()) => {
                             shell.log(format!("Deleted exercise '{}'", exercise.name));

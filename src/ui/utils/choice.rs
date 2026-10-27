@@ -66,12 +66,24 @@ pub(crate) struct Choice {
 impl Choice {
     /// Build a choice list; `options` must not be empty.
     pub(crate) fn new(title: Option<String>, options: Vec<String>) -> Self {
+        Self::with_selected(title, options, 0)
+    }
+
+    /// Build a choice list with `selected` as the row the highlight rests on
+    /// before any key is pressed — the answer that sits under Enter. Used by
+    /// [`Shell::confirm`] to default destructive confirmations to "No", so an
+    /// accidental Enter doesn't trigger the irreversible option.
+    pub(crate) fn with_selected(
+        title: Option<String>,
+        options: Vec<String>,
+        selected: usize,
+    ) -> Self {
         let mut state = ListState::default();
-        state.select(Some(0));
+        state.select(Some(selected));
         Self {
             title,
             options,
-            selected: 0,
+            selected,
             state,
         }
     }
@@ -174,6 +186,25 @@ mod tests {
         assert_eq!(
             choice.on_key(key(KeyCode::Enter)),
             Some(ElementResult::Value("squat".to_string()))
+        );
+    }
+
+    #[test]
+    fn with_selected_starts_the_highlight_on_the_given_row() {
+        // A confirmation's safe answer can be pre-selected, so an accidental
+        // Enter lands on "No" rather than the destructive option.
+        let mut choice = Choice::with_selected(None, vec!["Yes".into(), "No".into()], 1);
+        assert_eq!(choice.selected, 1);
+        assert_eq!(
+            choice.on_key(key(KeyCode::Enter)),
+            Some(ElementResult::Value("No".to_string())),
+            "Enter selects the highlighted row by default"
+        );
+        // Either arrow wraps to the other answer, so moving to "Yes" is one press.
+        choice.on_key(key(KeyCode::Up));
+        assert_eq!(
+            choice.on_key(key(KeyCode::Enter)),
+            Some(ElementResult::Value("Yes".to_string()))
         );
     }
 

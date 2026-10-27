@@ -155,6 +155,22 @@ impl Shell {
         }
     }
 
+    /// Ask a confirm-or-decline question — a "Yes" / "No" list with "No" as
+    /// the highlighted default, so the safe answer rests under Enter and only
+    /// an explicit "Yes" proceeds. Escape counts as "No".
+    ///
+    /// This is the prompt for destructive or easily-mistaken actions (deleting
+    /// things, resuming a stale session, discarding in-progress work), where
+    /// an accidental Enter should decline, never confirm.
+    pub(crate) fn confirm(&mut self, title: Option<String>) -> Result<bool, UiError> {
+        let mut choice =
+            Choice::with_selected(title, ["Yes".to_string(), "No".to_string()].to_vec(), 1);
+        match self.run(&mut choice)? {
+            ElementResult::Value(answer) => Ok(answer == "Yes"),
+            ElementResult::Cancelled => Ok(false),
+        }
+    }
+
     /// Ask for a single line of text within this session.
     ///
     /// Runs a [`TextInput`] element seeded with `initial` (so re-asking after a

@@ -83,19 +83,17 @@ pub(super) fn run(
                 };
                 log_session(shell, conn, &session)?;
             }
-            // Delete the session after a Yes/No "are you sure". Unlike an
-            // exercise there is nothing to refuse: a session's performances and
-            // sets belong to it, so the schema deletes them with the row (ON
-            // DELETE CASCADE) — and the list we return to no longer shows it.
+            // Delete the session after a Yes/No "are you sure" that defaults to
+            // "No" — deleting is destructive, so an explicit "Yes" is required
+            // even for an accidental Enter. Unlike an exercise there is nothing
+            // to refuse: a session's performances and sets belong to it, so the
+            // schema deletes them with the row (ON DELETE CASCADE) — and the
+            // list we return to no longer shows it.
             Some("delete") => {
-                let sure = shell.ask(
-                    Some(format!(
-                        "Delete session from {}?",
-                        format_date(local_date(info.created_at))
-                    )),
-                    ["Yes", "No"],
-                )?;
-                if sure.as_deref() == Some("Yes") {
+                if shell.confirm(Some(format!(
+                    "Delete session from {}?",
+                    format_date(local_date(info.created_at))
+                )))? {
                     let Some(session) = Session::find_by_id(conn, info.id)? else {
                         shell.log("That session is no longer there");
                         return Ok(Some(Menu::SelectSession));
@@ -180,14 +178,12 @@ fn confirm_if_stale(shell: &mut Shell, info: &SessionInfo) -> Result<bool, UiErr
         return Ok(true);
     }
     shell.log("That session's last activity was over 6 hours ago.");
-    let sure = shell.ask(
-        Some(format!(
-            "Resume session from {}?",
-            format_date(local_date(info.created_at))
-        )),
-        ["Yes", "No"],
-    )?;
-    Ok(sure.as_deref() == Some("Yes"))
+    // Defaults to "No": resuming the wrong stale session is an accidental
+    // Enter away, so only an explicit "Yes" proceeds.
+    shell.confirm(Some(format!(
+        "Resume session from {}?",
+        format_date(local_date(info.created_at))
+    )))
 }
 
 /// Whether resuming this session at `now` warrants a confirmation: its most

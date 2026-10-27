@@ -540,11 +540,11 @@ def stale_confirm_path():
     app.send("\r")                                          # resume (index 0) -> confirm
     app.check("stale confirm prompt", "That session's last activity was over 6 hours ago.",
               "Resume session from " + created_label + "?", "Yes", "No")
-    app.send("\x1b[B\r")                                    # No: stays on the options
+    app.send("\r")                                          # No is the default: stays on the options
     app.check("No stays on session options", "─[" + created_label + " · freeform session]", "resume", "summary", "back")
     app.send("\r")                                          # resume again
     app.check("stale confirm prompt (again)", "Yes", "No")
-    app.send("\r")                                          # Yes: confirm -> resume
+    app.send("\x1b[A\r")                                    # No is the default; Yes: up to it -> resume
     # The resume lines use the session's start (creation) date, not today's.
     app.check("resumed at its exercise",
               "Resumed freeform session from " + created_label,
@@ -899,11 +899,11 @@ def delete_session_path():
     app.check("doomed session options", "─[" + doomed_label + " · freeform session]", "resume", "summary", "delete", "back")
     app.send("\x1b[B\x1b[B\r")                              # delete (index 2)
     app.check("delete confirm", "Delete session from " + doomed_label + "?", "Yes", "No")
-    app.send("\x1b[B\r")                                    # No: stays on the options
+    app.send("\r")                                          # No is the default: keeps the session
     app.check("No keeps the session", "─[" + doomed_label + " · freeform session]", "resume", "summary", "delete", "back")
     app.send("\x1b[B\x1b[B\r")                              # delete again
     app.check("delete confirm (again)", "Delete session from " + doomed_label + "?", "Yes", "No")
-    app.send("\r")                                          # Yes: delete it
+    app.send("\x1b[A\r")                                    # Yes: up to it, delete it
     app.check("deleted + back at the session list", "Deleted session from " + doomed_label,
               "─[Select session]", "type to filter", "Esc back")
     app.check("the survivor is still listed", survivor_label)
@@ -1045,7 +1045,7 @@ def delete_path():
     app.check("exercise options", "─[Bench press]", "edit muscle groups", "delete")
     app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
     app.check("delete confirm", "Delete exercise 'Bench press'?", "Yes", "No")
-    app.send("\r")                                      # Yes
+    app.send("\x1b[A\r")                                   # Yes: up to it (default is No)
     # The app must refuse (not crash): stays on the per-exercise menu with a
     # friendly history line naming how many sessions hold the exercise.
     app.check("delete refused", "Can't delete exercise 'Bench press' — it's used in 1 session",
@@ -1059,7 +1059,7 @@ def delete_path():
     app.check("squat options", "─[Squat]", "edit muscle groups", "delete")
     app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
     app.check("delete confirm", "Delete exercise 'Squat'?", "Yes", "No")
-    app.send("\r")                                      # Yes
+    app.send("\x1b[A\r")                                   # Yes: up to it (default is No)
     app.check("deleted", "Deleted exercise 'Squat'", "─[Exercises]")
     app.close()
 
@@ -1158,11 +1158,11 @@ def exercise_muscle_groups_path():
     app.check("abs low (2nd)", "· low")
     app.send("\x1b")                                    # Esc: ask whether to cancel the add
     app.check("abandon confirm", "Cancel adding this exercise?", "Yes", "No")
-    app.send("\x1b[B\r")                                # No: keep editing
+    app.send("\r")                                      # No is the default: keep editing
     app.check("picker re-seeded with progress", "─[Muscle groups]", "· low")
     app.send("\x1b")                                    # Esc again
     app.check("abandon confirm (2nd)", "Cancel adding this exercise?", "Yes", "No")
-    app.send("\r")                                      # Yes: cancel the whole add
+    app.send("\x1b[A\r")                                # Yes: up to it, cancel the whole add
     app.check("cancelled add, back at exercises", "─[Exercises]")
     app.close()
 
