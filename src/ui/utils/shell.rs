@@ -495,15 +495,9 @@ fn render_history(buf: &mut Buffer, area: Rect, history: &[LogLine], scroll: usi
     let scroll = scroll.min(rows.len().saturating_sub(fill));
     let start = rows.len().saturating_sub(fill + scroll);
     let end = rows.len() - scroll;
-    // Each line keeps its own span styles (a bold section title), dimmed as a
-    // base so plain lines read subdued while a styled heading still pops.
-    List::new(
-        rows[start..end]
-            .iter()
-            .cloned()
-            .map(|line| line.style(Style::new().add_modifier(Modifier::DIM))),
-    )
-    .render(area, buf);
+    // The log's past actions render plainly, at full brightness: each line
+    // keeps its own span styles (a bold section title, a coloured marker).
+    List::new(rows[start..end].iter().cloned()).render(area, buf);
 
     if scroll > 0 {
         render_scroll_indicator(buf, area);

@@ -147,9 +147,9 @@ pub(super) fn append_muscle_groups(
         .into_iter()
         .filter(|(_, level)| *level != Level::None)
         .collect();
-    // Bold goes on the heading's span, not its line, so it survives the history
-    // render's dimming pass (which patches, not merges, line styles) — the same
-    // trick "Personal bests:" heading uses on the same screen.
+    // Bold goes on the heading's span, not its line, so only the heading word
+    // reads bold while the rest of the line stays plain — the same trick the
+    // exercise info screen's "Personal bests:" heading uses.
     lines.push(Line::from(vec![Span::styled(
         "Muscle groups:".to_string(),
         Style::new().add_modifier(Modifier::BOLD),
@@ -255,7 +255,7 @@ mod tests {
                 .style
                 .add_modifier
                 .contains(Modifier::BOLD),
-            "the heading is bold so it survives the history dimming"
+            "the heading is bold on its own span, the rest of the line plain"
         );
         assert_eq!(text(&lines[1]), "  none assigned");
     }

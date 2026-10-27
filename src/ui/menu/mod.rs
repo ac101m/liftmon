@@ -111,9 +111,10 @@ pub(crate) fn log_splash(shell: &mut Shell, version: &str, schema_version: usize
 }
 
 /// The foreground colour a set's difficulty marker reads as: green for easy,
-/// yellow for hard, red for a failed set. Placed on the difficulty span so it
-/// survives the history's line-level dimming (span styles ride on top of it) —
-/// used by the session summary and the freeform session's set-completion lines.
+/// yellow for hard, red for a failed set. Placed on the difficulty span so
+/// only the marker word carries the colour while the rest of its line stays
+/// plain — used by the session summary and the freeform session's
+/// set-completion lines.
 pub(super) fn difficulty_style(difficulty: Difficulty) -> Style {
     let colour = match difficulty {
         Difficulty::Easy => Color::Green,

@@ -39,6 +39,7 @@ pub(super) fn pick_exercise(
     shell: &mut Shell,
     conn: &Connection,
 ) -> Result<Option<Exercise>, UiError> {
+    let mut selected = 0;
     loop {
         let groups = MuscleGroup::all(conn)?;
         if groups.is_empty() {
@@ -46,9 +47,18 @@ pub(super) fn pick_exercise(
             return Ok(None);
         }
         let group_names: Vec<String> = groups.iter().map(|g| g.name.clone()).collect();
-        let Some(picked) = shell.ask(Some("Select muscle group".to_string()), group_names)? else {
+        // A group no exercise activates re-offers this picker, so the re-ask
+        // keeps the highlight on the group just picked (like any menu that
+        // stays open after an action) instead of springing back to the top.
+        let (picked, picked_here) = shell.ask_selected(
+            Some("Select muscle group".to_string()),
+            group_names,
+            selected,
+        )?;
+        let Some(picked) = picked else {
             return Ok(None); // Escape: backed out of the flow
         };
+        selected = picked_here;
         let group = groups
             .into_iter()
             .find(|g| g.name == picked)

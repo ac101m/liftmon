@@ -121,8 +121,8 @@ pub(super) fn append_personal_bests(
     // One "now", re-used for every line, so a slow render can't skew the ages
     // against each other.
     let now = Local::now().naive_local();
-    // Bold goes on the span, not the line, so it survives the history
-    // render's dimming pass (which patches, not merges, line styles).
+    // Bold goes on the span, not the line, so only the heading word reads
+    // bold while the rest of the line stays plain.
     lines.push(Line::from(vec![Span::styled(
         "Personal bests:".to_string(),
         Style::new().add_modifier(Modifier::BOLD),
