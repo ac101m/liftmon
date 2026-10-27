@@ -42,7 +42,7 @@ use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
 use super::difficulty_style;
-use super::select_exercise_by_group::pick_exercise;
+use super::select_exercise;
 use super::select_session::{format_date, local_date};
 
 /// Drive the session until the user leaves it, then land back on its options
@@ -125,7 +125,7 @@ pub(super) fn run(
                 // Another set for the same exercise.
                 Some("next set") => break,
                 // Pick the next exercise.
-                Some("next exercise") => match pick_next_exercise(shell, conn)? {
+                Some("next exercise") => match select_exercise::pick(shell, conn)? {
                     // Backed out of the submenu (or a picker, after re-asking):
                     // leave the flow.
                     None => return Ok(Some(return_to)),
@@ -156,80 +156,18 @@ pub(super) fn run(
 /// Pick the next exercise. Its performance is deliberately NOT created here —
 /// that is deferred until the first set is completed ([`ask_set`]), so picking
 /// an exercise and then moving on without logging a set leaves no empty
-/// performance behind. How it is picked is the submenu's call
-/// ([`pick_next_exercise`]). `None` means the user backed out (of the submenu
-/// or a picker), or there is nothing to pick, and the caller returns to where
-/// the flow was launched from.
+/// performance behind. How it is picked is the shared chooser's call
+/// ([`select_exercise::pick`]). `None` means the user backed out (of the
+/// submenu or a picker), or there is nothing to pick, and the caller returns to
+/// where the flow was launched from.
 fn begin_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exercise>, UiError> {
-    let Some(exercise) = pick_next_exercise(shell, conn)? else {
+    let Some(exercise) = select_exercise::pick(shell, conn)? else {
         return Ok(None);
     };
     // A picked exercise begins with a plain notice — not a framed section — so
     // a session's log reads as a contiguous stream of set lines with a small
     // marker where each exercise starts.
     shell.log(format!("Moved to next exercise '{}'", exercise.name));
-    Ok(Some(exercise))
-}
-
-/// Ask how the next exercise is picked, then run the chosen picker: the
-/// all-exercises filter list, or the per-muscle-group browse shared with the
-/// exercises screen. Escape backs out one level at a time — off a picker you
-/// are offered the other way to pick, and off the submenu you leave the flow.
-/// There is no point offering the submenu when nothing at all exists to pick,
-/// so the empty-exercises case logs and leaves. `None` means the user backed
-/// out of the submenu.
-fn pick_next_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exercise>, UiError> {
-    if Exercise::all(conn)?.is_empty() {
-        shell.log("No exercises yet — add one first");
-        return Ok(None);
-    }
-    // Escaping a picker re-asks this submenu; the highlight stays on the
-    // method that was just used rather than jumping back to "all exercises".
-    let mut selected = 0;
-    loop {
-        let (choice, selected_here) = shell.ask_selected(
-            Some("Select exercise".to_string()),
-            ["all exercises", "exercises by muscle group"],
-            selected,
-        )?;
-        selected = selected_here;
-        match choice.as_deref() {
-            None => return Ok(None), // Escape: leave the flow
-            Some("all exercises") => {
-                if let Some(exercise) = pick_any_exercise(shell, conn)? {
-                    return Ok(Some(exercise));
-                }
-                // Escape in the picker: re-ask how to pick.
-            }
-            Some("exercises by muscle group") => {
-                if let Some(exercise) = pick_exercise(shell, conn)? {
-                    return Ok(Some(exercise));
-                }
-                // Escape at the group list: re-ask how to pick.
-            }
-            _ => unreachable!("the submenu only offers the two pickers"),
-        }
-    }
-}
-
-/// The all-exercises picker: every exercise in one filter list. `None` when
-/// the user backed out with Escape.
-fn pick_any_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exercise>, UiError> {
-    let exercises = Exercise::all(conn)?;
-    let names: Vec<String> = exercises.iter().map(|e| e.name.clone()).collect();
-    let Some(chosen) = shell.pick(
-        Some("Select exercise".to_string()),
-        Some("type to filter".to_string()),
-        names,
-    )?
-    else {
-        return Ok(None); // Escape: backed out
-    };
-    // Names are UNIQUE, so the picked name identifies exactly one exercise.
-    let exercise = exercises
-        .into_iter()
-        .find(|e| e.name == chosen)
-        .expect("picked a listed exercise");
     Ok(Some(exercise))
 }
 

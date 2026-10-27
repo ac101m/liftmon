@@ -742,19 +742,18 @@ def esc_shortcut_path():
     app.check("Esc backs from sessions menu", "═[Main menu]", "Exercises")
 
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu", "═[Exercises]", "Show all exercises",
-              "Show exercises by muscle group", "Add exercise", "Back")
+    app.check("exercise menu", "═[Exercises]", "Browse exercises", "Add exercise", "Back")
     app.send("\x1b")                                    # Esc = back
     app.check("Esc backs from exercises menu", "═[Main menu]", "Sessions")
 
     # Per-exercise menu: Esc = back; Esc on the delete confirm = No.
     app.send("\r")                                      # -> Exercises
-    app.send("\r")                                # Show exercises
+    app.send("\r\r")                              # Browse exercises -> submenu -> all exercises
     app.send("\r")                                      # pick Bench press
     app.check("exercise options", "═[Bench press]", "info", "edit name", "edit description", "edit muscle groups", "delete", "back")
     app.send("\x1b")                                    # Esc = back
     app.check("Esc backs from exercise options", "═[Exercises]", "Add exercise")
-    app.send("\r")                                # Show exercises
+    app.send("\r\r")                              # Browse exercises -> submenu -> all exercises
     app.send("\r")                                      # pick Bench press
     app.check("exercise options (2nd)", "═[Bench press]", "info", "edit name", "edit description", "edit muscle groups", "delete", "back")
     app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
@@ -1017,9 +1016,8 @@ def personal_best_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                          # -> Exercises
-    app.check("exercise menu", "═[Exercises]", "Show all exercises",
-              "Show exercises by muscle group", "Add exercise", "Back")
-    app.send("\r")                                    # Show exercises
+    app.check("exercise menu", "═[Exercises]", "Browse exercises", "Add exercise", "Back")
+    app.send("\r\r")                              # Browse exercises -> submenu -> all exercises
     app.send("\r")                                          # pick Bench press
     app.check("exercise options", "═[Bench press]", "info", "delete")
     app.send("\r")                                          # info
@@ -1043,9 +1041,8 @@ def delete_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu", "═[Exercises]", "Show all exercises",
-              "Show exercises by muscle group", "Add exercise", "Back")
-    app.send("\r")                                # Show exercises
+    app.check("exercise menu", "═[Exercises]", "Browse exercises", "Add exercise", "Back")
+    app.send("\r\r")                              # Browse exercises -> submenu -> all exercises
     app.send("\r")                                      # pick Bench press
     app.check("exercise options", "═[Bench press]", "edit muscle groups", "delete")
     app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
@@ -1059,7 +1056,7 @@ def delete_path():
     app.check("back at exercises", "═[Exercises]")
 
     # Deleting the unused Squat succeeds and returns to the exercises menu.
-    app.send("\r")                                # Show exercises
+    app.send("\r\r")                              # Browse exercises -> submenu -> all exercises
     app.send("\x1b[B\r")                                # pick Squat
     app.check("squat options", "═[Squat]", "edit muscle groups", "delete")
     app.send("\x1b[B" * 4 + "\r")                       # delete (index 4, after muscle groups)
@@ -1124,9 +1121,8 @@ def exercise_muscle_groups_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu", "═[Exercises]", "Show all exercises",
-              "Show exercises by muscle group", "Add exercise", "Back")
-    app.send("\x1b[B\x1b[B\r")                          # Add exercise (index 2, after the browse pair)
+    app.check("exercise menu", "═[Exercises]", "Browse exercises", "Add exercise", "Back")
+    app.send("\x1b[B\r")                                    # Add exercise (index 1)
     app.send("Deadlift\r")                              # name
     app.send("hinge\r")                                 # description
     # The cycle picker appears after the description; Abs and Biceps are both
@@ -1155,7 +1151,7 @@ def exercise_muscle_groups_path():
     seed_db()
     app = App()
     app.send("\r")                                      # -> Exercises
-    app.send("\x1b[B\x1b[B\r")                          # Add exercise (index 2, after the browse pair)
+    app.send("\x1b[B\r")                                    # Add exercise (index 1)
     app.send("Row\r")                                   # name
     app.send("\r")                                      # empty description
     app.check("muscle group picker (2nd)", "═[Muscle groups]", " Abs", "Space cycle")
@@ -1184,7 +1180,7 @@ def exercise_muscle_groups_path():
     seed_db()
     app = App()
     app.send("\r")                                      # -> Exercises
-    app.send("\r")                                      # Show exercises
+    app.send("\r\r")                              # Browse exercises -> submenu -> all exercises
     app.send("\r")                                      # pick Bench press (index 0)
     app.check("exercise options", "═[Bench press]", "edit muscle groups", "delete")
     app.send("\r")                                      # info: no refs yet
@@ -1221,9 +1217,13 @@ def exercise_muscle_groups_path():
     con.commit(); con.close()
     app = App()
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu (by-group)", "═[Exercises]", "Show all exercises",
-              "Show exercises by muscle group", "Add exercise", "Back")
-    app.send("\x1b[B\r")                                # Show exercises by muscle group (index 1)
+    app.check("exercise menu (by-group)", "═[Exercises]", "Browse exercises", "Add exercise", "Back")
+    app.send("\r")                                      # Browse exercises (index 0) -> submenu
+    app.check("submenu in the exercises flow", "═[Select exercise]", "all exercises",
+              "exercises by muscle group")
+    app.send("\x1b")                                    # Esc off the submenu: back to the exercises menu
+    app.check("esc drops back to the exercises menu", "═[Exercises]", "Browse exercises", "Back")
+    app.send("\r\x1b[B\r")                              # Browse -> submenu -> exercises by muscle group (index 1)
     app.check("group picker", "═[Select muscle group]", " Abs", " Biceps", "Esc back")
     app.send("\r")                                      # Abs (index 0): no exercises activate it
     app.check("no exercises for the group", "No exercises activate 'Abs'", "═[Select muscle group]")
@@ -1241,9 +1241,8 @@ def text_edit_keys_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Exit")
     app.send("\r")                                      # -> Exercises
-    app.check("exercise menu", "═[Exercises]", "Show all exercises",
-              "Show exercises by muscle group", "Add exercise", "Back")
-    app.send("\x1b[B\x1b[B\r")                          # Add exercise (index 2, after the browse pair)
+    app.check("exercise menu", "═[Exercises]", "Browse exercises", "Add exercise", "Back")
+    app.send("\x1b[B\r")                                    # Add exercise (index 1)
     # The name is typed tail-first; Home then jumps the caret to the start so
     # "Dea" lands in front. Only a working Home yields "Deadlift" (a broken one
     # leaves "dliftDea").

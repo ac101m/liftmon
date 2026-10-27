@@ -8,12 +8,13 @@
 //! Each screen's behaviour lives in its own file — see [`self::main_menu`],
 //! [`self::exercises_menu`], [`self::session_menu`], [`self::freeform_session`],
 //! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
-//! [`self::select_exercise`], [`self::select_exercise_by_group`],
-//! [`self::exercise_options`],
-//! [`self::select_muscle_group`] and [`self::muscle_group_options`] — so this
-//! file stays a thin dispatcher as more menus are added. The screens are built on
-//! the reusable element framework in [`super::utils`] (the shell, the input
-//! elements, errors).
+//! [`self::exercise_options`], [`self::select_muscle_group`] and
+//! [`self::muscle_group_options`] — with [`self::select_exercise`] (the shared
+//! "Select exercise" chooser) and [`self::select_exercise_by_group`] (the
+//! per-muscle-group browse it offers, over in the muscle-group picker too) as
+//! helpers — so this file stays a thin dispatcher as more menus are added. The
+//! screens are built on the reusable element framework in [`super::utils`] (the
+//! shell, the input elements, errors).
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -40,15 +41,10 @@ mod session_options;
 pub(crate) enum Menu {
     /// The top-level menu (Exercises / Sessions / Exit).
     Main,
-    /// The exercise screen (Show all / by muscle group / Add exercise / Back).
+    /// The exercise screen (Browse exercises / Add exercise / Back).
     Exercises,
     /// The add-exercise form (name, then description).
     AddExercise,
-    /// The pick-an-exercise screen (filter box + list).
-    SelectExercise,
-    /// The browse-by-muscle-group flow: pick a muscle group, then one of that
-    /// group's exercises, landing on its options screen.
-    SelectExerciseByGroup,
     /// The actions for one picked exercise, named by its unique name so the
     /// prompt updates after a rename.
     ExerciseOptions { name: String },
@@ -138,10 +134,8 @@ impl Menu {
     ) -> Result<Option<Menu>, UiError> {
         match self {
             Menu::Main => main_menu::run(shell),
-            Menu::Exercises => exercises_menu::run(shell),
+            Menu::Exercises => exercises_menu::run(shell, conn),
             Menu::AddExercise => add_exercise::run(shell, conn),
-            Menu::SelectExercise => select_exercise::run(shell, conn),
-            Menu::SelectExerciseByGroup => select_exercise_by_group::run(shell, conn),
             Menu::ExerciseOptions { name } => exercise_options::run(shell, conn, name),
             Menu::SelectMuscleGroup => select_muscle_group::run(shell, conn),
             Menu::MuscleGroupOptions { name } => muscle_group_options::run(shell, conn, name),
