@@ -139,7 +139,7 @@ mod tests {
         let conn = test_db();
 
         let all = MuscleGroup::all(&conn).unwrap();
-        assert_eq!(all.len(), 16);
+        assert_eq!(all.len(), 17);
         assert_eq!(
             all.iter().map(|g| g.name.as_str()).collect::<Vec<_>>(),
             [
@@ -150,6 +150,7 @@ mod tests {
                 "Front delts",
                 "Glutes",
                 "Hamstrings",
+                "Hip adductors",
                 "Lats",
                 "Obliques",
                 "Pecs",

@@ -43,14 +43,14 @@ os.chdir("/tmp")
 # The newest schema version this build knows. seed_db stamps it, and the splash
 # path asserts the startup splash reports it, so a schema migration both bumps
 # the seed and flips the assertion in the same run.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat")),
             refs=()):
-    """Rebuild the on-disk DB to the exact v5 schema (delete rules included) —
-    mirroring what the app's `upgrade()` produces: the four shipped migrations,
-    plus the v5 muscle-group tables with the 16 default groups seeded — with the
-    given exercises and, optionally, their muscle-group references as
+    """Rebuild the on-disk DB to the exact current schema (delete rules
+    included) — mirroring what the app's `upgrade()` produces: the six shipped
+    migrations, plus the muscle-group tables with the 17 default groups seeded —
+    with the given exercises and, optionally, their muscle-group references as
     (exercise name, muscle group name) pairs."""
     if os.path.exists(DB): os.unlink(DB)
     con = sqlite3.connect(DB)
@@ -81,7 +81,7 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         PRIMARY KEY (exercise_id, muscle_group_id))""")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
-    # The 16 default groups, with the descriptions the app's seed const carries
+    # The 17 default groups, with the descriptions the app's seed const carries
     # (mirroring src/db/muscle_groups.rs' INITIAL_MUSCLE_GROUPS), so the info
     # screen renders a real description.
     for name, desc in (
@@ -101,6 +101,7 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         ("Calves", "Muscles of the rear lower leg. Trained using movements that extend the foot by flexing the ankle."),
         ("Abs", "Muscles of the lower torso. Trained using crunching movements that curve the spine forward."),
         ("Obliques", "Muscles at the side of the torso. Trained with movements that twist the torso."),
+        ("Hip adductors", "Muscles of the inside leg and groin. Trained using movements that squeeze the legs together."),
     ):
         con.execute("INSERT INTO muscle_group (name, description) VALUES (?, ?)", (name, desc))
     # Optional muscle-group references — how the session's by-group exercise
@@ -1087,16 +1088,17 @@ def muscle_groups_path():
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # Muscle groups (index 2)
     # The plain (non-filtering) list: the 9-row Choice box shows the seeded
-    # groups in name order; "Pecs" (index 9) starts below the fold, so assert
-    # only what is visible initially — and, crucially, not "Pecs" yet.
+    # groups in name order; "Pecs" (index 10) starts below the fold, so assert
+    # only what is visible initially — a top, middle and bottom row — and,
+    # crucially, not "Pecs" yet (nor "Obliques", now also below the fold).
     app.check("select muscle group", "═[Select muscle group]", "Abs", "Biceps",
-              "Obliques", "Esc back")
+              "Glutes", "Lats", "Esc back")
     # The dedicated "Muscle groups" picker stays plain — no exercise counts.
     # (Only the exercise-selection pickers carry them.)
     grid = app.grid()
     if any("(" in row and "exercise" in row for row in grid):
         raise SystemExit("FAIL: the main muscle-groups picker must not show exercise counts")
-    app.send("\x1b[B" * 9 + "\r")              # scroll down to Pecs (index 9)
+    app.send("\x1b[B" * 10 + "\r")             # scroll down to Pecs (index 10)
     app.check("muscle group options", "═[Pecs]", "info", "back")
     app.send("\r")                             # info
     # The info section frames "Pecs:" over its description; the text wraps at
@@ -1111,7 +1113,7 @@ def muscle_groups_path():
     con = sqlite3.connect(DB)
     count = con.execute("SELECT COUNT(*) FROM muscle_group").fetchone()[0]
     con.close()
-    if count != 16: raise SystemExit(f"FAIL: expected 16 seeded muscle groups, got {count}")
+    if count != 17: raise SystemExit(f"FAIL: expected 17 seeded muscle groups, got {count}")
     print("ok   the list is browsable, info shows a group's name and description, and the rows are untouched")
     print()
 

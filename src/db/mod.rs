@@ -391,17 +391,18 @@ mod tests {
         v1.to_latest(&mut conn).unwrap();
         drop(conn);
 
-        // This build knows four more migrations (exercises, the workout
-        // tables, the epley_e1rm column, then the muscle groups): opening the
-        // old file reports an upgradable schema — the case main/UI prompts on.
+        // This build knows five more migrations (exercises, the workout
+        // tables, the epley_e1rm column, the muscle groups, then the Hip
+        // adductors default): opening the old file reports an upgradable
+        // schema — the case main/UI prompts on.
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 1, to: 5 }
+            DbStatus::Upgradeable { from: 1, to: 6 }
         );
 
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 4);
+        assert_eq!(outcome.applied, 5);
         let backup = outcome
             .backup
             .expect("upgrading an old file must back it up");
@@ -459,12 +460,12 @@ mod tests {
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 3, to: 5 }
+            DbStatus::Upgradeable { from: 3, to: 6 }
         );
-        // v4 backfills the e1RM column; v5 adds the muscle groups (and the
-        // upgrade seeds them).
+        // v4 backfills the e1RM column; v5 adds the muscle groups; v6 adds
+        // the Hip adductors default (and the upgrade seeds them all).
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 2);
+        assert_eq!(outcome.applied, 3);
 
         // Every pre-existing set now carries its e1RM, computed with the same
         // Epley formula the app writes on new inserts.
@@ -489,8 +490,8 @@ mod tests {
     fn newer_database_is_rejected_as_too_new() {
         let scratch = Scratch::new("future.sqlite");
 
-        // A future build knew six migrations, one more than this build, so
-        // the file is left at a schema version we don't understand (v6).
+        // A future build knew seven migrations, one more than this build, so
+        // the file is left at a schema version we don't understand (v7).
         let future_defs = [
             M::up("CREATE TABLE a (x INTEGER);"),
             M::up("CREATE TABLE b (x INTEGER);"),
@@ -498,6 +499,7 @@ mod tests {
             M::up("CREATE TABLE d (x INTEGER);"),
             M::up("CREATE TABLE e (x INTEGER);"),
             M::up("CREATE TABLE f (x INTEGER);"),
+            M::up("CREATE TABLE g (x INTEGER);"),
         ];
         let future = Migrations::from_slice(&future_defs);
         let mut conn = Connection::open(&scratch.path).unwrap();
@@ -505,7 +507,7 @@ mod tests {
         drop(conn);
 
         let mut db = Database::open(&scratch.path).unwrap();
-        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 6 });
+        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 7 });
         assert!(
             matches!(db.upgrade(), Err(DbError::TooNew { .. })),
             "must refuse to downgrade a newer database"
@@ -558,6 +560,49 @@ mod tests {
             count,
             super::muscle_groups::INITIAL_MUSCLE_GROUPS.len() as i64
         );
+    }
+
+    #[test]
+    fn v6_adds_hip_adductors_only_when_no_same_named_row_exists() {
+        let scratch = Scratch::new("v6-hip-adductors.sqlite");
+
+        // A real v5 file (the first five migrations) that already holds a
+        // hand-added "Hip adductors" row. Upgrading through the v6 migration
+        // must leave it as the only such row — ON CONFLICT DO NOTHING on the
+        // UNIQUE name — and the seed that follows the upgrade reconciles its
+        // description to the const (the usual post-upgrade end state).
+        let v5 = Migrations::from_slice(&super::migrations::MIGRATION_DEFS[..5]);
+        let mut conn = Connection::open(&scratch.path).unwrap();
+        v5.to_latest(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO muscle_group (name, description) VALUES ('Hip adductors', 'added by hand')",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut db = Database::open(&scratch.path).unwrap();
+        assert_eq!(
+            db.status().unwrap(),
+            DbStatus::Upgradeable { from: 5, to: 6 }
+        );
+        db.upgrade().unwrap();
+
+        let hips: Vec<(i64, String)> = db
+            .connection()
+            .prepare("SELECT id, description FROM muscle_group WHERE name = 'Hip adductors'")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(hips.len(), 1, "the pre-existing row must not be duplicated");
+        let const_description = super::muscle_groups::INITIAL_MUSCLE_GROUPS
+            .iter()
+            .find(|(name, _)| *name == "Hip adductors")
+            .map(|(_, description)| *description)
+            .unwrap();
+        assert_eq!(hips[0].1, const_description);
     }
 
     #[test]

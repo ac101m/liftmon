@@ -149,6 +149,25 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          exercise. An exercise's references cascade away with it; a muscle group referenced \
          by any exercise can't be deleted.",
     ),
+    // Not yet frozen — the migration that adds the "Hip adductors" default
+    // group to databases that predate it. Freeze it when it ships.
+    M::up(
+        r"
+        INSERT INTO muscle_group (name, description)
+        VALUES ('Hip adductors', 'Muscles of the inside leg and groin. Trained using movements that squeeze the legs together.')
+        ON CONFLICT(name) DO NOTHING;
+        ",
+    )
+    .down("DELETE FROM muscle_group WHERE name = 'Hip adductors';")
+    .comment(
+        "Adds the 'Hip adductors' default muscle group to databases that \
+         shipped before it, so an existing file gains the new group even \
+         though the muscle_group table itself is unchanged. Guarded by the \
+         name's UNIQUE index (ON CONFLICT DO NOTHING): a database that \
+         already holds the name — a fresh build's seed, or one added by hand \
+         — is left alone. The idempotent seed that runs after every migration \
+         reconciles all the default rows, this one included.",
+    ),
 ];
 
 /// The migrations, ready to apply to a connection.
