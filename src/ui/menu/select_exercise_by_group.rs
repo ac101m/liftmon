@@ -1,15 +1,18 @@
-//! The per-muscle-group exercise browse: pick a muscle group with the plain
-//! list, then one of that group's exercises. It is the "exercises by muscle
-//! group" arm of the shared "Select exercise" submenu
+//! The per-muscle-group exercise browse: pick a category with the plain
+//! list — a muscle group, or "Unassigned" for exercises no group lists as a
+//! primary mover — then one of that category's exercises. It is the "exercises
+//! by muscle group" arm of the shared "Select exercise" submenu
 //! ([`super::select_exercise`]).
 //!
-//! The muscle-group step is the same plain (non-filtering) list the "Muscle
+//! The category step is the same plain (non-filtering) list the "Muscle
 //! groups" main-menu item uses, except it lists only groups that at least one
 //! exercise trains as a primary mover, each row showing that count
-//! (e.g. "Abs (2 exercises)"). The exercise step is a filter picker, prefilled
-//! with just this group's exercises. Escape backs out one level at a time: off
-//! the exercise list you are offered another group, and off the group list you
-//! return to the submenu, which the caller re-asks.
+//! (e.g. "Abs (2 exercises)"), plus the synthetic "Unassigned" row (its own
+//! count) whenever at least one exercise has no `'high'` reference. The
+//! exercise step is a filter picker, prefilled with just that category's
+//! exercises. Escape backs out one level at a time: off the exercise list you
+//! are offered another category, and off the category list you return to the
+//! submenu, which the caller re-asks.
 
 use rusqlite::Connection;
 
@@ -17,53 +20,66 @@ use crate::domain::{Exercise, MuscleGroup, MuscleGroupCount};
 
 use crate::ui::utils::{Shell, UiError};
 
-/// Pick a muscle group with the plain list, then one of that group's exercises
-/// with the filter picker. Only groups that at least one exercise trains as a
-/// primary mover are listed — each with its count — so a picked group always
-/// has exercises. `None` means the user backed out of the group list.
+/// The rows the category list shows, in order: the groups that at least one
+/// exercise trains at `'high'`, then — only when an exercise falls in it — the
+/// synthetic "Unassigned" row. Each carries the exercises it would list.
+enum CategoryRow {
+    /// A real muscle group, with how many exercises train it at `'high'`.
+    Group(MuscleGroupCount),
+    /// Exercises no group lists as a primary mover (medium/low refs or none).
+    Unassigned(Vec<Exercise>),
+}
+
+/// Pick a category with the plain list, then one of that category's exercises
+/// with the filter picker. Only categories holding at least one exercise are
+/// listed — each with its count — so a picked category always has exercises.
+/// `None` means the user backed out of the category list.
 pub(super) fn pick_exercise(
     shell: &mut Shell,
     conn: &Connection,
 ) -> Result<Option<Exercise>, UiError> {
     let mut selected = 0;
     loop {
-        let groups = MuscleGroup::with_high_exercises(conn)?;
-        if groups.is_empty() {
+        let rows = category_rows(conn)?;
+        if rows.is_empty() {
             shell.log("No exercises under a muscle group yet");
             return Ok(None);
         }
-        // Each row shows the group's name with how many exercises activate it
-        // at 'high' stimulus, e.g. "Abs (2 exercises)".
-        let group_labels: Vec<String> = groups.iter().map(high_count_label).collect();
-        // A group no exercise activates re-offers this picker, so the re-ask
-        // keeps the highlight on the group just picked (like any menu that
+        // Each row shows its label — the group's name with how many exercises
+        // activate it at 'high' stimulus, e.g. "Abs (2 exercises)", or
+        // "Unassigned (N exercises)". The index of the picked row addresses
+        // `rows`, so a row needs no label round-trip to identify it.
+        let labels: Vec<String> = rows.iter().map(row_label).collect();
+        // A category no exercise lands in re-offers this picker, so the re-ask
+        // keeps the highlight on the category just picked (like any menu that
         // stays open after an action) instead of springing back to the top.
-        let (picked, picked_here) = shell.ask_selected(
-            Some("Select muscle group".to_string()),
-            group_labels,
-            selected,
-        )?;
-        let Some(picked) = picked else {
+        let (picked, picked_here) =
+            shell.ask_selected(Some("Select muscle group".to_string()), labels, selected)?;
+        let Some(_) = picked else {
             return Ok(None); // Escape: backed out of the flow
         };
         selected = picked_here;
-        // The picker returns the rendered label, so the picked row is the one
-        // whose label matches it exactly.
-        let group = &groups
-            .iter()
-            .find(|count| high_count_label(count) == picked)
-            .expect("the picked label came from this list a moment ago")
-            .group;
+        // The row list is rebuilt identically every re-ask (same query, same
+        // order), so the picked index still addresses the current `rows`.
+        let (exercises, title) = match &rows[picked_here] {
+            CategoryRow::Group(count) => (
+                Exercise::for_muscle_group(conn, count.group.id)?,
+                format!("Select exercise · {}", count.group.name),
+            ),
+            CategoryRow::Unassigned(unassigned) => (
+                unassigned.clone(),
+                "Select exercise · Unassigned".to_string(),
+            ),
+        };
 
-        let exercises = Exercise::for_muscle_group(conn, group.id)?;
         let exercise_names: Vec<String> = exercises.iter().map(|e| e.name.clone()).collect();
         let Some(chosen) = shell.pick(
-            Some(format!("Select exercise · {}", group.name)),
+            Some(title),
             Some("type to filter".to_string()),
             exercise_names,
         )?
         else {
-            continue; // Escape: back to the group picker
+            continue; // Escape: back to the category picker
         };
         // Names are UNIQUE, so the picked name identifies exactly one exercise.
         let exercise = exercises
@@ -74,11 +90,41 @@ pub(super) fn pick_exercise(
     }
 }
 
+/// The categories the picker lists, in order: each group that at least one
+/// exercise trains at `'high'` (name order, via [`MuscleGroup::with_high_exercises`]),
+/// then — only when it holds an exercise — the synthetic "Unassigned" row.
+fn category_rows(conn: &Connection) -> Result<Vec<CategoryRow>, crate::domain::DomainError> {
+    let mut rows: Vec<CategoryRow> = MuscleGroup::with_high_exercises(conn)?
+        .into_iter()
+        .map(CategoryRow::Group)
+        .collect();
+    let unassigned = Exercise::without_high_reference(conn)?;
+    if !unassigned.is_empty() {
+        rows.push(CategoryRow::Unassigned(unassigned));
+    }
+    Ok(rows)
+}
+
+/// The picker's row for a category: the group's name with how many exercises
+/// activate it at `'high'` stimulus, or "Unassigned (N exercises)" for the
+/// synthetic row — one stays singular, mirroring [`high_count_label`].
+fn row_label(row: &CategoryRow) -> String {
+    match row {
+        CategoryRow::Group(count) => high_count_label(count),
+        CategoryRow::Unassigned(exercises) => {
+            let unit = if exercises.len() == 1 {
+                "exercise"
+            } else {
+                "exercises"
+            };
+            format!("Unassigned ({} {})", exercises.len(), unit)
+        }
+    }
+}
+
 /// The group picker's row for `count`: the name with how many exercises
 /// activate it at 'high' stimulus, e.g. "Pecs (3 exercises)" — one stays
-/// singular. [`Shell::ask_selected`] hands the rendered string back as the
-/// picked value, which is why [`pick_exercise`] matches the row by recomputing
-/// this label.
+/// singular.
 fn high_count_label(count: &MuscleGroupCount) -> String {
     let unit = if count.high_exercise_count == 1 {
         "exercise"

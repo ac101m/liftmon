@@ -94,20 +94,29 @@ pub(crate) struct CyclePicker {
 }
 
 impl CyclePicker {
-    /// Build a cycle picker over `rows`; `rows` must not be empty. The label
-    /// column is aligned to the longest name, so labels line up across rows.
-    pub(crate) fn new(title: Option<String>, rows: Vec<(String, Level)>) -> Self {
+    /// Build a cycle picker over `rows` with `selected` as the row the
+    /// highlight rests on — what a re-asking caller uses to keep a re-asked
+    /// picker on the row just used (like [`crate::ui::utils::Choice::with_selected`
+    /// does for menus, via [`crate::ui::utils::Shell::ask_selected`]).
+    /// The seed is clamped into range, so a stale index from a picker whose
+    /// rows have since changed length cannot point past the end.
+    pub(crate) fn with_selected(
+        title: Option<String>,
+        rows: Vec<(String, Level)>,
+        selected: usize,
+    ) -> Self {
         let name_pad = rows
             .iter()
             .map(|(name, _)| name.chars().count())
             .max()
             .unwrap_or(0);
+        let selected = selected.min(rows.len().saturating_sub(1));
         let mut state = ListState::default();
-        state.select(Some(0));
+        state.select(Some(selected));
         Self {
             title,
             rows,
-            selected: 0,
+            selected,
             name_pad,
             state,
         }
@@ -119,6 +128,13 @@ impl CyclePicker {
         let next = (self.selected as isize + delta).rem_euclid(len as isize) as usize;
         self.selected = next;
         self.state.select(Some(next));
+    }
+
+    /// The index of the highlighted row — reported back by
+    /// [`crate::ui::utils::Shell::cycle_pick`] so a re-asked picker picks up
+    /// where the user left off.
+    pub(crate) fn selected(&self) -> usize {
+        self.selected
     }
 
     /// The rows and their current levels. The shell reads this back after the
@@ -213,13 +229,14 @@ mod tests {
     }
 
     fn picker() -> CyclePicker {
-        CyclePicker::new(
+        CyclePicker::with_selected(
             Some("Muscle groups".into()),
             vec![
                 ("Abs".into(), Level::None),
                 ("Biceps".into(), Level::Medium),
                 ("Front delts".into(), Level::High),
             ],
+            0,
         )
     }
 
@@ -236,6 +253,36 @@ mod tests {
         assert_eq!(picker.selected, 0);
         picker.on_key(key(KeyCode::Up)); // wraps 0 -> 2
         assert_eq!(picker.selected, 2);
+    }
+
+    #[test]
+    fn with_selected_starts_and_reports_the_given_highlight() {
+        let mut picker = CyclePicker::with_selected(
+            None,
+            vec![
+                ("Abs".into(), Level::None),
+                ("Biceps".into(), Level::Medium),
+                ("Front delts".into(), Level::High),
+            ],
+            2,
+        );
+        assert_eq!(picker.selected, 2, "the seed row holds the highlight");
+        assert_eq!(picker.selected(), 2, "reported back to the caller");
+        // Cycling acts on the seeded row, not the top one.
+        picker.on_key(key(KeyCode::Char(' '))); // Front delts: High -> None
+        assert_eq!(picker.rows()[0].1, Level::None, "Abs untouched");
+        assert_eq!(picker.rows()[2].1, Level::None);
+
+        // A stale seed beyond the last row is clamped, exactly like Choice.
+        let clamped = CyclePicker::with_selected(
+            None,
+            vec![("Abs".into(), Level::None), ("Biceps".into(), Level::High)],
+            5,
+        );
+        assert_eq!(
+            clamped.selected, 1,
+            "out-of-range seed clamps to the last row"
+        );
     }
 
     #[test]

@@ -220,6 +220,33 @@ impl Exercise {
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
+
+    /// Load every exercise with no `'high'` muscle-group reference — the set
+    /// the by-group picker's synthetic "Unassigned" row lists. An exercise
+    /// referenced only at `'medium'`/`'low'`, or not at all, is unassigned; one
+    /// with any `'high'` reference is not. In name order; `[]` when every
+    /// exercise is assigned somewhere at `'high'`.
+    pub fn without_high_reference(conn: &Connection) -> Result<Vec<Self>, DomainError> {
+        // NOT EXISTS (… stimulus_type = 'high') — the anti-join spelling of "no
+        // primary mover", complementing for_muscle_group's INNER JOIN.
+        let mut stmt = conn.prepare(
+            "SELECT e.id, e.name, e.description \
+             FROM exercises e \
+             WHERE NOT EXISTS ( \
+                 SELECT 1 FROM muscle_group_reference r \
+                 WHERE r.exercise_id = e.id AND r.stimulus_type = 'high' \
+             ) \
+             ORDER BY e.name",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Self {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
@@ -540,6 +567,59 @@ mod tests {
                 .unwrap()
                 .is_empty(),
             "a group no exercise trains at 'high' yields an empty list"
+        );
+    }
+
+    #[test]
+    fn without_high_reference_lists_exercises_with_no_high_reference() {
+        let mut conn = test_db();
+        seed_muscle_groups(&mut conn).unwrap();
+        let bench = Exercise::create(&conn, "bench press", "flat").unwrap();
+        let deadlift = Exercise::create(&conn, "deadlift", "conventional").unwrap();
+        let squat = Exercise::create(&conn, "squat", "back squat").unwrap();
+        // Row has no references at all — created purely for its DB row.
+        let _ = Exercise::create(&conn, "row", "bent over row").unwrap();
+
+        let pecs = MuscleGroup::find_by_name(&conn, "Pecs").unwrap().unwrap();
+        let lats = MuscleGroup::find_by_name(&conn, "Lats").unwrap().unwrap();
+        // Bench trains Pecs at 'high' → assigned, so excluded. Deadlift
+        // references Pecs at 'medium' and Lats at 'low' — neither is a primary
+        // mover — and Row and Squat have no references at all, so all three
+        // count as unassigned, even though their write order differs from name
+        // order (proving the query sorts).
+        MuscleGroupReference::set_for_exercise(&conn, bench.id, &[(pecs.id, Stimulus::High)])
+            .unwrap();
+        MuscleGroupReference::set_for_exercise(
+            &conn,
+            deadlift.id,
+            &[(pecs.id, Stimulus::Medium), (lats.id, Stimulus::Low)],
+        )
+        .unwrap();
+
+        let unassigned = Exercise::without_high_reference(&conn).unwrap();
+        assert_eq!(
+            unassigned
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>(),
+            ["deadlift", "row", "squat"],
+            "exercises without any 'high' reference come back in name order: \
+             deadlift has only medium/low refs, row and squat have none at all, \
+             and bench (high) is excluded"
+        );
+
+        // Assign squat a 'high' reference → it leaves the unassigned set, and
+        // a fresh query reflects the change.
+        MuscleGroupReference::set_for_exercise(&conn, squat.id, &[(pecs.id, Stimulus::High)])
+            .unwrap();
+        let unassigned = Exercise::without_high_reference(&conn).unwrap();
+        assert_eq!(
+            unassigned
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>(),
+            ["deadlift", "row"],
+            "assigning a high ref to another exercise shrinks the unassigned set"
         );
     }
 }

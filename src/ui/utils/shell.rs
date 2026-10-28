@@ -259,24 +259,29 @@ impl Shell {
     /// Settle the per-row levels of a cycle picker (e.g. which muscle groups an
     /// exercise activates, and how strongly).
     ///
-    /// Runs a [`CyclePicker`] seeded with `rows`, and reports whether the user
-    /// confirmed with Enter or backed out with Escape. Either way the caller
-    /// harvests the rows back out here — the element's own submit payload is a
-    /// placeholder — so a cancelled attempt can return the in-progress
-    /// selection unchanged for re-seeding, exactly like [`Shell::read_line`]
-    /// returns what was typed so far.
+    /// Runs a [`CyclePicker`] seeded with `rows` and `selected` as the row the
+    /// highlight starts on, and reports the outcome plus the row the highlight
+    /// ended on — so a caller that re-asks (e.g. after refusing a submission)
+    /// seeds the next picker with that index, keeping the user's place instead
+    /// of springing back to the top. Either way the caller harvests the rows
+    /// back out here — the element's own submit payload is a placeholder — so a
+    /// cancelled attempt can return the in-progress selection unchanged for
+    /// re-seeding, exactly like [`Shell::read_line`] returns what was typed so
+    /// far.
     pub(crate) fn cycle_pick(
         &mut self,
         title: Option<String>,
         rows: Vec<(String, Level)>,
-    ) -> Result<CycleOutcome, UiError> {
-        let mut picker = CyclePicker::new(title, rows);
-        match self.run(&mut picker)? {
-            ElementResult::Value(_) => Ok(CycleOutcome::Saved(picker.rows())),
-            ElementResult::Cancelled => Ok(CycleOutcome::Cancelled {
+        selected: usize,
+    ) -> Result<(CycleOutcome, usize), UiError> {
+        let mut picker = CyclePicker::with_selected(title, rows, selected);
+        let outcome = match self.run(&mut picker)? {
+            ElementResult::Value(_) => CycleOutcome::Saved(picker.rows()),
+            ElementResult::Cancelled => CycleOutcome::Cancelled {
                 partial: picker.rows(),
-            }),
-        }
+            },
+        };
+        Ok((outcome, picker.selected()))
     }
 
     /// Ask the user to filter and pick one of `options`.

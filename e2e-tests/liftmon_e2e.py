@@ -1131,7 +1131,9 @@ def refs_for(exercise_id):
 def exercise_muscle_groups_path():
     print("=== MUSCLE-GROUP REFERENCES PATH: cycle-pick an exercise's groups in the create flow and via options ===")
     # Part 1: create an exercise, cycle its muscle groups (Abs -> low,
-    # Biceps -> medium), and save.
+    # Biceps -> medium), and try to save. A selection with no 'high' group is
+    # refused — the error is logged and the picker re-asks with the selection
+    # kept — so only a save with a primary mover succeeds.
     seed_db()
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Exit")
@@ -1149,7 +1151,12 @@ def exercise_muscle_groups_path():
     app.send(" ")                                       # Biceps: unselected -> low
     app.send(" ")                                       # Biceps: low -> medium
     app.check("biceps medium", "· medium")
-    app.send("\r")                                      # save the selection
+    app.send("\r")                                      # try to save: no high group
+    app.check("no high refused with a log line", "Must assign at least one 'high' stimulus muscle group")
+    app.check("picker re-asks with the selection kept", "═[Muscle groups]", "· low", "· medium")
+    app.send(" ")                                       # Biceps (the highlight was kept, not reset): medium -> high
+    app.check("biceps raised to high", "· high")
+    app.send("\r")                                      # save: now has a primary mover
     app.check("saved refs, back at exercises", "Saved 2 muscle group(s) for 'Deadlift'", "═[Exercises]")
     app.close()
 
@@ -1157,9 +1164,12 @@ def exercise_muscle_groups_path():
     if "Deadlift" not in [n for _, n in d["exercises"]]:
         raise SystemExit("FAIL: Deadlift was not created")
     deadlift_id = [i for i, n in d["exercises"] if n == "Deadlift"][0]
-    if sorted(refs_for(deadlift_id)) != sorted([("Abs", "low"), ("Biceps", "medium")]):
-        raise SystemExit(f"FAIL: Deadlift refs are {refs_for(deadlift_id)}, expected Abs=low + Biceps=medium")
-    print("ok   create flow: cycling with Space and saving writes Abs=low and Biceps=medium")
+    # One space on Biceps — the row the save was refused on — instead of on Abs
+    # proves the highlight was kept: a reset-to-top cursor would have cycled Abs
+    # (still no high, so the save below would have been refused again).
+    if sorted(refs_for(deadlift_id)) != sorted([("Abs", "low"), ("Biceps", "high")]):
+        raise SystemExit(f"FAIL: Deadlift refs are {refs_for(deadlift_id)}, expected Abs=low + Biceps=high")
+    print("ok   create flow: a save with no 'high' group is refused with a log line and re-asks on the same row (Biceps), and one Space saves Abs=low + Biceps=high")
 
     # Part 2: Escape at the picker asks to cancel the whole add; No keeps the
     # in-progress selection, Yes deletes the fresh row and leaves nothing behind.
@@ -1190,8 +1200,10 @@ def exercise_muscle_groups_path():
     print("ok   Esc at the picker: No preserves the selection, Yes cancels the whole add cleanly")
 
     # Part 3: amend via the per-exercise options menu (muscle groups, index 3) —
-    # saving writes the references, and re-opening prefills them (proving the
-    # saved selection is what gets replaced, not appended to).
+    # the same high rule as the create flow applies: a save with no 'high'
+    # group is refused (log line, re-ask on the same row), then saving writes
+    # the references, re-opening prefills them, and a later save replaces the
+    # earlier selection (not appends to it).
     seed_db()
     app = App()
     app.send("\r")                                      # -> Exercises
@@ -1203,28 +1215,38 @@ def exercise_muscle_groups_path():
     app.send("\x1b[B" * 3 + "\r")                       # muscle groups (index 3)
     app.check("muscle group picker (3rd)", "═[Muscle groups]", " Abs", "Space cycle")
     app.send(" ")                                       # Abs: unselected -> low
+    app.send("\r")                                      # try to save: no high group
+    app.check("edit refused with a log line", "Must assign at least one 'high' stimulus muscle group")
+    app.check("edit picker re-asks on the row", "═[Muscle groups]", "· low")
+    app.send("  ")                                      # Abs (the row the save was refused on): low -> medium -> high
+    app.check("abs high via edit", "· high")
     app.send("\r")                                      # save
     app.check("saved via options", "Saved 1 muscle group(s) for 'Bench press'")
     app.send("\r")                                      # edit muscle groups again (still highlighted)
-    app.check("picker prefilled from the saved refs", "· low")
-    app.send(" ")                                       # Abs: low -> medium
-    app.send("\r")                                      # save (replaces the previous selection)
+    app.check("picker prefilled from the saved refs", "· high")
+    app.send("\x1b[B")                                  # -> Biceps
+    app.send("   ")                                     # Biceps: unselected -> low -> medium -> high
+    app.send("\x1b[A")                                  # -> Abs (back up)
+    app.send(" ")                                       # Abs: high -> None (removed)
+    app.send("\r")                                      # save (replaces the previous selection: Biceps only)
     app.check("saved replaced selection", "Saved 1 muscle group(s) for 'Bench press'")
     app.send("\x1b[A" * 3 + "\r")                       # info: up to it (edit muscle groups stays highlighted)
-    app.check("info lists the assigned groups", "Muscle groups:", " Abs", "· medium")
+    app.check("info lists the replaced group", "Muscle groups:", " Biceps", "· high")
     app.close()
 
-    if sorted(refs_for(1)) != [("Abs", "medium")]:
-        raise SystemExit(f"FAIL: Bench press refs are {refs_for(1)}, expected only Abs=medium")
-    print("ok   options menu: saving writes refs, a later save replaces the earlier selection (Abs=low -> Abs=medium), and info lists the assigned groups ('none assigned' when none)")
+    if sorted(refs_for(1)) != [("Biceps", "high")]:
+        raise SystemExit(f"FAIL: Bench press refs are {refs_for(1)}, expected only Biceps=high")
+    print("ok   options menu: a no-'high' edit save is refused and re-asks on the row, then Abs=high saves, prefills, and is replaced by Biceps=high (not appended) — info lists the assigned groups ('none assigned' when none)")
     print()
 
     # Part 4: browse exercises by muscle group. Bench press (id 1) references
     # Lats (id 2, high); Squat (id 2) references Pecs (id 1, high) — group ids
     # match the seed's insertion order. The picker lists only groups that an
     # exercise trains as a primary mover, each with its count, so a group with
-    # no exercises — like Abs — never appears.
-    seed_db()
+    # no exercises — like Abs — never appears. Row (id 3) has no references at
+    # all, so it lands under the synthetic "Unassigned" row with its own count.
+    seed_db(exercises=(("Bench press", "flat barbell press"), ("Squat", "back squat"),
+                       ("Row", "bent over row")))
     con = sqlite3.connect(DB)
     con.execute(
         "INSERT INTO muscle_group_reference (exercise_id, muscle_group_id, stimulus_type) "
@@ -1240,8 +1262,9 @@ def exercise_muscle_groups_path():
     app.send("\x1b")                                    # Esc off the submenu: back to the exercises menu
     app.check("esc drops back to the exercises menu", "═[Exercises]", "Browse exercises", "Back")
     app.send("\r\x1b[B\r")                              # Browse -> submenu -> exercises by muscle group (index 1)
-    app.check("group picker lists only groups with exercises",
-              "═[Select muscle group]", " Lats (1 exercise)", " Pecs (1 exercise)", "Esc back")
+    app.check("group picker lists groups with exercises and Unassigned",
+              "═[Select muscle group]", " Lats (1 exercise)", " Pecs (1 exercise)",
+              " Unassigned (1 exercise)", "Esc back")
     grid = app.grid()
     if any(" Abs" in row for row in grid):
         raise SystemExit("FAIL: a group no exercise trains as a primary mover must not appear in the picker")
@@ -1249,8 +1272,15 @@ def exercise_muscle_groups_path():
     app.check("filtered exercise list", "Select exercise · Lats", "type to filter", " Bench press")
     app.send("\r")                                      # pick Bench press
     app.check("landed on Bench press options", "═[Bench press]", "edit muscle groups", "delete")
+    app.send("\x1b")                                    # Esc off the options: back to the exercises menu
+    app.check("back at the exercises menu (by-group)", "═[Exercises]", "Browse exercises", "Back")
+    app.send("\r\x1b[B\r")                              # Browse -> submenu -> exercises by muscle group
+    app.send("\x1b[B\x1b[B\r")                          # Unassigned (index 2, after the name-ordered groups)
+    app.check("unassigned exercise list", "Select exercise · Unassigned", "type to filter", " Row")
+    app.send("\r")                                      # pick Row
+    app.check("landed on Row options", "═[Row]", "edit muscle groups", "delete")
     app.close()
-    print("ok   by muscle group: the picker lists only groups with exercises (with their counts), the group's list filters, and picking one opens its options")
+    print("ok   by muscle group: the picker lists groups with exercises (with their counts) and the unassigned row (only when it holds an exercise), the category lists filter, and picking one opens its options")
     print()
 
 def text_edit_keys_path():
@@ -1274,8 +1304,9 @@ def text_edit_keys_path():
     app.send("\x1b[F")                                  # End: caret past the text
     app.send("!\r")                                     # append -> "hinge!"
     app.check("muscle group picker after the fields", "═[Muscle groups]", " Abs", "Space cycle")
-    app.send("\r")                                      # save the selection (no groups)
-    app.check("exercise saved with the edited name", "Saved 0 muscle group(s) for 'Deadlift'",
+    app.send("   ")                                     # Abs: unselected -> low -> medium -> high (a save needs a primary mover)
+    app.send("\r")                                      # save the selection
+    app.check("exercise saved with the edited name", "Saved 1 muscle group(s) for 'Deadlift'",
               "Deadlift:", "hinge!")
     app.close()
 

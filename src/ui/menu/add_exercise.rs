@@ -42,9 +42,24 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
                 // Backing out of it asks whether to give up on the whole add,
                 // and a Yes deletes the fresh row so nothing is left behind.
                 let mut rows = super::exercise_muscle_groups::unselected_rows(conn)?;
+                let mut selected = 0;
                 loop {
-                    match shell.cycle_pick(Some("Muscle groups".to_string()), rows)? {
+                    let (outcome, selected_here) =
+                        shell.cycle_pick(Some("Muscle groups".to_string()), rows, selected)?;
+                    // Re-asks carry the highlight the picker just ended on, so a
+                    // rejected save lands back on the row being worked on.
+                    selected = selected_here;
+                    match outcome {
                         CycleOutcome::Saved(page) => {
+                            // An exercise needs a primary mover, so a selection
+                            // with no 'high' group is not savable: log it and
+                            // re-ask with the selection kept, so bumping one
+                            // row to high then saving is all that's left.
+                            if !super::exercise_muscle_groups::has_high_stimulus(&page) {
+                                shell.log("Must assign at least one 'high' stimulus muscle group");
+                                rows = page;
+                                continue;
+                            }
                             let saved = super::exercise_muscle_groups::save_references(
                                 conn,
                                 exercise.id,

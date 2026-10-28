@@ -80,6 +80,13 @@ pub(super) fn stimulus_pairs(rows: &[(String, Level)]) -> Vec<(String, Stimulus)
         .collect()
 }
 
+/// Whether the picker's rows include at least one `'high'` stimulus — the
+/// primary-mover requirement the create form enforces before saving. Pure, so
+/// it is unit-testable.
+pub(super) fn has_high_stimulus(rows: &[(String, Level)]) -> bool {
+    rows.iter().any(|(_, level)| *level == Level::High)
+}
+
 /// Write `rows` as the exercise's muscle-group references, replacing any that
 /// were there before (the submitted selection is authoritative). Returns how
 /// many references were saved, for the log line.
@@ -110,26 +117,40 @@ pub(super) fn save_references(
 
 /// The options-menu entry point: pick the exercise's muscle groups, then write
 /// them. A submitted selection is saved with a log line; backing out changes
-/// nothing (like Edit description).
+/// nothing (like Edit description). An exercise needs a primary mover, so a
+/// selection with no `'high'` group is refused with a log line and re-asked —
+/// the same rule as the create flow — keeping both the selection and the
+/// highlight.
 pub(super) fn edit_muscle_groups(
     shell: &mut Shell,
     conn: &Connection,
     exercise: &Exercise,
 ) -> Result<(), UiError> {
-    match shell.cycle_pick(
-        Some("Muscle groups".to_string()),
-        rows_for(conn, exercise.id)?,
-    )? {
-        CycleOutcome::Saved(page) => {
-            let saved = save_references(conn, exercise.id, &page)?;
-            shell.log(format!(
-                "Saved {saved} muscle group(s) for '{}'",
-                exercise.name
-            ));
+    let mut rows = rows_for(conn, exercise.id)?;
+    let mut selected = 0;
+    loop {
+        let (outcome, selected_here) =
+            shell.cycle_pick(Some("Muscle groups".to_string()), rows, selected)?;
+        // Re-asks carry the highlight the picker just ended on, so a rejected
+        // save lands back on the row being worked on.
+        selected = selected_here;
+        match outcome {
+            CycleOutcome::Saved(page) => {
+                if !has_high_stimulus(&page) {
+                    shell.log("Must assign at least one 'high' stimulus muscle group");
+                    rows = page;
+                    continue;
+                }
+                let saved = save_references(conn, exercise.id, &page)?;
+                shell.log(format!(
+                    "Saved {saved} muscle group(s) for '{}'",
+                    exercise.name
+                ));
+                return Ok(());
+            }
+            CycleOutcome::Cancelled { .. } => return Ok(()),
         }
-        CycleOutcome::Cancelled { .. } => {}
     }
-    Ok(())
 }
 
 /// Append a bold `Muscle groups:` heading and each assigned group as
@@ -220,6 +241,32 @@ mod tests {
                 ("Pecs".to_string(), Stimulus::High),
             ],
             "unselected rows contribute nothing, and row order is preserved"
+        );
+    }
+
+    #[test]
+    fn has_high_stimulus_is_true_only_when_a_high_row_was_chosen() {
+        let rows = |levels: &[Level]| {
+            levels
+                .iter()
+                .enumerate()
+                .map(|(i, level)| (format!("group {i}"), *level))
+                .collect::<Vec<_>>()
+        };
+
+        assert!(has_high_stimulus(&rows(&[
+            Level::None,
+            Level::Low,
+            Level::High
+        ])));
+        assert!(has_high_stimulus(&rows(&[Level::High])));
+        assert!(
+            !has_high_stimulus(&rows(&[])),
+            "an empty selection has no high"
+        );
+        assert!(
+            !has_high_stimulus(&rows(&[Level::None, Level::Low, Level::Medium])),
+            "low/medium alone is still no primary mover"
         );
     }
 
