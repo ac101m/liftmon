@@ -193,9 +193,13 @@ impl Exercise {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// Load every exercise that stimulates the given muscle group — the
-    /// "show exercises by muscle group" browse — in name order. `[]` when the
-    /// group activates no exercises.
+    /// Load every exercise that trains the given muscle group as a *primary
+    /// mover* — its `'high'` reference — which is what the "exercises by
+    /// muscle group" browse shows, so the list matches the picker's
+    /// per-group count ([`MuscleGroup::with_high_exercises`]: the count and
+    /// the browse agree on the same `'high'`-only set). A `'medium'`/`'low'`
+    /// reference does not surface an exercise under that group. In name
+    /// order; `[]` when no exercise trains the group at `'high'`.
     pub fn for_muscle_group(
         conn: &Connection,
         muscle_group_id: i64,
@@ -204,7 +208,7 @@ impl Exercise {
             "SELECT e.id, e.name, e.description \
              FROM exercises e \
              JOIN muscle_group_reference r ON r.exercise_id = e.id \
-             WHERE r.muscle_group_id = ?1 \
+             WHERE r.muscle_group_id = ?1 AND r.stimulus_type = 'high' \
              ORDER BY e.name",
         )?;
         let rows = stmt.query_map([muscle_group_id], |row| {
@@ -481,27 +485,36 @@ mod tests {
     }
 
     #[test]
-    fn for_muscle_group_lists_only_the_exercises_that_activate_the_group() {
+    fn for_muscle_group_lists_only_the_exercises_that_train_it_at_high() {
         let mut conn = test_db();
         seed_muscle_groups(&mut conn).unwrap();
         let bench = Exercise::create(&conn, "bench press", "flat").unwrap();
-        Exercise::create(&conn, "deadlift", "conventional").unwrap();
+        let deadlift = Exercise::create(&conn, "deadlift", "conventional").unwrap();
         let squat = Exercise::create(&conn, "squat", "back squat").unwrap();
 
         let pecs = MuscleGroup::find_by_name(&conn, "Pecs").unwrap().unwrap();
         let lats = MuscleGroup::find_by_name(&conn, "Lats").unwrap().unwrap();
         let calves = MuscleGroup::find_by_name(&conn, "Calves").unwrap().unwrap();
-        // Bench and Squat both activate Pecs; only Squat activates Lats. The
-        // write order differs from name order to prove ordering comes from the
-        // query, not the insertion.
+        // Bench and Deadlift both train Pecs at 'high' (their write order
+        // differs from name order, proving the query sorts); Deadlift trains
+        // Lats at 'high'. Squat references Pecs at 'medium' and Lats at 'low'
+        // — none of it a primary mover — so it must not surface under either
+        // group, exactly as [`MuscleGroup::with_high_exercises`]'s count (and
+        // the picker's drop-zero rule) would not credit those groups with it.
+        MuscleGroupReference::set_for_exercise(&conn, bench.id, &[(pecs.id, Stimulus::High)])
+            .unwrap();
+        MuscleGroupReference::set_for_exercise(
+            &conn,
+            deadlift.id,
+            &[(pecs.id, Stimulus::High), (lats.id, Stimulus::High)],
+        )
+        .unwrap();
         MuscleGroupReference::set_for_exercise(
             &conn,
             squat.id,
-            &[(lats.id, Stimulus::Low), (pecs.id, Stimulus::High)],
+            &[(pecs.id, Stimulus::Medium), (lats.id, Stimulus::Low)],
         )
         .unwrap();
-        MuscleGroupReference::set_for_exercise(&conn, bench.id, &[(pecs.id, Stimulus::Medium)])
-            .unwrap();
 
         let pecs_exercises = Exercise::for_muscle_group(&conn, pecs.id).unwrap();
         assert_eq!(
@@ -509,8 +522,8 @@ mod tests {
                 .iter()
                 .map(|e| e.name.as_str())
                 .collect::<Vec<_>>(),
-            ["bench press", "squat"],
-            "the group's exercises come back in name order, no duplicates"
+            ["bench press", "deadlift"],
+            "only the 'high' exercises come back, in name order, no duplicates"
         );
 
         let lats_exercises = Exercise::for_muscle_group(&conn, lats.id).unwrap();
@@ -519,14 +532,14 @@ mod tests {
                 .iter()
                 .map(|e| e.name.as_str())
                 .collect::<Vec<_>>(),
-            ["squat"]
+            ["deadlift"]
         );
 
         assert!(
             Exercise::for_muscle_group(&conn, calves.id)
                 .unwrap()
                 .is_empty(),
-            "a group no exercise activates yields an empty list"
+            "a group no exercise trains at 'high' yields an empty list"
         );
     }
 }
