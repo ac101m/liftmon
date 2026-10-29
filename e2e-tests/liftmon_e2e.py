@@ -282,11 +282,11 @@ def end_path():
     app.check("exercise picker", "Select exercise", "type to filter", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
     app.check("moved to next exercise logged", "Moved to next exercise 'Bench press'")
-    app.check("weight prompt", "═[Weight (kg)]", "e.g. 100")
+    app.check("weight prompt", "═[Bench press · Weight (kg)]", "e.g. 100")
     app.send("100\r")
-    app.check("reps prompt", "═[Reps]", "e.g. 5")
+    app.check("reps prompt", "═[Bench press · Reps]", "e.g. 5")
     app.send("5\r")
-    app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
+    app.check("difficulty prompt", "How tough was that?", "· How tough was that?", "could have done more", "pretty tough", "failure")
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm set 1", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
@@ -300,7 +300,7 @@ def end_path():
               "Muscle groups:", " Abs · high", "Personal records:", "100 kg × 5 · set on")
     app.check("info leaves the performance menu up", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b[A\x1b[A\r")                              # next set: back up to index 0 (info stays highlighted)
-    app.check("weight prompt (2nd set)", "═[Weight (kg)]", "> 100")
+    app.check("weight prompt (2nd set)", "═[Bench press · Weight (kg)]", "> 100")
     app.send("102.5\r")
     app.send("4\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
@@ -315,14 +315,14 @@ def end_path():
     app.check("exercise picker (2nd)", "Select exercise · Abs", "type to filter", " Bench press", " Squat")
     app.send("\x1b[B\r")                                    # pick Squat
     app.check("moved to Squat logged", "Moved to next exercise 'Squat'")
-    app.check("weight prompt (squat)", "═[Weight (kg)]")
+    app.check("weight prompt (squat)", "═[Squat · Weight (kg)]")
     app.send("60\r")
     app.send("10\r")                                        # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm squat set", "60kg x 10 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (squat)", "next set", "next exercise", "show exercise info", "exit session")
-    app.send("\x1b[B\x1b[B\r")                                    # exit session (next-exercise stays highlighted; two down)
+    app.send("\x1b[B\x1b[B\x1b[B\r")                                    # exit session (next-exercise stays highlighted; three down)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -493,14 +493,14 @@ def resume_path():
               "Current exercise 'Squat'",
               "═[Squat]", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\r")                                          # next set
-    app.check("weight prompt (resumed)", "═[Weight (kg)]", "> 60")
+    app.check("weight prompt (resumed)", "═[Squat · Weight (kg)]", "> 60")
     app.send("70\r")                                        # weight
     app.send("8\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm resumed set", "70kg x 8 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (resumed)", "next set", "next exercise", "show exercise info", "exit session")
-    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 4)
     # Exiting a resumed workout returns to that session's options screen, not
     # the root session menu.
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
@@ -605,7 +605,7 @@ def no_empty_performance_path():
     app.check("moved to Squat logged", "Moved to next exercise 'Squat'")
     app.send("\x1b")                                        # Esc at the weight form cancels the set
     app.check("performance menu (squat)", "next set", "next exercise", "show exercise info", "exit session")
-    app.send("\x1b[B\x1b[B\r")                                    # exit session (next-exercise stays highlighted; two down)
+    app.send("\x1b[B\x1b[B\x1b[B\r")                                    # exit session (next-exercise stays highlighted; three down)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -675,14 +675,14 @@ def duplicate_exercise_path():
               "═[Bench press]", "next set", "next exercise", "show exercise info", "exit session")
     # The next set still lands on the SAME performance.
     app.send("\x1b[A\r")                                    # next set: up to it (next-exercise stays highlighted)
-    app.check("weight prompt (2nd set)", "═[Weight (kg)]", "> 100")
+    app.check("weight prompt (2nd set)", "═[Bench press · Weight (kg)]", "> 100")
     app.send("60\r")                                        # weight
     app.send("8\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm 2nd bench set", "60kg x 8 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("performance menu (again)", "next set", "next exercise", "show exercise info", "exit session")
-    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 4)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -787,7 +787,7 @@ def esc_shortcut_path():
     app.send("\r")                                      # pick Bench press
     app.send("100\r")                                   # weight
     app.send("5\r")                                     # reps
-    app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
+    app.check("difficulty prompt", "How tough was that?", "· How tough was that?", "could have done more", "pretty tough", "failure")
     app.send("\x1b")                                    # Esc cancels the set
     app.check("set cancelled", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b")                                    # Esc is a no-op here
@@ -849,20 +849,20 @@ def esc_shortcut_path():
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
     app.send("\r")                                      # pick Bench press
     app.check("moved to Bench press", "Moved to next exercise 'Bench press'")
-    app.check("weight prompt", "═[Weight (kg)]", "e.g. 100")
+    app.check("weight prompt", "═[Bench press · Weight (kg)]", "e.g. 100")
     app.send("\x1b")                                    # Esc at the weight form cancels the set
     app.check("set cancelled back to menu", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b")                                    # Esc on the menu: no back — re-asks
     app.check("still on performance menu", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\r")                                      # next set
-    app.check("weight prompt (2nd)", "═[Weight (kg)]", "e.g. 100")
+    app.check("weight prompt (2nd)", "═[Bench press · Weight (kg)]", "e.g. 100")
     app.send("60\r")                                    # weight
     app.send("8\r")                                     # reps
     app.send("\x1b[B\x1b[B\r")                          # difficulty: failure
     app.check("confirm set", "60kg x 8 (failure) - Add to session?", "Yes", "No")
     app.send("\r")                                      # Yes: commit the set
     app.check("performance menu", "next set", "next exercise", "show exercise info", "exit session")
-    app.send("\x1b[B\x1b[B\x1b[B\r")                          # exit session (index 3)
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")                          # exit session (index 4)
     # Exiting the resumed workout lands back on that session's options screen.
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
@@ -949,13 +949,13 @@ def personal_record_path():
     app.send("\r")                                          # all exercises (index 0)
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
-    app.check("weight prompt", "═[Weight (kg)]", "e.g. 100")
+    app.check("weight prompt", "═[Bench press · Weight (kg)]", "e.g. 100")
 
     # Set 1: 100 × 5 — the exercise's first set, so a personal record.
     app.send("100\r")
-    app.check("reps prompt", "═[Reps]", "e.g. 5")
+    app.check("reps prompt", "═[Bench press · Reps]", "e.g. 5")
     app.send("5\r")
-    app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
+    app.check("difficulty prompt", "How tough was that?", "· How tough was that?", "could have done more", "pretty tough", "failure")
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("confirm set 1", "100kg x 5 (hard) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
@@ -963,7 +963,7 @@ def personal_record_path():
 
     # Set 2: 102.5 × 3 — heavier but a lower e1RM (112.75 < 116.67), so NOT a PR.
     app.send("\r")                                          # next set
-    app.check("weight prompt (2nd set)", "═[Weight (kg)]")
+    app.check("weight prompt (2nd set)", "═[Bench press · Weight (kg)]")
     app.send("102.5\r")
     app.send("3\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
@@ -992,7 +992,7 @@ def personal_record_path():
     app.send("\r")                                          # Yes: commit the set
     app.check("110 kg × 5 is a personal record", "110 kg × 5 · hard · New PR!", "next set")
 
-    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 4)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "delete", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -1335,7 +1335,7 @@ def weight_default_path():
     app.send("\r")                                          # pick Bench press
     # First set of the exercise: no last weight yet, so the field is empty
     # (the suggestion shows) and the weight still has to be typed.
-    app.check("weight prompt", "═[Weight (kg)]", "e.g. 100")
+    app.check("weight prompt", "═[Bench press · Weight (kg)]", "e.g. 100")
     app.send("100\r")                                       # weight
     app.send("5\r")                                         # reps
     app.send("\r")                                          # difficulty: easy (index 0)
@@ -1345,14 +1345,14 @@ def weight_default_path():
     app.send("\r")                                          # next set
     # The weight field now defaults to 100 — the last weight used — and Enter
     # accepts it without any typing.
-    app.check("weight prefilled with the last weight", "═[Weight (kg)]", "> 100")
+    app.check("weight prefilled with the last weight", "═[Bench press · Weight (kg)]", "> 100")
     app.send("\r")                                          # accept the default weight
     app.send("6\r")                                         # reps
     app.send("\r")                                          # difficulty: easy (index 0)
     app.check("confirm set 2", "100kg x 6 (easy) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("second set accepted the default", "100 kg × 6 · easy", "exit session")
-    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 4)
     app.close()
 
     d = db()
@@ -1378,16 +1378,16 @@ def confirm_set_path():
     app.check("exercise picker", "Select exercise", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
     # Set A typed but not confirmed: "No" must not write it.
-    app.check("weight prompt", "═[Weight (kg)]", "e.g. 100")
+    app.check("weight prompt", "═[Bench press · Weight (kg)]", "e.g. 100")
     app.send("100\r")                                       # weight
     app.send("5\r")                                         # reps
-    app.check("difficulty prompt", "How tough was that?", "could have done more", "pretty tough", "failure")
+    app.check("difficulty prompt", "How tough was that?", "· How tough was that?", "could have done more", "pretty tough", "failure")
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm set A", "100kg x 5 (failure) - Add to session?", "Yes", "No")
     app.send("\x1b[B\r")                                    # No: back to the beginning
     # Back at the start of the set form — and since nothing was committed, the
     # weight field has no default to show.
-    app.check("re-entered at the weight", "═[Weight (kg)]", "e.g. 100")
+    app.check("re-entered at the weight", "═[Bench press · Weight (kg)]", "e.g. 100")
     app.send("110\r")                                       # the corrected weight
     app.send("5\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
@@ -1397,14 +1397,14 @@ def confirm_set_path():
     # Escape on the confirmation also cancels (nothing written): a second set
     # is entered but Esc'd at the confirmation.
     app.send("\r")                                          # next set
-    app.check("weight prefilled", "═[Weight (kg)]", "> 110")
+    app.check("weight prefilled", "═[Bench press · Weight (kg)]", "> 110")
     app.send("120\r")                                       # weight
     app.send("6\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm set C", "120kg x 6 (failure) - Add to session?", "Yes", "No")
     app.send("\x1b")                                        # Esc cancels the set
     app.check("esc cancelled back at menu", "next set", "next exercise", "show exercise info", "exit session")
-    app.send("\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 3)
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 4)
     app.close()
 
     d = db()
@@ -1412,6 +1412,90 @@ def confirm_set_path():
     if sets != [(110.0, 5, "failure")]:
         raise SystemExit(f"FAIL: only the confirmed 110x5 set should exist, got {sets}")
     print("ok   No re-enters the set, Yes commits, Esc cancels — nothing unconfirmed is written")
+    print()
+
+def session_create_path():
+    print("=== SESSION CREATE PATH: the performance menu's 'new exercise' adds an exercise mid-session and moves straight onto it ===")
+    seed_db()
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Exit")
+    app.send("\x1b[B\r")                                # -> Sessions
+    app.check("session menu", "═[Sessions]", "new session", "back")
+    app.send("\x1b[B\r")                                # new session
+    app.check("new session options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
+              "begin", "summary", "back")
+    app.send("\r")                                      # begin (index 0)
+    app.check("submenu", "═[Select exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                      # all exercises (index 0)
+    app.check("exercise picker", "Select exercise", " Bench press", " Squat")
+    app.send("\r")                                      # pick Bench press
+    # Log one set so the performance menu is up — the menu offers "new
+    # exercise" right under "next exercise", to add one mid-workout.
+    app.send("100\r")                                   # weight
+    app.send("5\r")                                     # reps
+    app.send("\x1b[B\x1b[B\r")                          # difficulty: failure
+    app.check("confirm the first set", "100kg x 5 (failure) - Add to session?", "Yes", "No")
+    app.send("\r")                                      # Yes: commit the set
+    app.check("performance menu offers new exercise", "═[Bench press]",
+              "next set", "next exercise", "new exercise", "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\x1b[B\r")                          # new exercise (index 3, below show exercise info)
+    app.check("exercise name prompt", "═[Exercise name]", "e.g. Bench press")
+    app.send("Shoulder press\r")                        # name
+    app.send("standing barbell press\r")                # description
+    app.check("muscle group picker (in-session)", "═[Muscle groups]", " Abs", "Space cycle")
+    app.send("   ")                                     # Abs: unselected -> low -> medium -> high
+    app.send("\r")                                      # save the selection
+    app.check("saved refs", "Saved 1 muscle group(s) for 'Shoulder press'")
+    app.check("saved refs", "Saved 1 muscle group(s) for 'Shoulder press'")
+    # Creating does NOT move the flow: the current exercise stays put (moving
+    # onto the new one is the user's "next exercise" pick), and the menu
+    # re-asks — with no "Moved to next exercise" line and no framed section.
+    app.check("stays on the current exercise", "═[Bench press]",
+              "next set", "next exercise", "show exercise info", "new exercise", "exit session")
+    if any("Moved to next exercise 'Shoulder press'" in row or "Shoulder press:" in row
+           for row in app.grid()):
+        raise SystemExit("FAIL: creating an exercise must not move the flow onto it (no moved-to line, no framed section)")
+    # "next exercise" then picks the new one up — now that it exists it is in
+    # the all-exercises list (name order: Bench press, Shoulder press, Squat).
+    app.send("\x1b[A\x1b[A\r")                          # next exercise: up to it (new exercise stays highlighted)
+    app.check("submenu after create", "═[Select exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                      # all exercises (index 0)
+    app.check("exercise picker includes the new one", "Select exercise",
+              " Bench press", " Shoulder press", " Squat")
+    app.send("\x1b[B\r")                                # pick Shoulder press (index 1)
+    app.check("moved onto the new exercise", "Moved to next exercise 'Shoulder press'")
+    # The set form shows the cue — the exercise name prefixes the field titles.
+    app.check("weight prompt for the new exercise", "═[Shoulder press · Weight (kg)]", "e.g. 100")
+    app.send("77.5\r")                                  # weight
+    app.send("6\r")                                     # reps
+    app.check("difficulty cue on the new exercise", "· How tough was that?")
+    app.send("\x1b[B\r")                                # difficulty: pretty tough -> hard
+    app.check("confirm the new exercise's set", "77.5kg x 6 (hard) - Add to session?", "Yes", "No")
+    app.send("\r")                                      # Yes: commit the set
+    app.check("set logged for the new exercise", "77.5 kg × 6 · hard")
+    app.check("performance menu on the new exercise", "═[Shoulder press]",
+              "next set", "next exercise", "show exercise info", "new exercise", "exit session")
+    app.send("\x1b[B\x1b[B\x1b[B\r")                    # exit session (next-exercise stays highlighted; three down)
+    app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
+              "resume", "summary", "back")
+    app.close()
+
+    d = db()
+    if "Shoulder press" not in [n for _, n in d["exercises"]]:
+        raise SystemExit("FAIL: Shoulder press was not created")
+    new_id = [i for i, n in d["exercises"] if n == "Shoulder press"][0]
+    if sorted(refs_for(new_id)) != [("Abs", "high")]:
+        raise SystemExit(f"FAIL: Shoulder press refs are {refs_for(new_id)}, expected Abs=high")
+    if len(d["sessions"]) != 1:
+        raise SystemExit(f"FAIL: expected one session, got {len(d['sessions'])}")
+    if len(d["performances"]) != 2 or new_id not in [p[2] for p in d["performances"]]:
+        raise SystemExit(f"FAIL: expected performances for Bench press and the new exercise, got {d['performances']}")
+    if len(d["sets"]) != 2:
+        raise SystemExit(f"FAIL: expected two sets, got {len(d['sets'])}")
+    got = sorted((s[4], s[5], s[6]) for s in d["sets"])
+    if got != [(77.5, 6, "hard"), (100.0, 5, "failure")]:
+        raise SystemExit(f"FAIL: set rows {got} != the bench set plus one 77.5x6 hard set")
+    print("ok   the performance menu's 'new exercise' adds one mid-session (refs saved, 'Moved to next exercise', no framed section) and a set logs against it in the same session")
     print()
 
 def splash_path():
@@ -1498,6 +1582,7 @@ muscle_groups_path()
 exercise_muscle_groups_path()
 weight_default_path()
 confirm_set_path()
+session_create_path()
 text_edit_keys_path()
 cli_path()
 missing_env_path()

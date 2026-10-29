@@ -10,7 +10,7 @@
 //! set entry plus the performance menu:
 //!
 //! ```text
-//! pick exercise ─► log sets ─► (next set | next exercise | show exercise info | exit session)
+//! pick exercise ─► log sets ─► (next set | next exercise | show exercise info | new exercise | exit session)
 //! ```
 //!
 //! * "next set" starts another set for the same exercise,
@@ -24,6 +24,10 @@
 //!   name, description, muscle groups and recent personal records the
 //!   per-exercise info screen shows — then re-asks the menu. Read-only, so it
 //!   never advances the flow and the highlight stays where it was,
+//! * "new exercise" runs the exercises screen's add-exercise form inline
+//!   without touching the current exercise — the new one is picked up later,
+//!   if it is needed, via "next exercise" — so an exercise the workout turns
+//!   out to need can be added without backing out to the menus,
 //! * "exit session" leaves the workout and returns to the session's options
 //!   screen. Sessions are never "ended" — there is no end date, so exiting
 //!   records nothing and the session can be resumed again later.
@@ -128,6 +132,7 @@ pub(super) fn run(
                     "next set",
                     "next exercise",
                     "show exercise info",
+                    "new exercise",
                     "exit session",
                 ],
                 menu_selected,
@@ -161,6 +166,14 @@ pub(super) fn run(
                 Some("show exercise info") => {
                     super::exercise_options::log_exercise_info(shell, conn, &exercise)?;
                 }
+                // Run the add-exercise form inline without touching the
+                // current exercise — moving onto the new one is the user's
+                // "next exercise" pick, not something the flow decides. Whichever
+                // way the form ends (created or cancelled), the menu re-asks
+                // with the highlight where it was, like "show exercise info".
+                Some("new exercise") => {
+                    let _ = super::add_exercise::create_exercise(shell, conn)?;
+                }
                 // "exit session": leave the workout, session intact, and
                 // land back on this session's options screen.
                 Some("exit session") => return Ok(Some(return_to)),
@@ -189,6 +202,14 @@ fn begin_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exercis
     Ok(Some(exercise))
 }
 
+/// The title of a set-form field, prefixed with the current exercise's name as
+/// a cue to which exercise the entry belongs to, e.g. `Bench press · Weight
+/// (kg)` — applied to the weight, reps and difficulty fields, so the cue stays
+/// even on a re-asked field.
+fn field_title(name: &str, field: &str) -> String {
+    format!("{name} · {field}")
+}
+
 /// Ask for one set — weight, then rep count, then how tough it was — show the
 /// set back for a Yes/No confirmation before anything reaches the database,
 /// and record it with `created_at` stamped when it is confirmed and logged.
@@ -205,14 +226,14 @@ fn ask_set(
     exercise: &Exercise,
 ) -> Result<(), UiError> {
     loop {
-        let Some(weight_kg) = ask_weight(shell, conn, exercise.id)? else {
+        let Some(weight_kg) = ask_weight(shell, conn, exercise)? else {
             return Ok(());
         };
-        let Some(reps) = ask_reps(shell)? else {
+        let Some(reps) = ask_reps(shell, &exercise.name)? else {
             return Ok(());
         };
         let Some(choice) = shell.ask(
-            Some("How tough was that?".to_string()),
+            Some(field_title(&exercise.name, "How tough was that?")),
             Difficulty::ALL.map(Difficulty::menu_label),
         )?
         else {
@@ -275,14 +296,14 @@ fn ask_set(
 
 /// Ask for the set's weight in kg, re-asking (with what was typed prefilled)
 /// until it parses. `None` when the user backed out with Escape. The field
-/// defaults to the last weight used for this exercise, so a repeated weight
+/// defaults to the last weight used for the exercise, so a repeated weight
 /// is just Enter — typing a new value overwrites the default.
 fn ask_weight(
     shell: &mut Shell,
     conn: &Connection,
-    exercise_id: i64,
+    exercise: &Exercise,
 ) -> Result<Option<f64>, UiError> {
-    let default = Set::last_weight(conn, exercise_id)?
+    let default = Set::last_weight(conn, exercise.id)?
         .map(|weight| format!("{weight}"))
         .unwrap_or_default();
     let mut pending = default;
@@ -293,13 +314,13 @@ fn ask_weight(
         let outcome = if first_ask {
             first_ask = false;
             shell.read_line_default(
-                Some("Weight (kg)".to_string()),
+                Some(field_title(&exercise.name, "Weight (kg)")),
                 Some("e.g. 100".to_string()),
                 &pending,
             )?
         } else {
             shell.read_line(
-                Some("Weight (kg)".to_string()),
+                Some(field_title(&exercise.name, "Weight (kg)")),
                 Some("e.g. 100".to_string()),
                 &pending,
             )?
@@ -319,11 +340,11 @@ fn ask_weight(
 
 /// Ask for the set's rep count, re-asking (with what was typed prefilled)
 /// until it parses. `None` when the user backed out with Escape.
-fn ask_reps(shell: &mut Shell) -> Result<Option<u32>, UiError> {
+fn ask_reps(shell: &mut Shell, name: &str) -> Result<Option<u32>, UiError> {
     let mut pending = String::new();
     loop {
         match shell.read_line(
-            Some("Reps".to_string()),
+            Some(field_title(name, "Reps")),
             Some("e.g. 5".to_string()),
             &pending,
         )? {

@@ -2,6 +2,13 @@
 //! which muscle groups the exercise activates (via the cycle picker), and
 //! writes the new exercise — and its references — to the database.
 //!
+//! The form is shared by two callers: this screen and the session flow's
+//! "new exercise" option, so an exercise can be created mid-workout without
+//! leaving the session. Both call [`create_exercise`]; the screen wrapper
+//! [`run`] confirms a successful create with the framed exercise section,
+//! while the session flow simply re-asks its menu (moving onto the new
+//! exercise is left to the user's "next exercise" pick).
+//!
 //! Escape backs out of the current field; the user then confirms with a
 //! Yes/No prompt. An escape with nothing typed yet (both fields empty) cancels
 //! the form outright instead, since there is nothing to lose. Saying No stays
@@ -19,20 +26,40 @@ use crate::ui::utils::{CycleOutcome, ReadOutcome, Shell, UiError};
 
 use super::Menu;
 
-/// Drive the whole form, retrying from the name when it turns out to be taken.
+/// The add-exercise screen: confirm a successful create with the framed
+/// exercise section, then return to the exercises menu. The form itself lives
+/// in [`create_exercise`], which the session flow shares.
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
+    // The framed section is the screen's confirmation of what was just added —
+    // the same readout "show exercise info" gives. The session flow skips it
+    // (its plain "Moved to next exercise" line plays that role), so the section
+    // lives here rather than in the shared form.
+    if let Some(exercise) = create_exercise(shell, conn)? {
+        super::log_exercise(shell, &exercise);
+    }
+    Ok(Some(Menu::Exercises))
+}
+
+/// Drive the whole form, retrying from the name when it turns out to be taken.
+/// Returns the created exercise, or [`None`] when the user cancelled the form
+/// (backed out of a field with nothing typed, or escaped the picker and
+/// confirmed giving up).
+pub(super) fn create_exercise(
+    shell: &mut Shell,
+    conn: &Connection,
+) -> Result<Option<Exercise>, UiError> {
     // The name is the only field a duplicate can bite on, so a NameTaken sends
     // us back to collect it again, prefilled with what the user had typed.
     let mut prefill = String::new();
     loop {
         let name = match ask_exercise_name(shell, &prefill)? {
             Some(name) => name,
-            None => return Ok(Some(Menu::Exercises)), // cancelled the form
+            None => return Ok(None), // cancelled the form
         };
 
         let description = match ask_description(shell)? {
             Some(description) => description,
-            None => return Ok(Some(Menu::Exercises)), // cancelled the form
+            None => return Ok(None), // cancelled the form
         };
 
         match Exercise::create(conn, name, description) {
@@ -69,8 +96,12 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
                                 "Saved {saved} muscle group(s) for '{}'",
                                 exercise.name
                             ));
-                            super::log_exercise(shell, &exercise);
-                            return Ok(Some(Menu::Exercises));
+                            // The created exercise goes back to whatever
+                            // caller launched the form: the add-exercise
+                            // screen (which then logs the framed section) or
+                            // the session flow (which stays put and leaves
+                            // picking it up to the user).
+                            return Ok(Some(exercise));
                         }
                         CycleOutcome::Cancelled { partial } => {
                             if abandon(shell)? {
@@ -78,7 +109,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
                                 // was only in the picker): the delete cannot
                                 // fail, and nothing is left behind.
                                 exercise.delete(conn)?;
-                                return Ok(Some(Menu::Exercises));
+                                return Ok(None); // gave up on the whole add
                             }
                             // No: keep their in-progress selection and re-ask.
                             rows = partial;
