@@ -1145,7 +1145,7 @@ def exercise_muscle_groups_path():
     app.send("hinge\r")                                 # description
     # The cycle picker appears after the description; Abs and Biceps are both
     # inside the 9 visible rows (groups are sorted by name).
-    app.check("muscle group picker", "═[Muscle groups]", " Abs", " Biceps", "Space cycle")
+    app.check("muscle group picker", "═[Muscle groups]", "type to filter", " Abs", " Biceps", "Space cycle")
     app.send(" ")                                       # Abs: unselected -> low
     app.check("abs low", "· low")
     app.send("\x1b[B")                                  # -> Biceps
@@ -1180,7 +1180,7 @@ def exercise_muscle_groups_path():
     app.send("\x1b[B\r")                                    # Add exercise (index 1)
     app.send("Row\r")                                   # name
     app.send("\r")                                      # empty description
-    app.check("muscle group picker (2nd)", "═[Muscle groups]", " Abs", "Space cycle")
+    app.check("muscle group picker (2nd)", "═[Muscle groups]", "type to filter", " Abs", "Space cycle")
     app.send(" ")                                       # Abs: unselected -> low
     app.check("abs low (2nd)", "· low")
     app.send("\x1b")                                    # Esc: ask whether to cancel the add
@@ -1214,7 +1214,7 @@ def exercise_muscle_groups_path():
     app.send("\r")                                      # info: no refs yet
     app.check("info shows none assigned", "Muscle groups:", "none assigned")
     app.send("\x1b[B" * 3 + "\r")                       # muscle groups (index 3)
-    app.check("muscle group picker (3rd)", "═[Muscle groups]", " Abs", "Space cycle")
+    app.check("muscle group picker (3rd)", "═[Muscle groups]", "type to filter", " Abs", "Space cycle")
     app.send(" ")                                       # Abs: unselected -> low
     app.send("\r")                                      # try to save: no high group
     app.check("edit refused with a log line", "Must assign at least one 'high' stimulus muscle group")
@@ -1449,10 +1449,16 @@ def session_create_path():
     app.check("exercise name prompt", "═[Exercise name]", "e.g. Bench press")
     app.send("Shoulder press\r")                        # name
     app.send("standing barbell press\r")                # description
-    app.check("muscle group picker (in-session)", "═[Muscle groups]", " Abs", "Space cycle")
-    app.send("   ")                                     # Abs: unselected -> low -> medium -> high
-    app.send("\r")                                      # save the selection
-    app.check("saved refs", "Saved 1 muscle group(s) for 'Shoulder press'")
+    app.check("muscle group picker (in-session)", "═[Muscle groups]", "type to filter",
+              " Abs", "Space cycle")
+    app.send("a")                                       # the assignment picker filters like the exercise picker
+    app.check("picker filters to abs", "═[Muscle groups]", "> a", " Abs")
+    grid = app.grid()
+    if any(" Biceps" in row or " Pecs" in row for row in grid):
+        raise SystemExit("FAIL: filtering the assignment picker must hide the other groups")
+    app.send("   ")                                     # Abs (the filtered row): unselected -> low -> medium -> high
+    app.check("abs raised via the filter", "· high")
+    app.send("\r")                                      # save the whole selection (hidden rows keep their levels)
     app.check("saved refs", "Saved 1 muscle group(s) for 'Shoulder press'")
     # Creating does NOT move the flow: the current exercise stays put (moving
     # onto the new one is the user's "next exercise" pick), and the menu
