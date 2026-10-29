@@ -1290,6 +1290,67 @@ def exercise_muscle_groups_path():
     print("ok   by muscle group: the picker lists groups with exercises (with their counts) and the unassigned row (only when it holds an exercise), the category lists filter, and picking one opens its options")
     print()
 
+def wrap_path():
+    print("=== WRAP PATH: a long description wraps word-aware, every row indented, the over-wide word hyphenated ===")
+    # The description is long enough to fill several 60-column rows, and ends
+    # with a single word (68 chars) wider than the row's 58 content columns —
+    # so a real run must wrap it at word boundaries, keep the two-space indent
+    # on every wrapped row, and break the over-wide word with a trailing
+    # hyphen at the end of the row that splits it.
+    long_word = "supercalifragilisticexpialidocious" * 2
+    desc = ("This description is long enough to wrap onto several rows at the "
+            "sixty-column test terminal, and it ends with one word wider than "
+            "the row: " + long_word)
+    seed_db(exercises=(("Bench press", desc),))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Exit")
+    app.send("\r")                                     # Exercises (index 0)
+    app.check("exercises menu", "═[Exercises]", "Browse exercises", "Add exercise", "Back")
+    app.send("\r")                                     # Browse exercises (index 0)
+    app.check("submenu", "═[Select exercise]", "all exercises", "exercises by muscle group")
+    app.send("\r")                                     # all exercises (index 0)
+    app.check("exercise picker", "Select exercise", "Bench press")
+    app.send("\r")                                     # pick Bench press
+    app.check("exercise options", "═[Bench press]", "info", "edit name", "delete", "back")
+    app.send("\r")                                     # info (index 0)
+    app.check("info frames the wrapped description", "Bench press:", "  This description is long enough to wrap",
+              "Muscle groups:", "  none assigned", "Personal records:", "  none yet")
+    # The wrap invariants, asserted on the replayed grid directly rather than
+    # whole-line needles, so a drift is caught as a real change: (1) every row
+    # of the description — between the "Bench press:" and "Muscle groups:"
+    # headings — keeps the two-space indent, never a flush-left continuation;
+    # (2) the over-wide single word forces a break, so the row that splits it
+    # ends with the trailing hyphen; (3) the word's tail sits on its own
+    # further-indented row.
+    lines = app.grid()
+    try:
+        start = next(i for i, r in enumerate(lines) if r.startswith("Bench press:"))
+        end = next(i for i in range(start + 1, len(lines)) if "Muscle groups:" in lines[i])
+        desc_rows = lines[start + 1:end]
+    except StopIteration:
+        app.diagnose(["Bench press:", "Muscle groups:"]); app.close(); sys.exit(1)
+    if len(desc_rows) < 2:
+        print(f"FAIL: the description should wrap onto several rows, got {desc_rows!r}")
+        app.close(); sys.exit(1)
+    stray = [row for row in desc_rows if not row.startswith("  ")]
+    if stray:
+        print(f"FAIL: description rows lost their indent: {stray!r}")
+        app.close(); sys.exit(1)
+    split_rows = [row for row in desc_rows if row.endswith("-")]
+    if not split_rows:
+        print(f"FAIL: the over-wide word should end a row with a hyphen, got {desc_rows!r}")
+        app.close(); sys.exit(1)
+    # The tail of the split word is a further wrapped row, still indented.
+    if desc_rows[-1] == split_rows[-1] or not desc_rows[-1].startswith("  "):
+        print(f"FAIL: the split word's tail should continue on an indented row, got {desc_rows!r}")
+        app.close(); sys.exit(1)
+    print(f"ok   description wraps onto {len(desc_rows)} indented rows; the over-wide word splits with a hyphen ({split_rows[-1]!r})")
+    app.check("info leaves the options up", "═[Bench press]", "info", "edit name")
+    app.send("\x1b")                                    # Esc: back to the exercise menu
+    app.check("back at the exercises menu", "═[Exercises]", "Browse exercises", "Add exercise", "Back")
+    app.close()
+    print()
+
 def text_edit_keys_path():
     print("=== TEXT EDIT KEYS PATH: Home/End move the caret in entry fields (front-insert and append) ===")
     seed_db()
@@ -1593,6 +1654,7 @@ personal_record_path()
 delete_path()
 muscle_groups_path()
 exercise_muscle_groups_path()
+wrap_path()
 weight_default_path()
 confirm_set_path()
 session_create_path()

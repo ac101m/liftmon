@@ -26,10 +26,9 @@ use crossterm::event::{
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use ratatui::widgets::{List, Paragraph, Widget};
 use ratatui::{DefaultTerminal, Frame};
-use unicode_width::UnicodeWidthChar;
 
 use super::Element;
 use super::ElementResult;
@@ -38,6 +37,7 @@ use super::cycle_picker::{CyclePicker, Level};
 use super::error::UiError;
 use super::picker::Picker;
 use super::text_input::TextInput;
+use super::wrap_line;
 
 /// How often the shell redraws even with no input, so a terminal resize shows
 /// up quickly.
@@ -526,51 +526,6 @@ fn render_scroll_indicator(buf: &mut Buffer, area: Rect) {
     buf.set_string(x, y, LABEL, Style::new().reversed());
 }
 
-/// Split `line` into as many lines as it needs to fit `columns` display
-/// columns, returning it unchanged when it already fits. The pieces carry the
-/// original line's style and alignment, and each span's style goes onto the
-/// characters that came from it, so a bold heading keeps its bold across a
-/// wrap. Zero-width characters (e.g. combining marks) take no column and stay
-/// glued to what precedes them.
-fn wrap_line(line: Line<'static>, columns: u16) -> Vec<Line<'static>> {
-    let columns = columns.max(1) as usize;
-    if line.width() <= columns {
-        return vec![line];
-    }
-    let Line {
-        spans,
-        style,
-        alignment,
-    } = line;
-    let mut chunks: Vec<Vec<Span<'static>>> = vec![Vec::new()];
-    let mut used = 0usize;
-    for span in spans {
-        for ch in span.content.chars() {
-            let width = UnicodeWidthChar::width(ch).unwrap_or(0);
-            // Start a new row only when this row already holds text, so a
-            // single over-wide character still lands on its own row rather than
-            // looping forever on empty rows.
-            if !chunks.last().expect("chunks is never empty").is_empty() && used + width > columns {
-                chunks.push(Vec::new());
-                used = 0;
-            }
-            chunks
-                .last_mut()
-                .expect("chunks is never empty")
-                .push(Span::styled(ch.to_string(), span.style));
-            used += width;
-        }
-    }
-    chunks
-        .into_iter()
-        .map(|spans| Line {
-            spans,
-            style,
-            alignment,
-        })
-        .collect()
-}
-
 /// The one-row status bar with the element's key hints, in reverse video.
 fn render_prompt_bar(buf: &mut Buffer, area: Rect, hint: String) {
     if area.height == 0 || area.width == 0 {
@@ -584,6 +539,7 @@ fn render_prompt_bar(buf: &mut Buffer, area: Rect, hint: String) {
 mod tests {
     use super::*;
     use crate::ui::utils::Element;
+    use ratatui::text::Span;
 
     struct DummyElement(u16);
     impl Element for DummyElement {
@@ -790,18 +746,20 @@ mod tests {
 
     #[test]
     fn history_wraps_a_long_line_onto_more_rows() {
-        // A 15-char description on a 5-wide log area wraps across three rows
-        // instead of truncating past the fifth column, with the bottom row
-        // left blank as the spacer above the element.
+        // A 15-char description on a 6-wide log area wraps across three rows
+        // instead of truncating past the sixth column, with the bottom row
+        // left blank as the spacer above the element. A single word wider than
+        // the row is what the description is, so it must split with a hyphen
+        // at the end of each row; the tail that fits ends clean.
         let history = vec![LogLine::Text(Line::from("0123456789abcde"))];
-        let mut buf = Buffer::empty(Rect::new(0, 0, 5, 4));
-        render_history(&mut buf, Rect::new(0, 0, 5, 4), &history, 0);
+        let mut buf = Buffer::empty(Rect::new(0, 0, 6, 4));
+        render_history(&mut buf, Rect::new(0, 0, 6, 4), &history, 0);
 
-        let row = |y: u16| (0..5).map(|x| buf[(x, y)].symbol()).collect::<String>();
-        assert_eq!(row(0), "01234");
-        assert_eq!(row(1), "56789");
+        let row = |y: u16| (0..6).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0), "01234-");
+        assert_eq!(row(1), "56789-");
         assert_eq!(
-            row(2),
+            row(2).trim_end(),
             "abcde",
             "the tail sits on its own row above the spacer, not clipped"
         );
@@ -816,15 +774,16 @@ mod tests {
     fn history_budget_counts_wrapped_rows() {
         // With no blanks, "0123456789abcde"'s two wrapped rows at 10 cols sit
         // directly beneath the older line, with the bottom row left as the
-        // spacer above the element.
+        // spacer above the element. The word takes 9 chars plus a hyphen per
+        // row until the tail fits.
         let history = entries(["old", "0123456789abcde"].map(Line::from));
         let mut buf = Buffer::empty(Rect::new(0, 0, 10, 4));
         render_history(&mut buf, Rect::new(0, 0, 10, 4), &history, 0);
 
         let row = |y: u16| (0..10).map(|x| buf[(x, y)].symbol()).collect::<String>();
         assert_eq!(row(0).trim_end(), "old");
-        assert_eq!(row(1), "0123456789");
-        assert_eq!(row(2).trim_end(), "abcde");
+        assert_eq!(row(1), "012345678-");
+        assert_eq!(row(2).trim_end(), "9abcde");
         assert_eq!(
             row(3).trim_end(),
             "",
@@ -834,7 +793,8 @@ mod tests {
 
     #[test]
     fn wrapping_preserves_span_styles() {
-        // A bold span that straddles a wrap boundary stays bold on both rows.
+        // A bold word that must split across a wrap boundary stays bold on
+        // both rows, hyphen included.
         let history = vec![LogLine::Text(Line::from(vec![Span::styled(
             "abcdef",
             Modifier::BOLD,
@@ -843,12 +803,13 @@ mod tests {
         render_history(&mut buf, Rect::new(0, 0, 5, 3), &history, 0);
 
         assert_eq!(buf[(0, 0)].symbol(), "a");
-        assert_eq!(buf[(4, 0)].symbol(), "e");
+        assert_eq!(buf[(4, 0)].symbol(), "-", "the hyphen closes the split row");
         assert_eq!(
             buf[(0, 1)].symbol(),
-            "f",
-            "the wrapped piece starts on row 2"
+            "e",
+            "the hyphenated tail starts on row 2"
         );
+        assert_eq!(buf[(1, 1)].symbol(), "f");
         // Only the content cells are styled; List pads the rest with spaces.
         for x in 0..5 {
             assert!(
@@ -856,10 +817,12 @@ mod tests {
                 "first-row cell ({x},0) keeps bold from the wrapped span"
             );
         }
-        assert!(
-            buf[(0, 1)].style().add_modifier.contains(Modifier::BOLD),
-            "the wrapped piece keeps bold too"
-        );
+        for x in 0..2 {
+            assert!(
+                buf[(x, 1)].style().add_modifier.contains(Modifier::BOLD),
+                "the hyphenated tail keeps bold too"
+            );
+        }
     }
 
     #[test]

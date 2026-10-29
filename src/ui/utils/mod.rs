@@ -23,11 +23,13 @@ mod error;
 mod picker;
 mod shell;
 mod text_input;
+mod wrap;
 
 pub use choice::get_user_selection;
 pub(crate) use cycle_picker::Level;
 pub(crate) use error::UiError;
 pub(crate) use shell::{CycleOutcome, ReadOutcome, Shell};
+pub(crate) use wrap::wrap_line;
 
 use crossterm::event::KeyEvent;
 use ratatui::buffer::Buffer;
