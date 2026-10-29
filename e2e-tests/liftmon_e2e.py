@@ -310,7 +310,8 @@ def end_path():
     app.send("\x1b[B\r")                                    # next exercise (index 1)
     app.check("submenu (2nd)", "═[Select exercise]", "all exercises", "exercises by muscle group")
     app.send("\x1b[B\r")                                    # exercises by muscle group (index 1)
-    app.check("muscle group picker", "Select muscle group", " Abs (2 exercises)", "Esc back")
+    app.check("muscle group picker", "Select muscle group", "type to filter",
+              " Abs (2 exercises)", "Esc back")
     app.send("\r")                                          # Abs (index 0)
     app.check("exercise picker (2nd)", "Select exercise · Abs", "type to filter", " Bench press", " Squat")
     app.send("\x1b[B\r")                                    # pick Squat
@@ -1263,8 +1264,8 @@ def exercise_muscle_groups_path():
     app.check("esc drops back to the exercises menu", "═[Exercises]", "Browse exercises", "Back")
     app.send("\r\x1b[B\r")                              # Browse -> submenu -> exercises by muscle group (index 1)
     app.check("group picker lists groups with exercises and Unassigned",
-              "═[Select muscle group]", " Lats (1 exercise)", " Pecs (1 exercise)",
-              " Unassigned (1 exercise)", "Esc back")
+              "═[Select muscle group]", "type to filter", " Lats (1 exercise)",
+              " Pecs (1 exercise)", " Unassigned (1 exercise)", "Esc back")
     grid = app.grid()
     if any(" Abs" in row for row in grid):
         raise SystemExit("FAIL: a group no exercise trains as a primary mover must not appear in the picker")
@@ -1275,7 +1276,13 @@ def exercise_muscle_groups_path():
     app.send("\x1b")                                    # Esc off the options: back to the exercises menu
     app.check("back at the exercises menu (by-group)", "═[Exercises]", "Browse exercises", "Back")
     app.send("\r\x1b[B\r")                              # Browse -> submenu -> exercises by muscle group
-    app.send("\x1b[B\x1b[B\r")                          # Unassigned (index 2, after the name-ordered groups)
+    app.send("un")                                      # the category step filters like the exercise step
+    app.check("typing narrows the categories", "═[Select muscle group]", "> un",
+              " Unassigned (1 exercise)")
+    grid = app.grid()
+    if any(" Lats" in row or " Pecs" in row for row in grid):
+        raise SystemExit("FAIL: filtering the categories must hide the non-matching rows")
+    app.send("\r")                                      # pick Unassigned
     app.check("unassigned exercise list", "Select exercise · Unassigned", "type to filter", " Row")
     app.send("\r")                                      # pick Row
     app.check("landed on Row options", "═[Row]", "edit muscle groups", "delete")
