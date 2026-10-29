@@ -74,6 +74,20 @@ impl Level {
             Level::High => Some(Color::Red),
         }
     }
+
+    /// How strong the level's stimulus reads, for ordering an assigned-group
+    /// list strongest-first: high outranks medium, medium outranks low. The
+    /// unselected state ranks lowest — it never appears in an ordered display,
+    /// since unselected rows are dropped before ordering. `pub(crate)` so the
+    /// menu layer can order the same levels the picker cycles.
+    pub(crate) fn strength(self) -> u8 {
+        match self {
+            Level::None => 0,
+            Level::Low => 1,
+            Level::Medium => 2,
+            Level::High => 3,
+        }
+    }
 }
 
 /// State of the cycle picker while it is being answered.

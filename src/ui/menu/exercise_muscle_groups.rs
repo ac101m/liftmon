@@ -155,19 +155,31 @@ pub(super) fn edit_muscle_groups(
 
 /// Append a bold `Muscle groups:` heading and each assigned group as
 /// `  {name} · {marker}`, the marker word coloured like the difficulty markers
-/// in the session summary (only the word carries the colour), in name order —
-/// the info screen shows it between the description and personal records. `  none
-/// assigned` when the exercise references no groups. The heading always shows,
-/// mirroring how "Personal records:" always shows (with `  none yet`).
+/// in the session summary (only the word carries the colour). The groups are
+/// ordered from strongest activation down — every 'high' group first, then
+/// 'medium', then 'low', names alphabetical within a strength — so the readout
+/// leads with the exercise's primary movers. The info screen shows it between
+/// the description and personal records. `  none assigned` when the exercise
+/// references no groups. The heading always shows, mirroring how "Personal
+/// records:" always shows (with `  none yet`).
 pub(super) fn append_muscle_groups(
     lines: &mut Vec<Line<'static>>,
     conn: &Connection,
     exercise_id: i64,
 ) -> Result<(), UiError> {
-    let assigned: Vec<(String, Level)> = rows_for(conn, exercise_id)?
+    // The list reads strongest-first: the exercise's primary movers lead, then
+    // the supporting activation — each strength still alphabetical, so the
+    // groups within a level stay in the findable name order the picker shows.
+    let mut assigned: Vec<(String, Level)> = rows_for(conn, exercise_id)?
         .into_iter()
         .filter(|(_, level)| *level != Level::None)
         .collect();
+    assigned.sort_by(|(name_a, level_a), (name_b, level_b)| {
+        level_b
+            .strength()
+            .cmp(&level_a.strength())
+            .then_with(|| name_a.cmp(name_b))
+    });
     // Bold goes on the heading's span, not its line, so only the heading word
     // reads bold while the rest of the line stays plain — the same trick the
     // exercise info screen's "Personal records:" heading uses.
@@ -308,14 +320,21 @@ mod tests {
     }
 
     #[test]
-    fn append_muscle_groups_lists_assigned_groups_in_name_order() {
+    fn append_muscle_groups_orders_assigned_groups_strongest_first() {
         let (conn, exercise) = test_db();
         let abs = MuscleGroup::find_by_name(&conn, "Abs").unwrap().unwrap();
+        let biceps = MuscleGroup::find_by_name(&conn, "Biceps").unwrap().unwrap();
         let pecs = MuscleGroup::find_by_name(&conn, "Pecs").unwrap().unwrap();
+        let quads = MuscleGroup::find_by_name(&conn, "Quads").unwrap().unwrap();
         MuscleGroupReference::set_for_exercise(
             &conn,
             exercise.id,
-            &[(abs.id, Stimulus::Low), (pecs.id, Stimulus::High)],
+            &[
+                (abs.id, Stimulus::Low),
+                (biceps.id, Stimulus::Medium),
+                (pecs.id, Stimulus::High),
+                (quads.id, Stimulus::High),
+            ],
         )
         .unwrap();
 
@@ -324,12 +343,18 @@ mod tests {
 
         assert_eq!(
             lines.len(),
-            3,
+            5,
             "bold heading plus one line per assigned group"
         );
-        assert_eq!(text(&lines[1]), "  Abs · low");
-        assert_eq!(lines[1].spans[1].style.fg, Some(Color::Green));
-        assert_eq!(text(&lines[2]), "  Pecs · high");
+        // Strongest first — the two 'high' groups lead (alphabetical between
+        // them), then 'medium', then 'low'.
+        assert_eq!(text(&lines[1]), "  Pecs · high");
+        assert_eq!(lines[1].spans[1].style.fg, Some(Color::Red));
+        assert_eq!(text(&lines[2]), "  Quads · high");
         assert_eq!(lines[2].spans[1].style.fg, Some(Color::Red));
+        assert_eq!(text(&lines[3]), "  Biceps · medium");
+        assert_eq!(lines[3].spans[1].style.fg, Some(Color::Yellow));
+        assert_eq!(text(&lines[4]), "  Abs · low");
+        assert_eq!(lines[4].spans[1].style.fg, Some(Color::Green));
     }
 }
