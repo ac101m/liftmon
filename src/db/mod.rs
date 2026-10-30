@@ -391,18 +391,18 @@ mod tests {
         v1.to_latest(&mut conn).unwrap();
         drop(conn);
 
-        // This build knows five more migrations (exercises, the workout
+        // This build knows six more migrations (exercises, the workout
         // tables, the epley_e1rm column, the muscle groups, then the Hip
-        // adductors default): opening the old file reports an upgradable
-        // schema — the case main/UI prompts on.
+        // adductors default, then items): opening the old file reports
+        // an upgradable schema — the case main/UI prompts on.
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 1, to: 6 }
+            DbStatus::Upgradeable { from: 1, to: 7 }
         );
 
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 5);
+        assert_eq!(outcome.applied, 6);
         let backup = outcome
             .backup
             .expect("upgrading an old file must back it up");
@@ -460,12 +460,13 @@ mod tests {
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 3, to: 6 }
+            DbStatus::Upgradeable { from: 3, to: 7 }
         );
         // v4 backfills the e1RM column; v5 adds the muscle groups; v6 adds
-        // the Hip adductors default (and the upgrade seeds them all).
+        // the Hip adductors default; v7 adds items (and the upgrade
+        // seeds the muscle groups).
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 3);
+        assert_eq!(outcome.applied, 4);
 
         // Every pre-existing set now carries its e1RM, computed with the same
         // Epley formula the app writes on new inserts.
@@ -490,8 +491,8 @@ mod tests {
     fn newer_database_is_rejected_as_too_new() {
         let scratch = Scratch::new("future.sqlite");
 
-        // A future build knew seven migrations, one more than this build, so
-        // the file is left at a schema version we don't understand (v7).
+        // A future build knew eight migrations, one more than this build, so
+        // the file is left at a schema version we don't understand (v8).
         let future_defs = [
             M::up("CREATE TABLE a (x INTEGER);"),
             M::up("CREATE TABLE b (x INTEGER);"),
@@ -500,6 +501,7 @@ mod tests {
             M::up("CREATE TABLE e (x INTEGER);"),
             M::up("CREATE TABLE f (x INTEGER);"),
             M::up("CREATE TABLE g (x INTEGER);"),
+            M::up("CREATE TABLE h (x INTEGER);"),
         ];
         let future = Migrations::from_slice(&future_defs);
         let mut conn = Connection::open(&scratch.path).unwrap();
@@ -507,7 +509,7 @@ mod tests {
         drop(conn);
 
         let mut db = Database::open(&scratch.path).unwrap();
-        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 7 });
+        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 8 });
         assert!(
             matches!(db.upgrade(), Err(DbError::TooNew { .. })),
             "must refuse to downgrade a newer database"
@@ -584,7 +586,7 @@ mod tests {
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 5, to: 6 }
+            DbStatus::Upgradeable { from: 5, to: 7 }
         );
         db.upgrade().unwrap();
 

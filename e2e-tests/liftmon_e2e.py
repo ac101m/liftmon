@@ -43,15 +43,16 @@ os.chdir("/tmp")
 # The newest schema version this build knows. seed_db stamps it, and the splash
 # path asserts the startup splash reports it, so a schema migration both bumps
 # the seed and flips the assertion in the same run.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat")),
-            refs=()):
+            refs=(), items=()):
     """Rebuild the on-disk DB to the exact current schema (delete rules
-    included) — mirroring what the app's `upgrade()` produces: the six shipped
+    included) — mirroring what the app's `upgrade()` produces: the seven shipped
     migrations, plus the muscle-group tables with the 17 default groups seeded —
     with the given exercises and, optionally, their muscle-group references as
-    (exercise name, muscle group name) pairs."""
+    (exercise name, muscle group name) pairs and the macros items as
+    (name, macros) pairs (macros the six REAL columns in order)."""
     if os.path.exists(DB): os.unlink(DB)
     con = sqlite3.connect(DB)
     con.execute("CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
@@ -79,8 +80,25 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         muscle_group_id INTEGER NOT NULL REFERENCES muscle_group(id) ON DELETE RESTRICT,
         stimulus_type TEXT NOT NULL CHECK (stimulus_type IN ('low', 'medium', 'high')),
         PRIMARY KEY (exercise_id, muscle_group_id))""")
+    con.execute("""CREATE TABLE items (
+        id                    INTEGER PRIMARY KEY,
+        name                  TEXT NOT NULL UNIQUE,
+        unsaturated_fats      REAL NOT NULL DEFAULT 0.0,
+        saturated_fats        REAL NOT NULL DEFAULT 0.0,
+        complex_carbohydrates REAL NOT NULL DEFAULT 0.0,
+        sugars                REAL NOT NULL DEFAULT 0.0,
+        protein               REAL NOT NULL DEFAULT 0.0,
+        calories              REAL NOT NULL DEFAULT 0.0)""")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
+    # Optional macros items — (name, macros) pairs, macros the six REAL columns
+    # in order (unsaturated_fats, saturated_fats, complex_carbohydrates, sugars,
+    # protein, calories); the default-0.0 rows the add-item form produces.
+    for name, macros in items:
+        con.execute(
+            "INSERT INTO items (name, unsaturated_fats, saturated_fats, complex_carbohydrates,"
+            " sugars, protein, calories) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (name, *macros))
     # The 17 default groups, with the descriptions the app's seed const carries
     # (mirroring src/db/muscle_groups.rs' INITIAL_MUSCLE_GROUPS), so the info
     # screen renders a real description.
@@ -1082,12 +1100,125 @@ def delete_path():
     print("ok   a used exercise is refused with its session count; an unused one is deleted; history untouched")
     print()
 
+def macros_path():
+    print("=== MACROS PATH: enter the macros menu, back out ===")
+    seed_db()
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros",
+              "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # Macros (index 2, below Sessions, above Muscle groups)
+    app.check("macros menu", "═[Macros]", "show items", "add item", "back")
+    app.send("\x1b[B\x1b[B\r")                 # back (index 2) -> main menu
+    app.check("back at main after macros", "═[Main menu]", "Macros")
+    app.close()
+    print("ok   the macros screen is reachable from the main menu and its back option returns to it")
+    print()
+
+def macros_add_item_path():
+    print("=== MACROS ADD-ITEM PATH: create an item; blanks default to 0; duplicates refused ===")
+    seed_db()
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "show items", "add item", "back")
+    app.send("\x1b[B\r")                       # add item (index 1)
+    app.check("item name prompt", "═[Item name]", "e.g. Milk")
+    app.send("Whole milk\r")                   # name
+    app.check("unsaturated fats prompt", "═[Unsaturated fats (g)]", "blank = 0")
+    app.send("3.6\r")                          # unsaturated fats
+    app.check("saturated fats prompt", "═[Saturated fats (g)]", "blank = 0")
+    app.send("2.3\r")                          # saturated fats
+    app.check("complex carbohydrates prompt with blank = 0 hint", "═[Complex carbohydrates (g)]", "blank = 0")
+    app.send("\r")                             # complex carbohydrates: blank default -> 0
+    app.check("sugars prompt", "═[Sugars (g)]", "blank = 0")
+    app.send("\r")                             # sugars: blank default -> 0
+    app.check("protein prompt", "═[Protein (g)]", "blank = 0")
+    app.send("3.3\r")                          # protein
+    app.check("calories prompt", "═[Calories (kcal)]", "blank = 0")
+    app.send("64\r")                           # calories
+    app.check("added item, back at macros", "Added item 'Whole milk'", "═[Macros]", "add item")
+    # Esc from the macros menu returns to the main menu, so the launched
+    # history holds the add as a normal (non-framed) line.
+    app.send("\x1b")
+    app.check("macros Esc backs to main", "═[Main menu]")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    row = con.execute(
+        "SELECT name, unsaturated_fats, saturated_fats, complex_carbohydrates,"
+        " sugars, protein, calories"
+        " FROM items WHERE name = 'Whole milk'").fetchone()
+    con.close()
+    if row != ("Whole milk", 3.6, 2.3, 0.0, 0.0, 3.3, 64.0):
+        raise SystemExit(f"FAIL: item row {row} != the entered macros with blanks as 0.0")
+    print("ok   an item is created with the entered macros and blanks stored as 0.0")
+
+    # Part 2: a duplicate name is refused at the name field — before any macro
+    # prompts — and abandoning the retry leaves the first item alone.
+    app = App()
+    app.check("main menu (2nd)", "═[Main menu]")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros
+    app.check("macros menu (2nd)", "═[Macros]", "show items", "add item", "back")
+    app.send("\x1b[B\r")                       # add item (index 1)
+    app.send("Whole milk\r")                   # the taken name
+    app.check("duplicate refused at the name", "An item named 'Whole milk' already exists", "═[Item name]", "> Whole milk")
+    app.send("\x1b")                           # Esc: abandon the retry
+    app.check("abandon confirm", "Cancel adding this item?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes: up to it, cancel the add
+    app.check("cancelled add, back at macros", "═[Macros]", "add item")
+    app.close()
+
+    count = sqlite3.connect(DB).execute("SELECT COUNT(*) FROM items").fetchone()[0]
+    if count != 1:
+        raise SystemExit(f"FAIL: expected 1 item, got {count}")
+    print("ok   a duplicate is refused before the macros, and cancelling the retry leaves one item")
+    print()
+
+def macros_show_items_path():
+    print("=== MACROS SHOW-ITEMS PATH: browse items in the filter picker, view one's info, back out ===")
+    seed_db(items=(
+        ("Whole milk", (3.6, 2.3, 4.7, 4.7, 3.3, 64.0)),
+        ("Chicken breast", (3.6, 1.0, 0.0, 0.0, 31.0, 165.0)),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "show items", "add item", "back")
+    app.send("\r")                             # show items (index 0)
+    app.check("item picker", "Select item", "type to filter", " Chicken breast", " Whole milk")
+    # Typing filters the list down like the exercise picker.
+    app.send("milk")
+    app.check("picker filters to milk", "> milk", " Whole milk")
+    app.send("\r")                             # pick Whole milk
+    app.check("item options", "═[Whole milk]", "info", "back")
+    app.send("\r")                             # info (index 0)
+    app.check("item info framed", "Whole milk:",
+              "  Fat: 5.9 g (of which saturates: 2.3 g)",
+              "  Carbs: 9.4 g (of which sugars: 4.7 g)",
+              "  Protein: 3.3 g", "  Calories: 64 kcal")
+    app.send("\x1b[B\r")                       # back (index 1) -> macros menu
+    app.check("back at macros after info", "═[Macros]", "show items", "add item", "back")
+    app.close()
+    print("ok   the picker lists the stored items, filters them, and the per-item info logs the totals in a box")
+
+    # An empty items table offers no picker: a plain log line says so and the
+    # screen stays put.
+    seed_db(items=())
+    app = App()
+    app.check("main menu (2nd)", "═[Main menu]")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros
+    app.send("\r")                             # show items
+    app.check("no items yet", "No items yet — add one first", "═[Macros]")
+    app.close()
+    print("ok   with no items stored, show items logs a hint and stays on the macros screen")
+    print()
+
 def muscle_groups_path():
     print("=== MUSCLE GROUPS PATH: browse the seeded groups, view one's info, back out ===")
     seed_db()
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Muscle groups", "Exit")
-    app.send("\x1b[B\x1b[B\r")                 # Muscle groups (index 2)
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\x1b[B\r")           # Muscle groups (index 3, after Macros)
     # The plain (non-filtering) list: the 9-row Choice box shows the seeded
     # groups in name order; "Pecs" (index 10) starts below the fold, so assert
     # only what is visible initially — a top, middle and bottom row — and,
@@ -1652,6 +1783,9 @@ esc_shortcut_path()
 delete_session_path()
 personal_record_path()
 delete_path()
+macros_path()
+macros_add_item_path()
+macros_show_items_path()
 muscle_groups_path()
 exercise_muscle_groups_path()
 wrap_path()

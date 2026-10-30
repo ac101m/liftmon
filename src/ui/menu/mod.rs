@@ -6,10 +6,13 @@
 //! Ctrl+C).
 //!
 //! Each screen's behaviour lives in its own file — see [`self::main_menu`],
-//! [`self::exercises_menu`], [`self::session_menu`], [`self::freeform_session`],
+//! [`self::macros_menu`], [`self::exercises_menu`], [`self::session_menu`],
+//! [`self::freeform_session`],
 //! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
-//! [`self::exercise_options`], [`self::select_muscle_group`] and
-//! [`self::muscle_group_options`] — with [`self::select_exercise`] (the shared
+//! [`self::add_item`], [`self::exercise_options`],
+//! [`self::select_muscle_group`], [`self::muscle_group_options`],
+//! [`self::show_items`] and
+//! [`self::item_options`] — with [`self::select_exercise`] (the shared
 //! "Select exercise" chooser) and [`self::select_exercise_by_group`] (the
 //! per-muscle-group browse it offers, over in the muscle-group picker too) as
 //! helpers — so this file stays a thin dispatcher as more menus are added. The
@@ -24,10 +27,13 @@ use crate::domain::{Difficulty, Exercise};
 use crate::ui::utils::{Shell, UiError};
 
 mod add_exercise;
+mod add_item;
 mod exercise_muscle_groups;
 mod exercise_options;
 mod exercises_menu;
 mod freeform_session;
+mod item_options;
+mod macros_menu;
 mod main_menu;
 mod muscle_group_options;
 mod select_exercise;
@@ -36,11 +42,21 @@ mod select_muscle_group;
 mod select_session;
 mod session_menu;
 mod session_options;
+mod show_items;
 
 /// The current screen in the app's menu hierarchy.
 pub(crate) enum Menu {
     /// The top-level menu (Exercises / Sessions / Exit).
     Main,
+    /// The macros screen (Show items / Add item / Back).
+    Macros,
+    /// The add-item form (name, then each macro quantity).
+    AddItem,
+    /// The show-items screen: browse the stored items with the filter picker,
+    /// then into that item's options screen.
+    ShowItems,
+    /// The actions for one picked item, named by its unique name.
+    ItemOptions { name: String },
     /// The exercise screen (Browse exercises / Add exercise / Back).
     Exercises,
     /// The add-exercise form (name, then description).
@@ -137,6 +153,10 @@ impl Menu {
     ) -> Result<Option<Menu>, UiError> {
         match self {
             Menu::Main => main_menu::run(shell),
+            Menu::Macros => macros_menu::run(shell),
+            Menu::AddItem => add_item::run(shell, conn),
+            Menu::ShowItems => show_items::run(shell, conn),
+            Menu::ItemOptions { name } => item_options::run(shell, conn, name),
             Menu::Exercises => exercises_menu::run(shell, conn),
             Menu::AddExercise => add_exercise::run(shell, conn),
             Menu::ExerciseOptions { name } => exercise_options::run(shell, conn, name),

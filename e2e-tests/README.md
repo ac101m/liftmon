@@ -48,7 +48,8 @@ What happens on a run:
    path), refuses to run if a database already exists at that name, then
    rebuilds its own file to the exact current schema (all three record tables,
    both indexes, the FK delete rules, the muscle-group tables with the 17
-   default groups seeded, `PRAGMA user_version`), seeded with a
+   default groups seeded, the macros `items` table, `PRAGMA
+   user_version`), seeded with a
    couple of exercises.
 2. For each scenario it launches the binary in a fresh pseudo-terminal
    (24×60, `TERM=xterm-256color`), types the keystrokes, and re-renders the
@@ -73,7 +74,17 @@ history), the personal-record path (a set beating the exercise's prior Epley e1R
 " · New PR!" appended to its own log line at set time, the e1RM is stored per
 set, and the exercise info screen frames the exercise with rules and lists its
 last three personal records as weight × reps with when each record was set), the
-in-use-exercise delete path, the muscle-groups path (the main menu's item lands
+in-use-exercise delete path, the macros path (the main menu's "Macros" item
+lands on the macros screen with its show-items/add-item/back menu), the macros
+add-item path (name plus six macro fields entered one at a time, blank
+fields default to zero per the "blank = 0" prompt, a duplicate name is refused
+at the name field before any macros are typed, and abandoning the retry leaves
+the original item alone), the macros show-items path (a filter picker of the
+stored items — typing narrows it like the exercise picker; picking one opens
+its info/back menu whose info logs the item's name, fat and carbs totals
+(each with its "of which" saturates/sugars breakdown), protein and calories in
+a framed box, and with nothing stored the screen logs a hint and stays put), the
+muscle-groups path (the main menu's item lands
 on the non-filtering group picker; a group's options screen shows its info —
 name and description frame — and back/Escape return to the list and main
 menu), the muscle-group-references path (new in the create flow after the

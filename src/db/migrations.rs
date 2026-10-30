@@ -167,6 +167,31 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          — is left alone. The idempotent seed that runs after every migration \
          reconciles all the default rows, this one included.",
     ),
+    M::up(
+        r"
+        CREATE TABLE items (
+            id                    INTEGER PRIMARY KEY,
+            name                  TEXT NOT NULL UNIQUE,
+            unsaturated_fats      REAL NOT NULL DEFAULT 0.0,
+            saturated_fats        REAL NOT NULL DEFAULT 0.0,
+            complex_carbohydrates REAL NOT NULL DEFAULT 0.0,
+            sugars                REAL NOT NULL DEFAULT 0.0,
+            protein               REAL NOT NULL DEFAULT 0.0,
+            calories              REAL NOT NULL DEFAULT 0.0
+        );
+        ",
+    )
+    .down("DROP TABLE items;")
+    .comment(
+        "Items for the macronutrient tracker: a named thing with its macros \
+         per 100 g — unsaturated fats, saturated fats, complex carbohydrates \
+         and sugars (grams), protein (grams) and calories (kcal). Not \
+         necessarily a single food, hence 'item' rather than 'ingredient'. \
+         All quantities are REAL NOT NULL DEFAULT 0.0, so a row whose macros \
+         haven't been filled in yet reads as a zero-macro item. name is \
+         UNIQUE, like exercises and muscle groups, so create surfaces a \
+         friendly NameTaken on a duplicate.",
+    ),
 ];
 
 /// The migrations, ready to apply to a connection.
