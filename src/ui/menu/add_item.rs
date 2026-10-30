@@ -1,11 +1,16 @@
-//! The add-item form: asks for a name, then each macro quantity, and
-//! writes the new item to the database.
+//! The add-item screen: chooses what kind of item to add, then runs that form.
 //!
-//! The name is asked first; a duplicate is caught there (`find_by_name`) so the
-//! six macro fields are only typed once the name is known-good. Each macro
-//! field defaults to zero when left blank (the prompt says "blank = 0"), so an
-//! item with no — or few — macros is quick to enter; only a number that
-//! cannot be read re-asks.
+//! **"plain item"** is a leaf — its macros are the six stored values — and
+//! runs the form below ([`add_item`]). **"recipe item"** hands over to
+//! [`super::add_recipe_item`], which composes a new item out of existing ones
+//! (each a straight quantity factor) with the stored macros left zero, since
+//! a composite's values are derived from its composition.
+//!
+//! In the plain form the name is asked first; a duplicate is caught there
+//! (`find_by_name`) so the six macro fields are only typed once the name is
+//! known-good. Each macro field defaults to zero when left blank (the prompt
+//! says "blank = 0"), so an item with no — or few — macros is quick to enter;
+//! only a number that cannot be read re-asks.
 //!
 //! Escape backs out of the current field; the user then confirms with a
 //! Yes/No prompt. An escape with nothing typed in the name field cancels the
@@ -23,13 +28,21 @@ use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
 
-/// The add-item screen: log what was just added, then return to the
-/// macros menu. The form itself lives in [`add_item`] so it can grow
-/// callers (e.g. a "duplicate from this item" quick-start) without
-/// re-locating the field logic.
+/// The add-item screen: ask which kind of item to add, then run that form. A
+/// plain item returns to the macros menu; a recipe item hands over to
+/// [`super::add_recipe_item`], which lands on the new item's options screen
+/// (or the macros menu when cancelled).
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
-    add_item(shell, conn)?;
-    Ok(Some(Menu::Macros))
+    let choice = shell.ask(Some("Add item".to_string()), ["plain item", "recipe item"])?;
+    match choice.as_deref() {
+        Some("plain item") => {
+            add_item(shell, conn)?;
+            Ok(Some(Menu::Macros))
+        }
+        Some("recipe item") => super::add_recipe_item::run(shell, conn),
+        // "Escape": leave without adding anything.
+        _ => Ok(Some(Menu::Macros)),
+    }
 }
 
 /// Drive the whole form, retrying from the name when it turns out to be taken.

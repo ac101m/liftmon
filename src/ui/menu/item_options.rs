@@ -1,14 +1,16 @@
 //! The per-item screen: actions on the item the user just picked.
 //!
-//! The prompt is the item's own name, and the options print its info (name,
-//! the fat and carbs totals each with its "of which" sub-breakdown, protein
-//! and calories, as a framed section) or back out to the macros menu.
+//! The prompt is the item's own name, and the options print its info (the
+//! macros — fat and carbs totals each with their "of which" sub-breakdown,
+//! protein, calories — for a *leaf*, or for a *composite* the component lines
+//! and the totals its composition resolves to, as a framed section) or back
+//! out to the macros menu.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
-use crate::domain::Item;
+use crate::domain::{Item, ItemReference, Macros};
 
 use crate::ui::utils::{Shell, UiError};
 
@@ -34,48 +36,143 @@ pub(super) fn run(
         selected = selected_here;
         match choice.as_deref() {
             // Read-only: print the item's info as a framed section —
-            // divider, bold name with a trailing colon, one indented line
-            // per quantity, divider.
-            Some("info") => shell.log_section(item_section(&item)),
+            // divider, bold name with a trailing colon, the relevant lines,
+            // divider.
+            Some("info") => shell.log_section(item_info_lines(conn, &item)?),
             // "back", or Escape: the user asked to leave for the macros menu.
             _ => return Ok(Some(Menu::Macros)),
         }
     }
 }
 
-/// The lines of an item's info section: the bold item name (with a trailing
-/// colon, like any section heading) over the totals — fat and carbs each with
-/// its "of which" sub-breakdown (saturates, sugars), in the label style of a
-/// nutrition panel — then protein and calories.
-fn item_section(item: &Item) -> Vec<Line<'static>> {
-    let mut lines = vec![Line::from(vec![Span::styled(
-        format!("{}:", item.name),
+/// The lines of an item's info section, composite-aware. A leaf shows the bold
+/// item name over its stored macros; a composite mirrors that layout — the
+/// macros (its resolved totals) — with an "Ingredients:" section beneath
+/// listing what it is made of, since a composite's stored macros are unused
+/// (left zero) and the resolved values are the ones that count.
+fn item_info_lines(conn: &Connection, item: &Item) -> Result<Vec<Line<'static>>, UiError> {
+    let references = ItemReference::for_item(conn, item.id)?;
+    if references.is_empty() {
+        return Ok(item_section(item));
+    }
+
+    let mut lines = vec![heading(&item.name)];
+    let macros = Item::resolved_macros(conn, item.id)?;
+    lines.extend(resolved_macro_lines(&macros));
+    // A bold section heading, flush with the item title; the components are
+    // indented two spaces beneath it.
+    lines.push(Line::from(vec![Span::styled(
+        "Ingredients:",
         Style::new().add_modifier(Modifier::BOLD),
-    )])];
-    lines.push(Line::from(format!(
-        "  Fat: {} g (of which saturates: {} g)",
-        total(item.unsaturated_fats, item.saturated_fats),
-        item.saturated_fats
-    )));
-    lines.push(Line::from(format!(
-        "  Carbs: {} g (of which sugars: {} g)",
-        total(item.complex_carbohydrates, item.sugars),
-        item.sugars
-    )));
-    lines.push(Line::from(format!("  Protein: {} g", item.protein)));
-    lines.push(Line::from(format!("  Calories: {} kcal", item.calories)));
+    )]));
+    for reference in references {
+        // The reference carries the child's id and the quantity; the child's
+        // name comes from a lookup (`for_item` orders by name, so the lines
+        // come out in name order).
+        let child = Item::find_by_id(conn, reference.child_id)?
+            .map(|child| child.name)
+            .unwrap_or_else(|| reference.child_id.to_string());
+        lines.push(Line::from(format!("  {} × {}", reference.quantity, child)));
+    }
+    Ok(lines)
+}
+
+/// The lines of a leaf's info section: the bold item name (with a trailing
+/// colon, like any section heading) over its stored macros.
+fn item_section(item: &Item) -> Vec<Line<'static>> {
+    let mut lines = vec![heading(&item.name)];
+    lines.extend(macro_lines(
+        "  ",
+        item.unsaturated_fats,
+        item.saturated_fats,
+        item.complex_carbohydrates,
+        item.sugars,
+        item.protein,
+        item.calories,
+    ));
     lines
 }
 
-/// Sum two gram quantities for display, rounded to the nearest hundredth so a
-/// float addition (0.1 + 0.2) never prints a long error tail.
+/// The bold item-name heading: the item name with a trailing colon, like any
+/// section heading.
+fn heading(name: &str) -> Line<'static> {
+    Line::from(vec![Span::styled(
+        format!("{name}:"),
+        Style::new().add_modifier(Modifier::BOLD),
+    )])
+}
+
+/// The four macro lines in the nutrition-panel style: fat and carbs totals each
+/// with their "of which" sub-breakdown (saturates, sugars), then protein and
+/// calories. Fat is the sum of the two fat columns and carbs of the two carb
+/// columns, each rounded to a hundredth; the "of which" values and protein and
+/// calories pass through as given (their caller pre-rounds when they can carry
+/// float tails). `indent` is the leading whitespace for every line.
+fn macro_lines(
+    indent: &str,
+    unsaturated_fats: f64,
+    saturated_fats: f64,
+    complex_carbohydrates: f64,
+    sugars: f64,
+    protein: f64,
+    calories: f64,
+) -> Vec<Line<'static>> {
+    vec![
+        Line::from(format!(
+            "{indent}Fat: {} g (of which saturates: {} g)",
+            total(unsaturated_fats, saturated_fats),
+            saturated_fats
+        )),
+        Line::from(format!(
+            "{indent}Carbs: {} g (of which sugars: {} g)",
+            total(complex_carbohydrates, sugars),
+            sugars
+        )),
+        Line::from(format!("{indent}Protein: {} g", protein)),
+        Line::from(format!("{indent}Calories: {} kcal", calories)),
+    ]
+}
+
+/// A composite's macro lines: its resolved totals, each rounded to the
+/// hundredth first — they are sums, so they can carry float tails that a
+/// leaf's typed values never would. Indented like a leaf's macros, so the
+/// composite reads as a plain item with an ingredients list beneath.
+fn resolved_macro_lines(macros: &Macros) -> Vec<Line<'static>> {
+    macro_lines(
+        "  ",
+        round2(macros.unsaturated_fats),
+        round2(macros.saturated_fats),
+        round2(macros.complex_carbohydrates),
+        round2(macros.sugars),
+        round2(macros.protein),
+        round2(macros.calories),
+    )
+}
+
+/// Round a value to the nearest hundredth for display, so a computed sum (a
+/// float addition like 0.1 + 0.2) never prints a long error tail.
+fn round2(x: f64) -> f64 {
+    (x * 100.0).round() / 100.0
+}
+
+/// Sum two gram quantities for display, rounded to the nearest hundredth.
 fn total(a: f64, b: f64) -> f64 {
-    ((a + b) * 100.0).round() / 100.0
+    round2(a + b)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::apply_schema;
+
+    /// An in-memory database with the full schema applied — needed for the
+    /// composite info test, which builds a real composition graph.
+    fn test_db() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        apply_schema(&mut conn).unwrap();
+        conn
+    }
 
     /// The info lines as plain text, so the tests assert the content rather
     /// than the styling.
@@ -126,5 +223,69 @@ mod tests {
     fn total_rounds_float_addition_error_away() {
         assert_eq!(total(3.6, 2.3), 5.9);
         assert_eq!(total(0.1, 0.2), 0.3);
+    }
+
+    #[test]
+    fn round2_rounds_a_float_tail_away() {
+        assert_eq!(round2(3.1 + 0.05), 3.15);
+        assert_eq!(round2(0.1 + 0.2), 0.3);
+    }
+
+    /// A composite's info mirrors a leaf's macros (resolved totals) with its
+    /// components listed beneath as an "Ingredients:" section — not its (zero)
+    /// stored macros.
+    #[test]
+    fn composite_info_shows_resolved_macros_then_ingredients() {
+        let conn = test_db();
+        let chicken =
+            Item::create(&conn, "Chicken breast", 4.0, 1.0, 0.0, 0.0, 30.0, 160.0).unwrap();
+        let milk = Item::create(&conn, "Whole milk", 4.0, 2.0, 5.0, 5.0, 3.0, 60.0).unwrap();
+        let sandwich =
+            Item::create(&conn, "Chicken sandwich", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).unwrap();
+        ItemReference::set_for_item(&conn, sandwich.id, &[(chicken.id, 2.0), (milk.id, 0.5)])
+            .unwrap();
+
+        let lines = item_info_lines(&conn, &sandwich).unwrap();
+        assert_eq!(
+            lines_text(&lines),
+            [
+                "Chicken sandwich:",
+                // Macros first, exactly like a leaf's; the composition beneath
+                // as ingredients. 2 × Chicken + 0.5 × Whole milk.
+                "  Fat: 13 g (of which saturates: 3 g)",
+                "  Carbs: 5 g (of which sugars: 2.5 g)",
+                "  Protein: 61.5 g",
+                "  Calories: 350 kcal",
+                // The bold section heading is flush with the item title; the
+                // items sit two spaces beneath it. 2 × Chicken + 0.5 × Whole
+                // milk.
+                "Ingredients:",
+                "  2 × Chicken breast",
+                "  0.5 × Whole milk",
+            ]
+        );
+        // The composite's heading and the Ingredients: heading are bold;
+        // the rest is plain.
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        assert_eq!(lines[0].spans[0].style, bold);
+        assert_eq!(lines[5].spans[0].style, bold);
+        assert_eq!(lines[6].spans[0].style, Style::new());
+    }
+
+    /// A leaf's info is untouched by the composite split.
+    #[test]
+    fn leaf_info_still_lists_its_stored_macros() {
+        let conn = test_db();
+        let item = Item::create(&conn, "egg", 9.5, 3.1, 0.7, 0.7, 12.6, 143.0).unwrap();
+        assert_eq!(
+            lines_text(&item_info_lines(&conn, &item).unwrap()),
+            [
+                "egg:",
+                "  Fat: 12.6 g (of which saturates: 3.1 g)",
+                "  Carbs: 1.4 g (of which sugars: 0.7 g)",
+                "  Protein: 12.6 g",
+                "  Calories: 143 kcal"
+            ]
+        );
     }
 }

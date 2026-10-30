@@ -54,7 +54,6 @@ pub struct Item {
 /// a composite — the sum its composition resolves to (see
 /// [`Item::resolved_macros`]). The fields mirror the `items` columns.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)] // waits on the composition UI
 pub struct Macros {
     pub unsaturated_fats: f64,
     pub saturated_fats: f64,
@@ -113,8 +112,8 @@ impl Item {
     }
 
     /// Load the item with the given row `id`, if one exists — how the
-    /// composition resolver looks its components up.
-    #[allow(dead_code)] // waits on the composition UI
+    /// composition resolver looks its components up, and how the composite
+    /// info screen names them.
     pub fn find_by_id(conn: &Connection, id: i64) -> Result<Option<Self>, DomainError> {
         match conn.query_row(
             "SELECT id, name, unsaturated_fats, saturated_fats, complex_carbohydrates, sugars, protein, calories \
@@ -163,7 +162,6 @@ impl Item {
     /// `item_reference_no_cycles` trigger keep the graph acyclic, so the
     /// recursion terminates; a visited set turns any hand-edited loop into a
     /// [`DomainError::CyclicComposition`] rather than a hang.
-    #[allow(dead_code)] // waits on the composition UI
     pub fn resolved_macros(conn: &Connection, id: i64) -> Result<Macros, DomainError> {
         resolve(conn, id, &mut HashSet::new())
     }
@@ -176,7 +174,6 @@ impl Item {
 /// both the domain and the schema guard against it — errors instead of
 /// recursing forever; each branch removes its item afterwards, so a DAG that
 /// reaches the same descendant by several routes counts it on each route.
-#[allow(dead_code)] // waits on the composition UI
 fn resolve(conn: &Connection, id: i64, visited: &mut HashSet<i64>) -> Result<Macros, DomainError> {
     // The composition children always exist (the schema restricts deletes of
     // used items), but a raw-deleted row would surface here rather than

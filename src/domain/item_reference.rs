@@ -46,7 +46,6 @@ impl ItemReference {
     /// The schema's trigger is the backstop for any raw-SQL writer; this
     /// pre-check is what turns a rejection into a friendly, all-or-nothing
     /// error when the app does the writing.
-    #[allow(dead_code)] // waits on the composition UI
     pub fn set_for_item(
         conn: &Connection,
         parent_id: i64,
@@ -77,7 +76,6 @@ impl ItemReference {
 
     /// Load an item's composition, in child-name order (stable, like every
     /// list in the app). `[]` when the item is a leaf.
-    #[allow(dead_code)] // waits on the composition UI
     pub fn for_item(conn: &Connection, parent_id: i64) -> Result<Vec<Self>, DomainError> {
         let mut stmt = conn.prepare(
             "SELECT ri.parent_id, ri.child_id, ri.quantity \

@@ -33,7 +33,7 @@ mod set;
 pub use self::error::DomainError;
 // Flat path used by consumers (ui/logic).
 pub use self::exercise::Exercise;
-pub use self::item::Item;
+pub use self::item::{Item, Macros};
 pub use self::item_reference::ItemReference;
 // The workout entities are the public surface for the session screens.
 pub use self::exercise_performance::ExercisePerformance;

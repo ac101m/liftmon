@@ -77,10 +77,23 @@ set, and the exercise info screen frames the exercise with rules and lists its
 last three personal records as weight × reps with when each record was set), the
 in-use-exercise delete path, the macros path (the main menu's "Macros" item
 lands on the macros screen with its show-items/add-item/back menu), the macros
-add-item path (name plus six macro fields entered one at a time, blank
+add-item path (add item first asks whether the item is a plain or a recipe
+item; a plain item is the existing leaf form — name plus six macro fields
+entered one at a time, blank
 fields default to zero per the "blank = 0" prompt, a duplicate name is refused
 at the name field before any macros are typed, and abandoning the retry leaves
-the original item alone), the macros show-items path (a filter picker of the
+the original item alone), the macros
+add-recipe-item path (a recipe item is a composite: a name, then existing
+items picked one at a time with a quantity factor each — "add another item?"
+loops back to the picker, No creates it with all-zero stored macros and lands
+on the new item's options screen, whose info mirrors a plain item's macros —
+the resolved totals the composition sums to — with the components listed
+beneath as an "Ingredients:" section: a chicken sandwich of 2 × chicken
+breast and 0.5 × whole milk reads "Fat: 13 g (of which saturates: 3 g)",
+"Carbs: 5 g (of which sugars: 2.5 g)", "Protein: 61.5 g", "Calories: 350 kcal"
+over "Ingredients:" "2 × Chicken breast" and "0.5 × Whole milk";
+and with nothing stored yet the flow explains it can't compose), the macros
+show-items path (a filter picker of the
 stored items — typing narrows it like the exercise picker; picking one opens
 its info/back menu whose info logs the item's name, fat and carbs totals
 (each with its "of which" saturates/sugars breakdown), protein and calories in

@@ -1142,6 +1142,8 @@ def macros_add_item_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "show items", "add item", "back")
     app.send("\x1b[B\r")                       # add item (index 1)
+    app.check("add item type menu", "═[Add item]", "plain item", "recipe item")
+    app.send("\r")                             # plain item (index 0)
     app.check("item name prompt", "═[Item name]", "e.g. Milk")
     app.send("Whole milk\r")                   # name
     app.check("unsaturated fats prompt", "═[Unsaturated fats (g)]", "blank = 0")
@@ -1180,6 +1182,8 @@ def macros_add_item_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.check("macros menu (2nd)", "═[Macros]", "show items", "add item", "back")
     app.send("\x1b[B\r")                       # add item (index 1)
+    app.check("add item type menu (2nd)", "═[Add item]", "plain item", "recipe item")
+    app.send("\r")                             # plain item (index 0)
     app.send("Whole milk\r")                   # the taken name
     app.check("duplicate refused at the name", "An item named 'Whole milk' already exists", "═[Item name]", "> Whole milk")
     app.send("\x1b")                           # Esc: abandon the retry
@@ -1192,6 +1196,80 @@ def macros_add_item_path():
     if count != 1:
         raise SystemExit(f"FAIL: expected 1 item, got {count}")
     print("ok   a duplicate is refused before the macros, and cancelling the retry leaves one item")
+    print()
+
+def macros_add_recipe_item_path():
+    print("=== MACROS ADD-RECIPE-ITEM PATH: compose an item from existing items; info mirrors a leaf with an ingredients list ===")
+    seed_db(items=(
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
+        ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "show items", "add item", "back")
+    app.send("\x1b[B\r")                       # add item (index 1)
+    app.check("add item type menu", "═[Add item]", "plain item", "recipe item")
+    app.send("\x1b[B\r")                       # recipe item (index 1)
+    app.check("recipe name prompt", "═[Recipe name]", "e.g. Sandwich")
+    app.send("Chicken sandwich\r")             # name
+    app.check("component picker", "═[Select item]", "type to filter",
+              " Chicken breast", " Whole milk")
+    app.send("\r")                             # pick Chicken breast (index 0)
+    app.check("chicken quantity", "═[Chicken breast · Quantity]", "e.g. 0.5")
+    app.send("2\r")                            # quantity factor
+    app.check("add another prompt", "Add another item?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes: up to it, add another component
+    app.check("second picker drops the chosen item", "═[Select item]", "type to filter", " Whole milk")
+    app.send("\r")                             # pick Whole milk (index 0)
+    app.check("milk quantity", "═[Whole milk · Quantity]", "e.g. 0.5")
+    app.send("0.5\r")                          # quantity factor
+    app.check("final add another prompt", "Add another item?", "Yes", "No")
+    app.send("\r")                             # No (default): create
+    app.check("recipe created, lands on its options",
+              "Added item 'Chicken sandwich'", "═[Chicken sandwich]", "info", "back")
+    app.send("\r")                             # info (index 0)
+    app.check("composite info mirrors a leaf, ingredients listed beneath",
+              "Chicken sandwich:",
+              "Fat: 13 g (of which saturates: 3 g)",
+              "Carbs: 5 g (of which sugars: 2.5 g)",
+              "Protein: 61.5 g", "Calories: 350 kcal",
+              "Ingredients:", "2 × Chicken breast", "0.5 × Whole milk")
+    app.send("\x1b[B\r")                       # back (index 1) -> macros menu
+    app.check("back at macros after recipe", "═[Macros]", "show items", "add item", "back")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    # A composite's stored macros are all zero — its values are derived.
+    row = con.execute(
+        "SELECT unsaturated_fats, saturated_fats, complex_carbohydrates, sugars,"
+        " protein, calories FROM items WHERE name = 'Chicken sandwich'").fetchone()
+    if row != (0.0, 0.0, 0.0, 0.0, 0.0, 0.0):
+        raise SystemExit(f"FAIL: composite row {row} != all-zero stored macros (derived-only)")
+    rows = con.execute(
+        "SELECT i.name, ri.quantity FROM item_reference ri"
+        " JOIN items i ON i.id = ri.child_id"
+        " JOIN items p ON p.id = ri.parent_id"
+        " WHERE p.name = 'Chicken sandwich' ORDER BY i.name").fetchall()
+    con.close()
+    if rows != [("Chicken breast", 2.0), ("Whole milk", 0.5)]:
+        raise SystemExit(f"FAIL: composition rows {rows} != [('Chicken breast', 2.0), ('Whole milk', 0.5)]")
+    print("ok   a recipe stores zero macros and two quantity-scaled references, and info shows its resolved totals")
+
+    # With nothing to compose yet, the recipe flow explains why up front.
+    seed_db(items=())
+    app = App()
+    app.check("main menu (2nd)", "═[Main menu]")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros
+    app.check("macros menu (2nd)", "═[Macros]", "show items", "add item", "back")
+    app.send("\x1b[B\r")                       # add item
+    app.check("add item type menu (2nd)", "═[Add item]", "plain item", "recipe item")
+    app.send("\x1b[B\r")                       # recipe item
+    app.check("recipe name prompt (2nd)", "═[Recipe name]", "e.g. Sandwich")
+    app.send("Sandwich\r")                     # name
+    app.check("no items to compose", "No items yet — add a plain item first", "═[Macros]")
+    app.close()
+    print("ok   with no plain items stored, the recipe flow explains why it can't compose")
     print()
 
 def macros_show_items_path():
@@ -1805,6 +1883,7 @@ personal_record_path()
 delete_path()
 macros_path()
 macros_add_item_path()
+macros_add_recipe_item_path()
 macros_show_items_path()
 muscle_groups_path()
 exercise_muscle_groups_path()

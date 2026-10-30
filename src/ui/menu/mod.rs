@@ -9,7 +9,7 @@
 //! [`self::macros_menu`], [`self::exercises_menu`], [`self::session_menu`],
 //! [`self::freeform_session`],
 //! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
-//! [`self::add_item`], [`self::exercise_options`],
+//! [`self::add_item`], [`self::add_recipe_item`], [`self::exercise_options`],
 //! [`self::select_muscle_group`], [`self::muscle_group_options`],
 //! [`self::show_items`] and
 //! [`self::item_options`] — with [`self::select_exercise`] (the shared
@@ -28,6 +28,7 @@ use crate::ui::utils::{Shell, UiError};
 
 mod add_exercise;
 mod add_item;
+mod add_recipe_item;
 mod exercise_muscle_groups;
 mod exercise_options;
 mod exercises_menu;
@@ -50,7 +51,9 @@ pub(crate) enum Menu {
     Main,
     /// The macros screen (Show items / Add item / Back).
     Macros,
-    /// The add-item form (name, then each macro quantity).
+    /// The add-item screen: choose a plain item (a leaf — name and six stored
+    /// macros) or a recipe item (a composite of existing items, each a
+    /// quantity factor), then run that form.
     AddItem,
     /// The show-items screen: browse the stored items with the filter picker,
     /// then into that item's options screen.
