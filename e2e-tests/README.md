@@ -107,6 +107,15 @@ breast becoming 3 × chicken breast), "delete" asks "Remove {child} from
 last ingredient turns the item back into a leaf — its options re-ask without
 "edit ingredients", its info shows the stored (zero) macros, and the DB holds
 no item_reference rows at all), the macros
+edit-macros path (a plain item's options list one "edit \<macro\>" action per
+stored macro — unsaturated fats, saturated fats, complex carbohydrates, sugars,
+protein and calories; each opens the field prefilled with the current value,
+re-asks until it parses, and reuses the add form's parser, so clearing the
+field reads as zero (an invalid entry is refused with the add form's "Enter a
+number, or leave blank for 0" and re-asks); editing protein 3.3 → 15 and
+clearing complex carbohydrates 4.7 → 0 shows in the info and in the row, with
+the other macros and other items untouched — while a composite's derived macros
+offer no such edits), the macros
 show-items path (a filter picker of the
 stored items — typing narrows it like the exercise picker; picking one opens
 its info/back menu whose info logs the item's name, fat and carbs totals

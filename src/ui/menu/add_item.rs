@@ -183,8 +183,9 @@ fn abandon(shell: &mut Shell) -> Result<bool, UiError> {
 
 /// Parse a macro entry: a blank field (the zero default the columns carry),
 /// or a non-negative number — "12.5", "0", " 3 ". Anything else, including a
-/// negative or a non-finite value, is rejected.
-fn parse_amount(raw: &str) -> Option<f64> {
+/// negative or a non-finite value, is rejected. Shared with the item options
+/// screen's per-macro edit fields, whose prompt asks for the same thing.
+pub(super) fn parse_amount(raw: &str) -> Option<f64> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Some(0.0);

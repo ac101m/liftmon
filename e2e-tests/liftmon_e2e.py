@@ -1316,7 +1316,7 @@ def macros_edit_item_name_path():
     app.send("\x1b[A\r")                       # info (index 0) under the new name
     app.check("info under new name", "Cream:",
               "Fat: 5.9 g (of which saturates: 2.3 g)")
-    app.send("\x1b[B\x1b[B\r")                 # back (index 2) -> macros menu
+    app.send("\x1b[B" * 8 + "\r")              # back (index 8, after the six macro edits) -> macros menu
     app.check("back at macros after rename", "═[Macros]", "show items", "add item", "back")
     app.close()
 
@@ -1347,6 +1347,9 @@ def macros_edit_ingredients_path():
     app.send("\x1b[B\r")                       # pick Chicken sandwich (index 1)
     app.check("composite options offer edit ingredients", "═[Chicken sandwich]",
               "info", "edit name", "edit ingredients", "back")
+    grid = app.grid()
+    if any("edit protein" in row for row in grid):
+        raise SystemExit("FAIL: a composite's macros are derived-only, so it must not offer per-macro edits")
     app.send("\x1b[B\x1b[B\r")                 # edit ingredients (index 2)
     app.check("ingredient picker lists both", "═[Select ingredient]", "type to filter",
               " Chicken breast", " Whole milk")
@@ -1425,17 +1428,17 @@ def macros_edit_ingredients_path():
     app.check("last delete logs no ingredients left and re-asks as a leaf",
               "Removed Chicken breast from 'Chicken sandwich'",
               "No ingredients left",
-              "═[Chicken sandwich]", "info", "edit name", "back")
+              "═[Chicken sandwich]", "info", "edit name", "edit protein", "back")
     grid = app.grid()
     if any("edit ingredients" in row for row in grid):
         raise SystemExit("FAIL: a leaf must not offer 'edit ingredients' after its last ingredient is deleted")
     # The re-ask kept the highlight where the flow left (index 2, once "edit
-    # ingredients"), and the shrunken leaf list clamps it onto "back" — so move
-    # up two to "info".
+    # ingredients"); in the shrunken-to-leaf list that index now sits on "edit
+    # saturated fats" (the third option), so move up two to "info".
     app.send("\x1b[A\x1b[A\r")                 # info (index 0)
     app.check("the now-leaf shows its stored (zero) macros", "Chicken sandwich:",
               "Fat: 0 g (of which saturates: 0 g)", "Protein: 0 g", "Calories: 0 kcal")
-    app.send("\x1b[B\x1b[B\r")                 # back (index 2, leaf options) -> macros menu
+    app.send("\x1b[B" * 8 + "\r")              # back (index 8, leaf options) -> macros menu
     app.check("back at macros (2nd)", "═[Macros]")
     app.close()
 
@@ -1447,6 +1450,71 @@ def macros_edit_ingredients_path():
     if count != 0:
         raise SystemExit(f"FAIL: deleting the last ingredient must clear the item's references, got {count} rows")
     print("ok   deleting the final ingredient returns the item to a leaf: no refs in the DB, no 'edit ingredients' option, info shows the stored zero macros")
+    print()
+
+def macros_edit_macros_path():
+    print("=== MACROS EDIT-MACROS PATH: a plain item's six macros each edit in place, prefilled; blank clears to zero ===")
+    seed_db(items=(
+        ("Milk", (3.6, 2.3, 4.7, 4.7, 3.3, 64.0)),
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 31.0, 165.0)),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "show items", "add item", "back")
+    app.send("\r")                             # show items (index 0)
+    app.check("item picker", "Select item", "type to filter", " Chicken breast", " Milk")
+    app.send("\x1b[B\r")                       # pick Milk (index 1)
+    # A leaf lists an edit action for each of its six stored macros.
+    app.check("leaf options offer one edit per macro", "═[Milk]",
+              "info", "edit name", "edit unsaturated fats", "edit saturated fats",
+              "edit complex carbohydrates", "edit sugars", "edit protein",
+              "edit calories", "back")
+    app.send("\x1b[B" * 6 + "\r")              # edit protein (index 6)
+    app.check("protein field prefilled with the current value",
+              "═[Protein (g)]", "> 3.3")
+    # A malformed entry is refused and the field re-asks prefilled.
+    app.send("\x7f" * 3)                       # clear the prefilled "3.3"
+    app.send("abc\r")                          # not a number
+    app.check("malformed macro refused", "Enter a number, or leave blank for 0",
+              "═[Protein (g)]", "> abc")
+    app.send("\x7f" * 3)                       # clear "abc"
+    app.send("15\r")
+    app.check("protein updated, back on the options",
+              "Updated protein of 'Milk' to 15", "═[Milk]", "back")
+    # The re-ask keeps the highlight on "edit protein" (where the edit was), so
+    # move up two to "edit complex carbohydrates".
+    app.send("\x1b[A\x1b[A\r")                 # edit complex carbohydrates (index 4)
+    app.check("carbs field prefilled", "═[Complex carbohydrates (g)]", "> 4.7")
+    # Clearing the prefilled field and confirming reads as zero — the add
+    # form's "blank = 0" convenience carried into the editor.
+    app.send("\x7f" * 3)                       # clear the prefilled "4.7"
+    app.send("\r")                             # blank: default to 0
+    app.check("blank reads as zero, back on the options",
+              "Updated complex carbohydrates of 'Milk' to 0", "═[Milk]", "back")
+    app.send("\x1b[A" * 4 + "\r")              # info (index 0): up from edit complex carbohydrates
+    app.check("info reflects both edits, the rest untouched",
+              "Milk:",
+              "Fat: 5.9 g (of which saturates: 2.3 g)",
+              "Carbs: 4.7 g (of which sugars: 4.7 g)",
+              "Protein: 15 g", "Calories: 64 kcal")
+    app.send("\x1b[B" * 8 + "\r")              # back (index 8) -> macros menu
+    app.check("back at macros after edits", "═[Macros]", "show items", "add item", "back")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    rows = {
+        name: tuple(macros)
+        for name, *macros in con.execute(
+            "SELECT name, unsaturated_fats, saturated_fats, complex_carbohydrates,"
+            " sugars, protein, calories FROM items")
+    }
+    con.close()
+    if rows["Milk"] != (3.6, 2.3, 0.0, 4.7, 15.0, 64.0):
+        raise SystemExit(f"FAIL: Milk row {rows['Milk']} != edited macros (3.6, 2.3, 0.0, 4.7, 15.0, 64.0)")
+    if rows["Chicken breast"] != (4.0, 1.0, 0.0, 0.0, 31.0, 165.0):
+        raise SystemExit(f"FAIL: Chicken breast must be untouched, got {rows['Chicken breast']}")
+    print("ok   each macro edits in place (typed value, and a cleared field reads as 0), malformed entries re-ask, and the other items are untouched")
     print()
 
 def macros_show_items_path():
@@ -1471,7 +1539,7 @@ def macros_show_items_path():
               "  Fat: 5.9 g (of which saturates: 2.3 g)",
               "  Carbs: 9.4 g (of which sugars: 4.7 g)",
               "  Protein: 3.3 g", "  Calories: 64 kcal")
-    app.send("\x1b[B\x1b[B\r")                 # back (index 2) -> macros menu
+    app.send("\x1b[B" * 8 + "\r")              # back (index 8, after the six macro edits) -> macros menu
     app.check("back at macros after info", "═[Macros]", "show items", "add item", "back")
     app.close()
     print("ok   the picker lists the stored items, filters them, and the per-item info logs the totals in a box")
@@ -2063,6 +2131,7 @@ macros_add_item_path()
 macros_add_recipe_item_path()
 macros_edit_item_name_path()
 macros_edit_ingredients_path()
+macros_edit_macros_path()
 macros_show_items_path()
 muscle_groups_path()
 exercise_muscle_groups_path()

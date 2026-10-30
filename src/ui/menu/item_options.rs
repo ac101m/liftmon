@@ -4,9 +4,10 @@
 //! macros — fat and carbs totals each with their "of which" sub-breakdown,
 //! protein, calories — for a *leaf*, or for a *composite* the component lines
 //! and the totals its composition resolves to, as a framed section), edit its
-//! name, edit its ingredients (composite items only), or back out to the
-//! macros menu. Editing loops back onto this screen under the renamed item, so
-//! the prompt tracks the change.
+//! name, edit its stored macros one at a time (**leaf items only** — a
+//! composite's macros are derived, never stored), edit its ingredients
+//! (composite items only), or back out to the macros menu. Editing loops back
+//! onto this screen under the renamed item, so the prompt tracks the change.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -36,13 +37,26 @@ pub(super) fn run(
         // in.
         // The options menu is shared by leaves and composites: composite items
         // (which have ingredients to edit) get the extra "edit ingredients"
-        // action. Whether the item is composite is queried fresh each re-ask,
-        // so deleting the last ingredient re-asks without the option.
+        // action, and leaves get an "edit <macro>" action per stored macro
+        // (a composite's macros are derived-only, so there is nothing to
+        // edit). Whether the item is composite is queried fresh each re-ask,
+        // so deleting the last ingredient re-asks as a leaf — its "edit
+        // ingredients" option gone, the six macro edits appearing.
         let composite = !ItemReference::for_item(conn, item.id)?.is_empty();
         let options: Vec<&str> = if composite {
             vec!["info", "edit name", "edit ingredients", "back"]
         } else {
-            vec!["info", "edit name", "back"]
+            vec![
+                "info",
+                "edit name",
+                "edit unsaturated fats",
+                "edit saturated fats",
+                "edit complex carbohydrates",
+                "edit sugars",
+                "edit protein",
+                "edit calories",
+                "back",
+            ]
         };
         let (choice, selected_here) =
             shell.ask_selected(Some(item.name.clone()), options, selected)?;
@@ -59,6 +73,64 @@ pub(super) fn run(
                     name = new_name;
                 }
             }
+            // Each stored macro gets its own edit field (leaf items only —
+            // these options don't appear for composites, whose macros are
+            // derived). The field is prefilled with the current value and
+            // re-asks until it parses; unchanged input writes nothing.
+            Some("edit unsaturated fats") => edit_macro(
+                shell,
+                conn,
+                &item,
+                "Unsaturated fats (g)",
+                "unsaturated fats",
+                |i| i.unsaturated_fats,
+                |i, v| i.unsaturated_fats = v,
+            )?,
+            Some("edit saturated fats") => edit_macro(
+                shell,
+                conn,
+                &item,
+                "Saturated fats (g)",
+                "saturated fats",
+                |i| i.saturated_fats,
+                |i, v| i.saturated_fats = v,
+            )?,
+            Some("edit complex carbohydrates") => edit_macro(
+                shell,
+                conn,
+                &item,
+                "Complex carbohydrates (g)",
+                "complex carbohydrates",
+                |i| i.complex_carbohydrates,
+                |i, v| i.complex_carbohydrates = v,
+            )?,
+            Some("edit sugars") => edit_macro(
+                shell,
+                conn,
+                &item,
+                "Sugars (g)",
+                "sugars",
+                |i| i.sugars,
+                |i, v| i.sugars = v,
+            )?,
+            Some("edit protein") => edit_macro(
+                shell,
+                conn,
+                &item,
+                "Protein (g)",
+                "protein",
+                |i| i.protein,
+                |i, v| i.protein = v,
+            )?,
+            Some("edit calories") => edit_macro(
+                shell,
+                conn,
+                &item,
+                "Calories (kcal)",
+                "calories",
+                |i| i.calories,
+                |i, v| i.calories = v,
+            )?,
             // Editing ingredients runs the pick-and-act sub-flow inline, like
             // the exercise menu's muscle-group editor; it returns to this menu
             // (highlight where it was) when the user backs out of the picker.
@@ -103,6 +175,51 @@ fn edit_name(shell: &mut Shell, conn: &Connection, item: &Item) -> Result<Option
                 }
             }
             ReadOutcome::Cancelled { .. } => return Ok(None),
+        }
+    }
+}
+
+/// Ask for one stored macro's new value and save it — the field prefilled with
+/// the current value, re-asking (with what was typed prefilled) until it
+/// parses, mirroring the add-item form's fields. Reuses the add form's parser,
+/// so a cleared field reads as zero, the same convenience the form's "blank =
+/// 0" prompt offers; unchanged input writes nothing; Escape backs out. `label`
+/// is the lowercase macro name and `title` the field's heading (with units),
+/// both carrying the add form's naming.
+fn edit_macro(
+    shell: &mut Shell,
+    conn: &Connection,
+    item: &Item,
+    title: &str,
+    label: &str,
+    get: fn(&Item) -> f64,
+    set: fn(&mut Item, f64),
+) -> Result<(), UiError> {
+    let mut pending = get(item).to_string();
+    loop {
+        match shell.read_line(
+            Some(title.to_string()),
+            Some("blank = 0".to_string()),
+            &pending,
+        )? {
+            ReadOutcome::Value(raw) => match super::add_item::parse_amount(&raw) {
+                Some(value) => {
+                    if value == get(item) {
+                        return Ok(()); // unchanged: nothing to write
+                    }
+                    let mut updated = item.clone();
+                    set(&mut updated, value);
+                    updated.save(conn)?;
+                    shell.log(format!("Updated {label} of '{}' to {value}", item.name));
+                    return Ok(());
+                }
+                None => {
+                    shell.log("Enter a number, or leave blank for 0");
+                    pending = raw;
+                }
+            },
+            // Escape: leave the field, nothing written.
+            ReadOutcome::Cancelled { .. } => return Ok(()),
         }
     }
 }
