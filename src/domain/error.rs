@@ -36,4 +36,14 @@ pub enum DomainError {
         /// The id that does not exist.
         id: i64,
     },
+
+    /// A composition would make an item count as its own ingredient (the item
+    /// DAG is kept acyclic — see the `item_reference_no_cycles` schema trigger).
+    #[error("item '{parent}' cannot include '{child}' — that would make it its own ingredient")]
+    CyclicComposition {
+        /// The composite item the edge was being added to.
+        parent: String,
+        /// The component whose inclusion would close the loop.
+        child: String,
+    },
 }

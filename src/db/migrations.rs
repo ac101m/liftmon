@@ -183,14 +183,75 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
     )
     .down("DROP TABLE items;")
     .comment(
-        "Items for the macronutrient tracker: a named thing with its macros \
-         per 100 g — unsaturated fats, saturated fats, complex carbohydrates \
-         and sugars (grams), protein (grams) and calories (kcal). Not \
-         necessarily a single food, hence 'item' rather than 'ingredient'. \
-         All quantities are REAL NOT NULL DEFAULT 0.0, so a row whose macros \
-         haven't been filled in yet reads as a zero-macro item. name is \
-         UNIQUE, like exercises and muscle groups, so create surfaces a \
-         friendly NameTaken on a duplicate.",
+        "Items for the macronutrient tracker: a named thing with its macros in \
+         the user's chosen unit (e.g. per 100 g, per serving, per whole item) — \
+         unsaturated fats, saturated fats, complex carbohydrates and sugars \
+         (grams), protein (grams) and calories (kcal). An item can also be a \
+         composite of other items (the item_reference table, migration v8), in \
+         which case these stored macros are unused and the item's macros \
+         resolve from that graph instead. Not necessarily a single food, hence \
+         'item' rather than 'ingredient'. All quantities are \
+         REAL NOT NULL DEFAULT 0.0, so a row whose macros haven't been filled \
+         in yet reads as a zero-macro item. name is UNIQUE, like exercises and \
+         muscle groups, so create surfaces a friendly NameTaken on a duplicate.",
+    ),
+    // v8 — not FROZEN: the macros feature (items through composition) hasn't
+    // shipped yet; freeze this and v7 together when it does.
+    M::up(
+        r"
+        CREATE TABLE item_reference (
+            parent_id            INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+            child_id             INTEGER NOT NULL REFERENCES items(id) ON DELETE RESTRICT,
+            quantity             REAL NOT NULL,
+            PRIMARY KEY (parent_id, child_id)
+        );
+
+        -- The DAG-keeping guard: every writer (the app, or raw SQL) is refused
+        -- an edge that would close a loop. Adding (parent, child) is a cycle
+        -- iff the child transitively contains the parent, so walk child edges
+        -- forward from the NEW child looking for the NEW parent. UNION (not
+        -- UNION ALL) dedupes the walk, so it terminates even if hand-edited
+        -- data already holds a loop.
+        CREATE TRIGGER item_reference_no_cycles
+        BEFORE INSERT ON item_reference
+        BEGIN
+            WITH RECURSIVE contains(x) AS (
+                SELECT NEW.child_id
+                UNION
+                SELECT child_id FROM item_reference
+                JOIN contains ON item_reference.parent_id = contains.x
+            )
+            SELECT RAISE(ABORT, 'item cannot contain itself, directly or indirectly')
+            WHERE NEW.parent_id IN (SELECT x FROM contains);
+        END;
+        ",
+    )
+    .down(
+        r"
+        DROP TRIGGER item_reference_no_cycles;
+        DROP TABLE item_reference;
+        ",
+    )
+    .comment(
+        "An item composed of other items — the macronutrient tracker's DAG: \
+         each row says the parent item is made with `quantity` copies of the \
+         child item. `quantity` is a straight factor, not a gram amount, since \
+         item macros are stored in whatever unit the user chose. A leaf item \
+         has no rows here and supplies its own stored macros; a composite's \
+         macros resolve to the sum over its edges of quantity x the child's \
+         macros (item_reference is multi-level, so bread can itself be a \
+         composite). The (parent_id, child_id) pair is the compound primary \
+         key, so the same child can't be listed twice under one parent. \
+         Deleting a composite cascades its composition away (CASCADE); an item \
+         used as a component anywhere can't be deleted (RESTRICT). \
+         Acyclicity is enforced in the schema by the item_reference_no_cycles \
+         trigger — a BEFORE INSERT walk that aborts any edge closing a loop, \
+         the crate's first trigger (SQLite cannot express acyclicity in a \
+         CHECK) — with ItemReference::set_for_item pre-checking the whole set \
+         first for a friendly error. A key-changing UPDATE of parent_id/ \
+         child_id would dodge the INSERT-only trigger, so composition is \
+         always rewritten as delete + insert; see the warning in \
+         src/domain/item.rs.",
     ),
 ];
 

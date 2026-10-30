@@ -24,6 +24,7 @@ mod error;
 pub mod exercise;
 mod exercise_performance;
 mod item;
+mod item_reference;
 mod muscle_group;
 mod muscle_group_reference;
 mod session;
@@ -33,6 +34,7 @@ pub use self::error::DomainError;
 // Flat path used by consumers (ui/logic).
 pub use self::exercise::Exercise;
 pub use self::item::Item;
+pub use self::item_reference::ItemReference;
 // The workout entities are the public surface for the session screens.
 pub use self::exercise_performance::ExercisePerformance;
 pub use self::muscle_group::{MuscleGroup, MuscleGroupCount};

@@ -48,7 +48,8 @@ What happens on a run:
    path), refuses to run if a database already exists at that name, then
    rebuilds its own file to the exact current schema (all three record tables,
    both indexes, the FK delete rules, the muscle-group tables with the 17
-   default groups seeded, the macros `items` table, `PRAGMA
+   default groups seeded, the macros `items` table and its `item_reference`
+   composition table (with its no-cycles trigger), `PRAGMA
    user_version`), seeded with a
    couple of exercises.
 2. For each scenario it launches the binary in a fresh pseudo-terminal

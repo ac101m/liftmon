@@ -43,7 +43,7 @@ os.chdir("/tmp")
 # The newest schema version this build knows. seed_db stamps it, and the splash
 # path asserts the startup splash reports it, so a schema migration both bumps
 # the seed and flips the assertion in the same run.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat")),
             refs=(), items=()):
@@ -89,6 +89,26 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         sugars                REAL NOT NULL DEFAULT 0.0,
         protein               REAL NOT NULL DEFAULT 0.0,
         calories              REAL NOT NULL DEFAULT 0.0)""")
+    # The item-composition DAG (migration v8): an item composed of other items
+    # with a quantity factor — plus its acyclicity trigger, mirroring the app's
+    # schema, so the seed matches exactly what `upgrade()` produces.
+    con.execute("""CREATE TABLE item_reference (
+        parent_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        child_id  INTEGER NOT NULL REFERENCES items(id) ON DELETE RESTRICT,
+        quantity  REAL NOT NULL,
+        PRIMARY KEY (parent_id, child_id))""")
+    con.execute("""CREATE TRIGGER item_reference_no_cycles
+        BEFORE INSERT ON item_reference
+        BEGIN
+            WITH RECURSIVE contains(x) AS (
+                SELECT NEW.child_id
+                UNION
+                SELECT child_id FROM item_reference
+                JOIN contains ON item_reference.parent_id = contains.x
+            )
+            SELECT RAISE(ABORT, 'item cannot contain itself, directly or indirectly')
+            WHERE NEW.parent_id IN (SELECT x FROM contains);
+        END;""")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
     # Optional macros items — (name, macros) pairs, macros the six REAL columns
