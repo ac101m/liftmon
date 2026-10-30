@@ -46,13 +46,14 @@ os.chdir("/tmp")
 SCHEMA_VERSION = 8
 
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat")),
-            refs=(), items=()):
+            refs=(), items=(), composition=()):
     """Rebuild the on-disk DB to the exact current schema (delete rules
     included) — mirroring what the app's `upgrade()` produces: the seven shipped
     migrations, plus the muscle-group tables with the 17 default groups seeded —
     with the given exercises and, optionally, their muscle-group references as
-    (exercise name, muscle group name) pairs and the macros items as
-    (name, macros) pairs (macros the six REAL columns in order)."""
+    (exercise name, muscle group name) pairs, the macros items as
+    (name, macros) pairs (macros the six REAL columns in order) and item
+    compositions as (parent name, ((child name, quantity), ...)) pairs."""
     if os.path.exists(DB): os.unlink(DB)
     con = sqlite3.connect(DB)
     con.execute("CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
@@ -119,6 +120,17 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
             "INSERT INTO items (name, unsaturated_fats, saturated_fats, complex_carbohydrates,"
             " sugars, protein, calories) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (name, *macros))
+    # Optional item compositions — (parent name, ((child name, quantity), ...))
+    # — inserted after the items exist, resolving both names to ids and writing
+    # the item_reference rows through the same no-cycles trigger the app inserts
+    # through (the seed's DAG can never contain a cycle the schema would refuse):
+    # the style of the `refs=` muscle-group seeding above.
+    for parent, children in composition:
+        parent_id = con.execute("SELECT id FROM items WHERE name = ?", (parent,)).fetchone()[0]
+        for child, quantity in children:
+            child_id = con.execute("SELECT id FROM items WHERE name = ?", (child,)).fetchone()[0]
+            con.execute("INSERT INTO item_reference (parent_id, child_id, quantity) "
+                        "VALUES (?, ?, ?)", (parent_id, child_id, quantity))
     # The 17 default groups, with the descriptions the app's seed const carries
     # (mirroring src/db/muscle_groups.rs' INITIAL_MUSCLE_GROUPS), so the info
     # screen renders a real description.
@@ -1227,7 +1239,8 @@ def macros_add_recipe_item_path():
     app.check("final add another prompt", "Add another item?", "Yes", "No")
     app.send("\r")                             # No (default): create
     app.check("recipe created, lands on its options",
-              "Added item 'Chicken sandwich'", "═[Chicken sandwich]", "info", "back")
+              "Added item 'Chicken sandwich'", "═[Chicken sandwich]",
+              "info", "edit name", "edit ingredients", "back")
     app.send("\r")                             # info (index 0)
     app.check("composite info mirrors a leaf, ingredients listed beneath",
               "Chicken sandwich:",
@@ -1235,7 +1248,7 @@ def macros_add_recipe_item_path():
               "Carbs: 5 g (of which sugars: 2.5 g)",
               "Protein: 61.5 g", "Calories: 350 kcal",
               "Ingredients:", "2 × Chicken breast", "0.5 × Whole milk")
-    app.send("\x1b[B\r")                       # back (index 1) -> macros menu
+    app.send("\x1b[B\x1b[B\x1b[B\r")           # back (index 3, after edit ingredients) -> macros menu
     app.check("back at macros after recipe", "═[Macros]", "show items", "add item", "back")
     app.close()
 
@@ -1272,6 +1285,170 @@ def macros_add_recipe_item_path():
     print("ok   with no plain items stored, the recipe flow explains why it can't compose")
     print()
 
+def macros_edit_item_name_path():
+    print("=== MACROS EDIT-ITEM-NAME PATH: rename an item in place; a taken name is refused; the prompt tracks it ===")
+    seed_db(items=(
+        ("Milk", (3.6, 2.3, 4.7, 4.7, 3.3, 64.0)),
+        ("Egg", (9.5, 3.1, 0.7, 0.7, 12.6, 143.0)),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "show items", "add item", "back")
+    app.send("\r")                             # show items (index 0)
+    app.check("item picker", "Select item", "type to filter", " Egg", " Milk")
+    app.send("\x1b[B\r")                       # pick Milk (index 1)
+    app.check("item options", "═[Milk]", "info", "edit name", "back")
+    app.send("\x1b[B\r")                       # edit name (index 1)
+    app.check("new name prompt", "═[New name]", "> Milk")
+    # Clear the prefilled current name (four Backspaces), then type a taken one.
+    app.send("\x7f" * 4)
+    app.send("Egg\r")
+    app.check("duplicate refused on rename",
+              "An item named 'Egg' already exists", "═[New name]", "> Egg")
+    # Clear the retried name, then type a fresh one.
+    app.send("\x7f" * 3)
+    app.send("Cream\r")
+    app.check("renamed, prompt tracks it",
+              "Updated name of 'Milk' to 'Cream'", "═[Cream]", "info", "edit name", "back")
+    # The re-ask keeps the highlight on "edit name" (where the rename was), so
+    # move up to "info".
+    app.send("\x1b[A\r")                       # info (index 0) under the new name
+    app.check("info under new name", "Cream:",
+              "Fat: 5.9 g (of which saturates: 2.3 g)")
+    app.send("\x1b[B\x1b[B\r")                 # back (index 2) -> macros menu
+    app.check("back at macros after rename", "═[Macros]", "show items", "add item", "back")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    names = [row[0] for row in con.execute("SELECT name FROM items ORDER BY name").fetchall()]
+    con.close()
+    if names != ["Cream", "Egg"]:
+        raise SystemExit(f"FAIL: items {names} != renamed 'Milk'->'Cream' plus untouched 'Egg'")
+    print("ok   an item renames in place, a duplicate is refused before any write, and the prompt tracks it")
+    print()
+
+def macros_edit_ingredients_path():
+    print("=== MACROS EDIT-INGREDIENTS PATH: a composite's ingredients edit in place — quantity then delete; the last delete turns it back into a leaf ===")
+    seed_db(items=(
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
+        ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
+        ("Chicken sandwich", (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+    ), composition=(
+        ("Chicken sandwich", (("Chicken breast", 2.0), ("Whole milk", 0.5))),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "show items", "add item", "back")
+    app.send("\r")                             # show items (index 0)
+    app.check("item picker", "Select item", "type to filter",
+              " Chicken breast", " Chicken sandwich", " Whole milk")
+    app.send("\x1b[B\r")                       # pick Chicken sandwich (index 1)
+    app.check("composite options offer edit ingredients", "═[Chicken sandwich]",
+              "info", "edit name", "edit ingredients", "back")
+    app.send("\x1b[B\x1b[B\r")                 # edit ingredients (index 2)
+    app.check("ingredient picker lists both", "═[Select ingredient]", "type to filter",
+              " Chicken breast", " Whole milk")
+    app.send("\r")                             # pick Chicken breast (index 0)
+    app.check("ingredient menu", "═[Chicken breast]", "edit quantity", "delete", "back")
+    app.send("\r")                             # edit quantity (index 0)
+    app.check("quantity field prefilled with the current factor",
+              "═[Chicken breast · Quantity]", "> 2")
+    app.send("\x7f\x7f")                       # clear the prefilled "2"
+    app.send("3\r")                            # the new factor
+    app.check("quantity updated, back at the picker",
+              "Updated 3 × Chicken breast in 'Chicken sandwich'",
+              "═[Select ingredient]", " Chicken breast", " Whole milk")
+    app.send("\x1b[B\r")                       # pick Whole milk (index 1)
+    app.check("milk ingredient menu", "═[Whole milk]", "edit quantity", "delete", "back")
+    app.send("\x1b[B\r")                       # delete (index 1)
+    app.check("delete confirm", "Remove Whole milk from 'Chicken sandwich'?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes: up to it (default No)
+    app.check("ingredient removed, picker re-lists the rest",
+              "Removed Whole milk from 'Chicken sandwich'",
+              "═[Select ingredient]", " Chicken breast")
+    grid = app.grid()
+    if any(row.strip() == "Whole milk" for row in grid):
+        raise SystemExit("FAIL: the deleted ingredient must not remain in the picker")
+    app.send("\x1b")                           # Esc: back to the item options
+    app.check("back on the composite options", "═[Chicken sandwich]", "edit ingredients")
+    # The re-ask keeps the highlight on "edit ingredients" (where the flow
+    # returned), so move up two to "info".
+    app.send("\x1b[A\x1b[A\r")                 # info (index 0)
+    app.check("composite info reflects the edits",
+              "Chicken sandwich:",
+              "Fat: 15 g (of which saturates: 3 g)",
+              "Carbs: 0 g (of which sugars: 0 g)",
+              "Protein: 90 g", "Calories: 480 kcal",
+              "Ingredients:", "3 × Chicken breast")
+    app.send("\x1b[B\x1b[B\x1b[B\r")           # back (index 3, after edit ingredients) -> macros menu
+    app.check("back at macros after edits", "═[Macros]", "show items", "add item", "back")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    rows = con.execute(
+        "SELECT i.name, ri.quantity FROM item_reference ri"
+        " JOIN items i ON i.id = ri.child_id"
+        " JOIN items p ON p.id = ri.parent_id"
+        " WHERE p.name = 'Chicken sandwich' ORDER BY i.name").fetchall()
+    con.close()
+    if rows != [("Chicken breast", 3.0)]:
+        raise SystemExit(f"FAIL: composition rows {rows} != [('Chicken breast', 3.0)]")
+    print("ok   quantity edits a factor in place and delete drops one ingredient — the DB holds exactly the 3 × Chicken breast that info displays")
+
+    # Part 2: delete the final ingredient — the composite turns back into a
+    # leaf, its options re-ask without "edit ingredients", and the DB holds no
+    # references at all (the harness's absence proof, since check is presence
+    # only).
+    seed_db(items=(
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
+        ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
+        ("Chicken sandwich", (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+    ), composition=(
+        ("Chicken sandwich", (("Chicken breast", 2.0),)),
+    ))
+    app = App()
+    app.check("main menu (2nd)", "═[Main menu]")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros
+    app.send("\r")                             # show items
+    app.check("item picker (2nd)", "Select item", "type to filter", " Chicken sandwich")
+    app.send("\x1b[B\r")                       # pick Chicken sandwich (index 1)
+    app.check("composite options (2nd)", "═[Chicken sandwich]", "edit ingredients")
+    app.send("\x1b[B\x1b[B\r")                 # edit ingredients (index 2)
+    app.check("ingredient picker (2nd)", "═[Select ingredient]", " Chicken breast")
+    app.send("\r")                             # pick Chicken breast (index 0)
+    app.check("ingredient menu (2nd)", "═[Chicken breast]", "edit quantity", "delete", "back")
+    app.send("\x1b[B\r")                       # delete (index 1)
+    app.check("delete confirm (2nd)", "Remove Chicken breast from 'Chicken sandwich'?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes: up to it (default No)
+    app.check("last delete logs no ingredients left and re-asks as a leaf",
+              "Removed Chicken breast from 'Chicken sandwich'",
+              "No ingredients left",
+              "═[Chicken sandwich]", "info", "edit name", "back")
+    grid = app.grid()
+    if any("edit ingredients" in row for row in grid):
+        raise SystemExit("FAIL: a leaf must not offer 'edit ingredients' after its last ingredient is deleted")
+    # The re-ask kept the highlight where the flow left (index 2, once "edit
+    # ingredients"), and the shrunken leaf list clamps it onto "back" — so move
+    # up two to "info".
+    app.send("\x1b[A\x1b[A\r")                 # info (index 0)
+    app.check("the now-leaf shows its stored (zero) macros", "Chicken sandwich:",
+              "Fat: 0 g (of which saturates: 0 g)", "Protein: 0 g", "Calories: 0 kcal")
+    app.send("\x1b[B\x1b[B\r")                 # back (index 2, leaf options) -> macros menu
+    app.check("back at macros (2nd)", "═[Macros]")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    count = con.execute(
+        "SELECT COUNT(*) FROM item_reference ir JOIN items p ON p.id = ir.parent_id"
+        " WHERE p.name = 'Chicken sandwich'").fetchone()[0]
+    con.close()
+    if count != 0:
+        raise SystemExit(f"FAIL: deleting the last ingredient must clear the item's references, got {count} rows")
+    print("ok   deleting the final ingredient returns the item to a leaf: no refs in the DB, no 'edit ingredients' option, info shows the stored zero macros")
+    print()
+
 def macros_show_items_path():
     print("=== MACROS SHOW-ITEMS PATH: browse items in the filter picker, view one's info, back out ===")
     seed_db(items=(
@@ -1288,13 +1465,13 @@ def macros_show_items_path():
     app.send("milk")
     app.check("picker filters to milk", "> milk", " Whole milk")
     app.send("\r")                             # pick Whole milk
-    app.check("item options", "═[Whole milk]", "info", "back")
+    app.check("item options", "═[Whole milk]", "info", "edit name", "back")
     app.send("\r")                             # info (index 0)
     app.check("item info framed", "Whole milk:",
               "  Fat: 5.9 g (of which saturates: 2.3 g)",
               "  Carbs: 9.4 g (of which sugars: 4.7 g)",
               "  Protein: 3.3 g", "  Calories: 64 kcal")
-    app.send("\x1b[B\r")                       # back (index 1) -> macros menu
+    app.send("\x1b[B\x1b[B\r")                 # back (index 2) -> macros menu
     app.check("back at macros after info", "═[Macros]", "show items", "add item", "back")
     app.close()
     print("ok   the picker lists the stored items, filters them, and the per-item info logs the totals in a box")
@@ -1884,6 +2061,8 @@ delete_path()
 macros_path()
 macros_add_item_path()
 macros_add_recipe_item_path()
+macros_edit_item_name_path()
+macros_edit_ingredients_path()
 macros_show_items_path()
 muscle_groups_path()
 exercise_muscle_groups_path()

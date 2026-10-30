@@ -93,6 +93,20 @@ breast and 0.5 × whole milk reads "Fat: 13 g (of which saturates: 3 g)",
 "Carbs: 5 g (of which sugars: 2.5 g)", "Protein: 61.5 g", "Calories: 350 kcal"
 over "Ingredients:" "2 × Chicken breast" and "0.5 × Whole milk";
 and with nothing stored yet the flow explains it can't compose), the macros
+edit-item-name path (from a picked item's options, "edit name" opens the
+new-name field prefilled with the current name; a name that's already taken is
+refused on save — "An item named 'Egg' already exists" with the retry prefilled
+— and a fresh name renames the row in place and updates the options prompt to
+track it), the macros
+edit-ingredients path (a composite's options carry an "edit ingredients"
+action; it opens an ingredient picker — in child-name order — and each picked
+ingredient gets an "edit quantity"/"delete"/"back" menu: "edit quantity"
+re-enters the quantity field prefilled with the current factor (2 × chicken
+breast becoming 3 × chicken breast), "delete" asks "Remove {child} from
+'{item}'?" behind a Yes/No confirm and drops the reference, and deleting the
+last ingredient turns the item back into a leaf — its options re-ask without
+"edit ingredients", its info shows the stored (zero) macros, and the DB holds
+no item_reference rows at all), the macros
 show-items path (a filter picker of the
 stored items — typing narrows it like the exercise picker; picking one opens
 its info/back menu whose info logs the item's name, fat and carbs totals

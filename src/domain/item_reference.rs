@@ -93,6 +93,51 @@ impl ItemReference {
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
+
+    /// Change one child's quantity factor, leaving the rest of the composition
+    /// untouched. Re-routes through [`Self::set_for_item`] — the validate-
+    /// then-rewrite path the INSERT-only cycle trigger expects — rather than a
+    /// key UPDATE, so the warning on [`Item`]'s doc stays true. A no-op when
+    /// `child_id` isn't part of the composition (the editor only ever passes a
+    /// picked ingredient).
+    pub fn set_quantity(
+        conn: &Connection,
+        parent_id: i64,
+        child_id: i64,
+        quantity: f64,
+    ) -> Result<(), DomainError> {
+        let mut current = composition_pairs(conn, parent_id)?;
+        for (candidate, factor) in &mut current {
+            if *candidate == child_id {
+                *factor = quantity;
+                break;
+            }
+        }
+        Self::set_for_item(conn, parent_id, &current)
+    }
+
+    /// Drop one child from the composition, leaving the rest untouched.
+    /// Removing an edge (even the last one — the item becomes a leaf) can never
+    /// close a loop, but it re-routes through [`Self::set_for_item`] like every
+    /// other composition change. A no-op when `child_id` isn't in the
+    /// composition.
+    pub fn remove(conn: &Connection, parent_id: i64, child_id: i64) -> Result<(), DomainError> {
+        let current = composition_pairs(conn, parent_id)?
+            .into_iter()
+            .filter(|(candidate, _)| *candidate != child_id)
+            .collect::<Vec<_>>();
+        Self::set_for_item(conn, parent_id, &current)
+    }
+}
+
+/// An item's composition as `(child_id, quantity)` pairs, in child-name order —
+/// the shape [`ItemReference::set_for_item`] takes back, and what the
+/// edit-ingredients flow reads and rewrites.
+fn composition_pairs(conn: &Connection, parent_id: i64) -> Result<Vec<(i64, f64)>, DomainError> {
+    Ok(ItemReference::for_item(conn, parent_id)?
+        .into_iter()
+        .map(|reference| (reference.child_id, reference.quantity))
+        .collect())
 }
 
 /// Whether `item_id` transitively contains (is composed of, directly or
@@ -267,6 +312,53 @@ mod tests {
         assert_eq!(ItemReference::for_item(&conn, a).unwrap().len(), 1);
         assert_eq!(ItemReference::for_item(&conn, b).unwrap().len(), 1);
         assert!(ItemReference::for_item(&conn, c).unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_quantity_changes_only_that_ingredient() {
+        let (conn, items) = test_db();
+        let a = items[0].id; // A
+        let b = items[1].id; // B
+        let c = items[2].id; // C
+
+        ItemReference::set_for_item(&conn, a, &[(b, 2.0), (c, 0.5)]).unwrap();
+        ItemReference::set_quantity(&conn, a, b, 3.0).unwrap();
+
+        let refs = ItemReference::for_item(&conn, a).unwrap();
+        assert_eq!(refs.len(), 2);
+        assert_eq!(refs[0].quantity, 3.0, "B's factor is updated");
+        assert_eq!(refs[1].quantity, 0.5, "C is untouched");
+    }
+
+    #[test]
+    fn remove_drops_one_ingredient_and_keeps_the_rest() {
+        let (conn, items) = test_db();
+        let a = items[0].id;
+        let b = items[1].id;
+        let c = items[2].id;
+
+        ItemReference::set_for_item(&conn, a, &[(b, 2.0), (c, 0.5)]).unwrap();
+        ItemReference::remove(&conn, a, b).unwrap();
+
+        let refs = ItemReference::for_item(&conn, a).unwrap();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].child_id, c);
+        assert_eq!(refs[0].quantity, 0.5);
+    }
+
+    #[test]
+    fn removing_the_last_ingredient_returns_the_item_to_a_leaf() {
+        let (conn, items) = test_db();
+        let a = items[0].id;
+        let b = items[1].id;
+
+        ItemReference::set_for_item(&conn, a, &[(b, 1.0)]).unwrap();
+        ItemReference::remove(&conn, a, b).unwrap();
+
+        assert!(
+            ItemReference::for_item(&conn, a).unwrap().is_empty(),
+            "an empty composition is a leaf again"
+        );
     }
 
     #[test]

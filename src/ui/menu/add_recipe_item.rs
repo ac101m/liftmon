@@ -197,8 +197,9 @@ fn abandon(shell: &mut Shell) -> Result<bool, UiError> {
 /// Parse a quantity factor: a positive finite number — "2", "0.5", " 3 ".
 /// Blank counts as a malformed entry here (there is no zero default: a factor
 /// of nothing is meaningless), and zero, a negative and a non-number are all
-/// rejected.
-fn parse_quantity(raw: &str) -> Option<f64> {
+/// rejected. Shared with the edit-ingredients screen, whose quantity prompt
+/// asks for the same thing.
+pub(super) fn parse_quantity(raw: &str) -> Option<f64> {
     let raw = raw.trim();
     if raw.is_empty() {
         return None;

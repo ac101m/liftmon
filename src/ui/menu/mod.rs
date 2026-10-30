@@ -13,8 +13,10 @@
 //! [`self::select_muscle_group`], [`self::muscle_group_options`],
 //! [`self::show_items`] and
 //! [`self::item_options`] — with [`self::select_exercise`] (the shared
-//! "Select exercise" chooser) and [`self::select_exercise_by_group`] (the
-//! per-muscle-group browse it offers, over in the muscle-group picker too) as
+//! "Select exercise" chooser), [`self::select_exercise_by_group`] (the
+//! per-muscle-group browse it offers, over in the muscle-group picker too) and
+//! [`self::edit_ingredients`] (the composite item's ingredient editor, run
+//! from the item options menu) as
 //! helpers — so this file stays a thin dispatcher as more menus are added. The
 //! screens are built on the reusable element framework in [`super::utils`] (the
 //! shell, the input elements, errors).
@@ -29,6 +31,7 @@ use crate::ui::utils::{Shell, UiError};
 mod add_exercise;
 mod add_item;
 mod add_recipe_item;
+mod edit_ingredients;
 mod exercise_muscle_groups;
 mod exercise_options;
 mod exercises_menu;

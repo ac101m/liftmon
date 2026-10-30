@@ -111,6 +111,53 @@ impl Item {
         })
     }
 
+    /// Write this item's current `name` and macros to its row.
+    ///
+    /// A rename that collides with another item's name (the only UNIQUE
+    /// column) surfaces [`DomainError::NameTaken`] instead of the raw SQLite
+    /// error, so the editor can log it and re-ask. Renaming is safe for the
+    /// composition DAG: `item_reference` keys on ids, not names, so changing
+    /// an item's name touches nothing but its own row.
+    pub fn save(&self, conn: &Connection) -> Result<(), DomainError> {
+        let changed = match conn.execute(
+            "UPDATE items SET name = ?1, unsaturated_fats = ?2, saturated_fats = ?3, \
+             complex_carbohydrates = ?4, sugars = ?5, protein = ?6, calories = ?7 \
+             WHERE id = ?8",
+            params![
+                self.name,
+                self.unsaturated_fats,
+                self.saturated_fats,
+                self.complex_carbohydrates,
+                self.sugars,
+                self.protein,
+                self.calories,
+                self.id
+            ],
+        ) {
+            Ok(changed) => changed,
+            Err(err)
+                if matches!(
+                    &err,
+                    rusqlite::Error::SqliteFailure(ffi_err, _)
+                        if ffi_err.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+                ) =>
+            {
+                return Err(DomainError::NameTaken {
+                    kind: "item",
+                    name: self.name.clone(),
+                });
+            }
+            Err(err) => return Err(err.into()),
+        };
+        if changed == 0 {
+            return Err(DomainError::MissingRow {
+                kind: "item",
+                id: self.id,
+            });
+        }
+        Ok(())
+    }
+
     /// Load the item with the given row `id`, if one exists — how the
     /// composition resolver looks its components up, and how the composite
     /// info screen names them.
@@ -286,6 +333,73 @@ mod tests {
         Item::create(&conn, "egg", 9.5, 3.1, 0.7, 0.7, 12.6, 143.0).unwrap();
         let err = Item::create(&conn, "egg", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).unwrap_err();
         assert!(matches!(err, DomainError::NameTaken { kind: "item", .. }));
+    }
+
+    #[test]
+    fn save_writes_name_and_macros_to_the_row() {
+        let conn = test_db();
+        let item = Item::create(&conn, "whole milk", 3.6, 2.3, 4.7, 4.7, 3.3, 64.0).unwrap();
+
+        let mut updated = item.clone();
+        updated.name = "semi skimmed milk".into();
+        updated.calories = 45.0;
+        updated.save(&conn).unwrap();
+
+        let reloaded = Item::find_by_id(&conn, item.id).unwrap().unwrap();
+        assert_eq!(reloaded.name, "semi skimmed milk");
+        assert_eq!(reloaded.calories, 45.0);
+        assert_eq!(reloaded.protein, 3.3, "the other columns carry over");
+        assert!(
+            Item::find_by_name(&conn, "whole milk").unwrap().is_none(),
+            "the old name is gone after a rename"
+        );
+    }
+
+    #[test]
+    fn save_rejects_a_name_already_taken_and_leaves_the_row_alone() {
+        let conn = test_db();
+        let milk = Item::create(&conn, "whole milk", 3.6, 2.3, 4.7, 4.7, 3.3, 64.0).unwrap();
+        let egg = Item::create(&conn, "egg", 9.5, 3.1, 0.7, 0.7, 12.6, 143.0).unwrap();
+
+        let mut updated = milk.clone();
+        updated.name = "egg".into();
+        let err = updated.save(&conn).unwrap_err();
+        assert!(
+            matches!(err, DomainError::NameTaken { kind: "item", .. }),
+            "a rename onto a taken name is refused: {err}"
+        );
+        // The rename failed before any write: milk keeps its name.
+        assert_eq!(
+            Item::find_by_id(&conn, milk.id).unwrap().unwrap().name,
+            "whole milk"
+        );
+        assert_eq!(
+            Item::find_by_id(&conn, egg.id).unwrap().unwrap().name,
+            "egg"
+        );
+    }
+
+    #[test]
+    fn save_reports_a_missing_row() {
+        let conn = test_db();
+        let ghost = Item {
+            id: 999,
+            name: "ghost".into(),
+            unsaturated_fats: 0.0,
+            saturated_fats: 0.0,
+            complex_carbohydrates: 0.0,
+            sugars: 0.0,
+            protein: 0.0,
+            calories: 0.0,
+        };
+        let err = ghost.save(&conn).unwrap_err();
+        assert!(matches!(
+            err,
+            DomainError::MissingRow {
+                kind: "item",
+                id: 999
+            }
+        ));
     }
 
     #[test]

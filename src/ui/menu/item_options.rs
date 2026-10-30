@@ -3,16 +3,18 @@
 //! The prompt is the item's own name, and the options print its info (the
 //! macros — fat and carbs totals each with their "of which" sub-breakdown,
 //! protein, calories — for a *leaf*, or for a *composite* the component lines
-//! and the totals its composition resolves to, as a framed section) or back
-//! out to the macros menu.
+//! and the totals its composition resolves to, as a framed section), edit its
+//! name, edit its ingredients (composite items only), or back out to the
+//! macros menu. Editing loops back onto this screen under the renamed item, so
+//! the prompt tracks the change.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
-use crate::domain::{Item, ItemReference, Macros};
+use crate::domain::{DomainError, Item, ItemReference, Macros};
 
-use crate::ui::utils::{Shell, UiError};
+use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
 
@@ -21,7 +23,7 @@ use super::Menu;
 pub(super) fn run(
     shell: &mut Shell,
     conn: &Connection,
-    name: String,
+    mut name: String,
 ) -> Result<Option<Menu>, UiError> {
     let mut selected = 0;
     loop {
@@ -29,18 +31,78 @@ pub(super) fn run(
             shell.log("That item is no longer there");
             return Ok(Some(Menu::ShowItems));
         };
-        // "info" stays on this menu, so the re-ask keeps the highlight where
-        // it was; only backing out resets it on the way back in.
+        // "info" and "edit name" stay on this menu, so the re-ask keeps the
+        // highlight where it was; only backing out resets it on the way back
+        // in.
+        // The options menu is shared by leaves and composites: composite items
+        // (which have ingredients to edit) get the extra "edit ingredients"
+        // action. Whether the item is composite is queried fresh each re-ask,
+        // so deleting the last ingredient re-asks without the option.
+        let composite = !ItemReference::for_item(conn, item.id)?.is_empty();
+        let options: Vec<&str> = if composite {
+            vec!["info", "edit name", "edit ingredients", "back"]
+        } else {
+            vec!["info", "edit name", "back"]
+        };
         let (choice, selected_here) =
-            shell.ask_selected(Some(item.name.clone()), ["info", "back"], selected)?;
+            shell.ask_selected(Some(item.name.clone()), options, selected)?;
         selected = selected_here;
         match choice.as_deref() {
             // Read-only: print the item's info as a framed section —
             // divider, bold name with a trailing colon, the relevant lines,
             // divider.
             Some("info") => shell.log_section(item_info_lines(conn, &item)?),
+            // Renaming reloads the loop under the new name so the prompt keeps
+            // tracking the item.
+            Some("edit name") => {
+                if let Some(new_name) = edit_name(shell, conn, &item)? {
+                    name = new_name;
+                }
+            }
+            // Editing ingredients runs the pick-and-act sub-flow inline, like
+            // the exercise menu's muscle-group editor; it returns to this menu
+            // (highlight where it was) when the user backs out of the picker.
+            Some("edit ingredients") => super::edit_ingredients::run(shell, conn, &item)?,
             // "back", or Escape: the user asked to leave for the macros menu.
             _ => return Ok(Some(Menu::Macros)),
+        }
+    }
+}
+
+/// Ask for a new name and save it, retrying from what was typed when it turns
+/// out to be taken (or empty). Returns the new name on success, [`None`] when
+/// the user backed out with Escape.
+fn edit_name(shell: &mut Shell, conn: &Connection, item: &Item) -> Result<Option<String>, UiError> {
+    let mut prefill = item.name.clone();
+    loop {
+        match shell.read_line(Some("New name".to_string()), None, &prefill)? {
+            ReadOutcome::Value(name) => {
+                let name = name.trim().to_owned();
+                if name.is_empty() {
+                    shell.log("The name cannot be empty");
+                    prefill.clear();
+                    continue;
+                }
+                if name == item.name {
+                    return Ok(Some(name)); // unchanged: nothing to write
+                }
+                let mut updated = item.clone();
+                updated.name = name.clone();
+                match updated.save(conn) {
+                    Ok(()) => {
+                        shell.log(format!("Updated name of '{}' to '{}'", item.name, name));
+                        return Ok(Some(name));
+                    }
+                    // Only the name is UNIQUE, so this is a duplicate name:
+                    // log it and re-ask, keeping what they had typed.
+                    Err(DomainError::NameTaken { .. }) => {
+                        shell.log(format!("An item named '{name}' already exists"));
+                        prefill = name;
+                    }
+                    Err(err) => return Err(err.into()),
+                }
+            }
+            ReadOutcome::Cancelled { .. } => return Ok(None),
         }
     }
 }
