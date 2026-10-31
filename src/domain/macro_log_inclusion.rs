@@ -64,8 +64,7 @@ impl MacroLogInclusion {
 
     /// Load a log's inclusions in the order they were recorded (`created_at`,
     /// then `id`), the natural reading of a day's log now that each use has its
-    /// moment.
-    #[allow(dead_code)] // waits on the macro-log total/history UI
+    /// moment — and the order the log options screen's info lists them in.
     pub fn for_log(conn: &Connection, macro_log_id: i64) -> Result<Vec<Self>, DomainError> {
         let mut stmt = conn.prepare(
             "SELECT id, macro_log_id, item_id, quantity, created_at \
@@ -88,7 +87,7 @@ impl MacroLogInclusion {
     /// Drop one inclusion **by its own id**, so removing one use never touches
     /// a later use of the same item (the duplicates the table exists for).
     /// [`DomainError::MissingRow`] when no such row exists.
-    #[allow(dead_code)] // waits on the macro-log total/history UI
+    #[allow(dead_code)] // waits on per-inclusion removal in the log review UI
     pub fn remove(conn: &Connection, inclusion_id: i64) -> Result<(), DomainError> {
         let changed = conn.execute(
             "DELETE FROM macro_log_inclusions WHERE id = ?1",

@@ -77,11 +77,25 @@ impl MacroLog {
     }
 
     /// Load every log, oldest date first.
-    #[allow(dead_code)] // waits on the macro-log total/history UI
     pub fn all(conn: &Connection) -> Result<Vec<Self>, DomainError> {
         let mut stmt = conn.prepare("SELECT id, date FROM macro_logs ORDER BY date")?;
         let rows = stmt.query_map([], row_mapper)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Remove this log. Its inclusions go with it — the schema's `ON DELETE
+    /// CASCADE` (migration v9) deletes them with the row, so one statement is
+    /// enough. Errors with [`DomainError::MissingRow`] when the log is already
+    /// gone.
+    pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
+        let changed = conn.execute("DELETE FROM macro_logs WHERE id = ?1", [self.id])?;
+        if changed == 0 {
+            return Err(DomainError::MissingRow {
+                kind: "macro log",
+                id: self.id,
+            });
+        }
+        Ok(())
     }
 
     /// The macros a day's log resolves to: the sum over its inclusions of each
@@ -90,7 +104,6 @@ impl MacroLog {
     /// be one row at 2 or two rows at 1 (the same total), and a composite item
     /// resolves through its composition; an empty log sums to all zeros, like a
     /// leaf item's zero macros.
-    #[allow(dead_code)] // waits on the macro-log total/history UI
     pub fn resolved_macros(conn: &Connection, log_id: i64) -> Result<Macros, DomainError> {
         let mut macros = Macros {
             unsaturated_fats: 0.0,
@@ -276,10 +289,7 @@ mod tests {
     fn deleting_a_log_cascades_its_inclusions() {
         let (conn, a, _, log) = test_db();
         MacroLogInclusion::add(&conn, log.id, a.id, 1.0, moment(2026, 10, 30, 8, 0)).unwrap();
-        // `MacroLog::delete` doesn't exist yet, so drive the schema rule
-        // directly.
-        conn.execute("DELETE FROM macro_logs WHERE id = ?1", [log.id])
-            .unwrap();
+        log.delete(&conn).unwrap();
 
         assert!(
             MacroLogInclusion::for_log(&conn, log.id)
@@ -290,6 +300,27 @@ mod tests {
         assert!(
             Item::find_by_id(&conn, a.id).unwrap().is_some(),
             "the included item survives the delete"
+        );
+    }
+
+    #[test]
+    fn delete_reports_a_missing_row() {
+        let conn = test_db().0;
+        let err = MacroLog {
+            id: 9999,
+            date: NaiveDate::from_ymd_opt(2026, 10, 30).unwrap(),
+        }
+        .delete(&conn)
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                DomainError::MissingRow {
+                    kind: "macro log",
+                    id: 9999,
+                }
+            ),
+            "{err}"
         );
     }
 }

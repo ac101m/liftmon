@@ -78,7 +78,8 @@ history), the personal-record path (a set beating the exercise's prior Epley e1R
 set, and the exercise info screen frames the exercise with rules and lists its
 last three personal records as weight × reps with when each record was set), the
 in-use-exercise delete path, the macros path (the main menu's "Macros" item
-lands on the macros screen with its log-item/show-items/add-item/back menu), the
+lands on the macros screen with its log-item/show-logs/show-items/add-item/back
+menu), the
 macro-log path (a "log item" option sits at the top of the macros menu: it asks
 for a date defaulted to today's local calendar date — typing a different date
 backdates the entry — then the item picker, and a quantity factor after that,
@@ -89,6 +90,18 @@ it, accepting the default date logs for today, an unparseable date re-asks with
 the text kept, a refused quantity re-asks the same way, and Escape cancels
 before anything is recorded — with the log rows and inclusions' quantities
 verified in the database), the macros
+show-logs path (a "show logs" option sits just below "log item": a filter picker
+over the logged dates in the app's `YYYY/MM/DD` form, newest first, lands on the
+day's options screen titled "Macro log for <date>", whose info shows the day's
+resolved total macros in the items' format headed by that same title, then an
+"Items:" list of what was logged in creation order as `{qty} × {item}` — a log
+of 2 × chicken breast plus 1 × whole milk reads "Fat: 16 g (of which saturates:
+4 g)", "Carbs: 10 g (of which sugars: 5 g)", "Protein: 63 g", "Calories: 380
+kcal" over "Items:" "2 × Chicken breast" and "1 × Whole milk"; "add item"
+extends that same date straight from the item picker (no date ask), and
+"delete" confirms with a No-defaulted Yes/No, removes the day's `macro_logs`
+row with its inclusions (the cascade), and leaves the picker — the other days
+untouched), the macros
 add-item path (add item first asks whether the item is a plain or a recipe
 item; a plain item is the existing leaf form — name plus six macro fields
 entered one at a time, blank

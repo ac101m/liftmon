@@ -9,7 +9,8 @@
 //! [`self::macros_menu`], [`self::exercises_menu`], [`self::session_menu`],
 //! [`self::freeform_session`],
 //! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
-//! [`self::add_item`], [`self::log_item`], [`self::add_recipe_item`],
+//! [`self::add_item`], [`self::log_item`], [`self::show_logs`],
+//! [`self::log_options`], [`self::add_recipe_item`],
 //! [`self::exercise_options`], [`self::select_muscle_group`],
 //! [`self::muscle_group_options`],
 //! [`self::show_items`] and
@@ -22,6 +23,7 @@
 //! screens are built on the reusable element framework in [`super::utils`] (the
 //! shell, the input elements, errors).
 
+use chrono::NaiveDate;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use rusqlite::Connection;
@@ -39,6 +41,7 @@ mod exercises_menu;
 mod freeform_session;
 mod item_options;
 mod log_item;
+mod log_options;
 mod macros_menu;
 mod main_menu;
 mod muscle_group_options;
@@ -49,6 +52,7 @@ mod select_session;
 mod session_menu;
 mod session_options;
 mod show_items;
+mod show_logs;
 
 /// The current screen in the app's menu hierarchy.
 pub(crate) enum Menu {
@@ -69,6 +73,12 @@ pub(crate) enum Menu {
     /// item, then record one use of it for that day — creating the day's log
     /// if it's the first entry.
     LogItem,
+    /// The show-logs screen: browse the stored logs' dates with the filter
+    /// picker, newest first, then into that log's options screen.
+    ShowLogs,
+    /// The actions for one picked day's log, identified by its date (UNIQUE —
+    /// one log per day, so the date names the log).
+    LogOptions { date: NaiveDate },
     /// The exercise screen (Browse exercises / Add exercise / Back).
     Exercises,
     /// The add-exercise form (name, then description).
@@ -168,6 +178,8 @@ impl Menu {
             Menu::Macros => macros_menu::run(shell),
             Menu::AddItem => add_item::run(shell, conn),
             Menu::LogItem => log_item::run(shell, conn),
+            Menu::ShowLogs => show_logs::run(shell, conn),
+            Menu::LogOptions { date } => log_options::run(shell, conn, date),
             Menu::ShowItems => show_items::run(shell, conn),
             Menu::ItemOptions { name } => item_options::run(shell, conn, name),
             Menu::Exercises => exercises_menu::run(shell, conn),

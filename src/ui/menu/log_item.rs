@@ -13,7 +13,8 @@
 //! Escape at the date field, the picker or the quantity field cancels the whole
 //! thing: nothing has been recorded yet, so there is no in-progress state to
 //! confirm abandoning. After a successful log the screen returns to the macros
-//! menu.
+//! menu. The pick-then-quantity-then-record body is [`record_use`], shared with
+//! the log options screen's "add item" (which already knows its date).
 
 use chrono::{Local, NaiveDate, Utc};
 use rusqlite::Connection;
@@ -26,20 +27,33 @@ use super::Menu;
 use super::add_recipe_item::parse_quantity;
 use super::select_session::format_date;
 
-/// Ask for the date, then the item, then the quantity, then record the day's
-/// use. Always returns to the macros menu (nothing is recorded on Escape).
+/// Ask for the date, then record the day's use via [`record_use`]. Always
+/// returns to the macros menu (nothing is recorded on Escape).
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     let Some(date) = ask_date(shell)? else {
         return Ok(Some(Menu::Macros)); // Escape: nothing recorded yet
     };
+    record_use(shell, conn, date)?;
+    Ok(Some(Menu::Macros))
+}
 
+/// Pick an item, ask its quantity factor, and record the use against `date` —
+/// finding or creating the day's log. The shared body of the "log item" screen
+/// (which asked the date above) and the log options screen's "add item" (whose
+/// date is already set). Whether or not anything got recorded, Escape anywhere
+/// backs out of the picker or the quantity field silently.
+pub(super) fn record_use(
+    shell: &mut Shell,
+    conn: &Connection,
+    date: NaiveDate,
+) -> Result<(), UiError> {
     // The same filter picker show_items uses; "log item" needs the item's row
     // for the inclusion's item_id, so resolve the picked name back from the
     // list just fetched (names are UNIQUE, so it identifies exactly one).
     let items = Item::all(conn)?;
     if items.is_empty() {
         shell.log("No items yet — add one first");
-        return Ok(Some(Menu::Macros));
+        return Ok(());
     }
     let names: Vec<String> = items.iter().map(|item| item.name.clone()).collect();
     let Some(chosen) = shell.pick(
@@ -48,15 +62,15 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         names,
     )?
     else {
-        return Ok(Some(Menu::Macros)); // Escape: backed out
+        return Ok(()); // Escape: backed out
     };
     let Some(item) = items.into_iter().find(|item| item.name == chosen) else {
         shell.log("That item is no longer there");
-        return Ok(Some(Menu::Macros));
+        return Ok(());
     };
 
     let Some(quantity) = ask_quantity(shell, &item.name)? else {
-        return Ok(Some(Menu::Macros)); // Escape: cancelled the quantity
+        return Ok(()); // Escape: cancelled the quantity
     };
 
     // Find-or-create the day's log, then record this use at this moment.
@@ -68,7 +82,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         item.name,
         format_date(date)
     ));
-    Ok(Some(Menu::Macros))
+    Ok(())
 }
 
 /// Ask for the log's date: the first ask presents today as a replaceable

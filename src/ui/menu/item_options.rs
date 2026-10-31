@@ -272,9 +272,11 @@ fn item_section(item: &Item) -> Vec<Line<'static>> {
     lines
 }
 
-/// The bold item-name heading: the item name with a trailing colon, like any
-/// section heading.
-fn heading(name: &str) -> Line<'static> {
+/// The bold name heading: the name with a trailing colon, like any section
+/// heading. Shared with the log options screen, whose info section heads
+/// itself with `Macro log for <date>`, the same way an item heads itself with
+/// its name.
+pub(super) fn heading(name: &str) -> Line<'static> {
     Line::from(vec![Span::styled(
         format!("{name}:"),
         Style::new().add_modifier(Modifier::BOLD),
@@ -315,8 +317,10 @@ fn macro_lines(
 /// A composite's macro lines: its resolved totals, each rounded to the
 /// hundredth first — they are sums, so they can carry float tails that a
 /// leaf's typed values never would. Indented like a leaf's macros, so the
-/// composite reads as a plain item with an ingredients list beneath.
-fn resolved_macro_lines(macros: &Macros) -> Vec<Line<'static>> {
+/// composite reads as a plain item with an ingredients list beneath. Shared
+/// with the log options screen's info, which renders a day's resolved totals
+/// in the same item format.
+pub(super) fn resolved_macro_lines(macros: &Macros) -> Vec<Line<'static>> {
     macro_lines(
         "  ",
         round2(macros.unsaturated_fats),
