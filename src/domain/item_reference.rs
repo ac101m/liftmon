@@ -128,6 +128,27 @@ impl ItemReference {
             .collect::<Vec<_>>();
         Self::set_for_item(conn, parent_id, &current)
     }
+
+    /// Add one child to the composition at `quantity`, leaving the rest
+    /// untouched. Re-routes through [`Self::set_for_item`] — the validate-
+    /// then-rewrite path — so a child that would close a loop fails the whole
+    /// edit with [`DomainError::CyclicComposition`] rather than writing
+    /// anything. A no-op when `child_id` is already an ingredient (no duplicate
+    /// rows — the picker never offers one, but the writer stays idempotent,
+    /// like [`Self::remove`] for an absent child).
+    pub fn add(
+        conn: &Connection,
+        parent_id: i64,
+        child_id: i64,
+        quantity: f64,
+    ) -> Result<(), DomainError> {
+        let mut current = composition_pairs(conn, parent_id)?;
+        if current.iter().any(|(candidate, _)| *candidate == child_id) {
+            return Ok(());
+        }
+        current.push((child_id, quantity));
+        Self::set_for_item(conn, parent_id, &current)
+    }
 }
 
 /// An item's composition as `(child_id, quantity)` pairs, in child-name order —
@@ -359,6 +380,56 @@ mod tests {
             ItemReference::for_item(&conn, a).unwrap().is_empty(),
             "an empty composition is a leaf again"
         );
+    }
+
+    #[test]
+    fn add_appends_a_new_ingredient_and_keeps_the_rest() {
+        let (conn, items) = test_db();
+        let a = items[0].id; // A
+        let b = items[1].id; // B
+        let c = items[2].id; // C
+
+        ItemReference::set_for_item(&conn, a, &[(b, 2.0)]).unwrap();
+        ItemReference::add(&conn, a, c, 0.5).unwrap();
+
+        let refs = ItemReference::for_item(&conn, a).unwrap();
+        assert_eq!(refs.len(), 2);
+        assert_eq!(refs[0].child_id, b);
+        assert_eq!(refs[0].quantity, 2.0, "B's factor is untouched");
+        assert_eq!(refs[1].child_id, c);
+        assert_eq!(refs[1].quantity, 0.5);
+    }
+
+    #[test]
+    fn add_is_a_no_op_when_the_child_is_already_an_ingredient() {
+        let (conn, items) = test_db();
+        let a = items[0].id;
+        let b = items[1].id;
+
+        ItemReference::set_for_item(&conn, a, &[(b, 2.0)]).unwrap();
+        ItemReference::add(&conn, a, b, 3.0).unwrap();
+
+        let refs = ItemReference::for_item(&conn, a).unwrap();
+        assert_eq!(refs.len(), 1, "no duplicate row for an existing ingredient");
+        assert_eq!(refs[0].quantity, 2.0, "the existing factor is left alone");
+    }
+
+    #[test]
+    fn add_refuses_a_cycle_and_leaves_the_composition_untouched() {
+        let (conn, items) = test_db();
+        let a = items[0].id;
+        let b = items[1].id;
+
+        ItemReference::set_for_item(&conn, b, &[(a, 1.0)]).unwrap(); // B contains A
+
+        // Adding B to A would close A → B → A: refused whole, A stays a leaf.
+        let err = ItemReference::add(&conn, a, b, 1.0).unwrap_err();
+        assert!(
+            matches!(err, DomainError::CyclicComposition { ref parent, ref child }
+                if parent == "A" && child == "B"),
+            "unexpected error: {err}"
+        );
+        assert!(ItemReference::for_item(&conn, a).unwrap().is_empty());
     }
 
     #[test]

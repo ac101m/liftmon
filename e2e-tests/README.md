@@ -123,8 +123,10 @@ new-name field prefilled with the current name; a name that's already taken is
 refused on save — "An item named 'Egg' already exists" with the retry prefilled
 — and a fresh name renames the row in place and updates the options prompt to
 track it), the macros
-edit-ingredients path (a composite's options carry an "edit ingredients"
-action; it opens an ingredient picker — in child-name order — and each picked
+edit-ingredients path (a composite's options carry "edit ingredients" and
+"add ingredient" actions in the middle block before "delete"; "edit
+ingredients" opens an
+ingredient picker — in child-name order — and each picked
 ingredient gets an "edit quantity"/"delete"/"back" menu: "edit quantity"
 re-enters the quantity field prefilled with the current factor (2 × chicken
 breast becoming 3 × chicken breast), "delete" asks "Remove {child} from
@@ -132,6 +134,14 @@ breast becoming 3 × chicken breast), "delete" asks "Remove {child} from
 last ingredient turns the item back into a leaf — its options re-ask without
 "edit ingredients", its info shows the stored (zero) macros, and the DB holds
 no item_reference rows at all), the macros
+add-ingredient path (a composite's "add ingredient" opens the item picker over
+every item that isn't already in the recipe and isn't the item itself — the
+existing ingredient and the item are both absent, proved by exact rows — then
+asks the new ingredient's quantity factor (a blank/zero/negative answer is
+refused with "Enter a number greater than 0" and re-asks prefilled), writes
+the "Added {qty} × {child} to '{parent}'." edge and returns to the options;
+Escape in the picker or the quantity field adds nothing, the DB holds exactly
+the three expected ingredient rows, and info reflects the grown recipe), the macros
 edit-macros path (a plain item's options list one "edit \<macro\>" action per
 stored macro — unsaturated fats, saturated fats, complex carbohydrates, sugars,
 protein and calories; each opens the field prefilled with the current value,

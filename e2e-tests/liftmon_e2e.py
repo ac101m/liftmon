@@ -1476,7 +1476,7 @@ def macros_add_recipe_item_path():
     app.send("\r")                             # No (default): create
     app.check("recipe created, lands on its options",
               "Added item 'Chicken sandwich'", "═[Chicken sandwich]",
-              "info", "edit name", "edit ingredients", "delete", "back")
+              "info", "edit name", "edit ingredients", "add ingredient", "delete", "back")
     app.send("\r")                             # info (index 0)
     app.check("composite info mirrors a leaf, ingredients listed beneath",
               "Chicken sandwich:",
@@ -1484,7 +1484,7 @@ def macros_add_recipe_item_path():
               "Carbs: 5 g (of which sugars: 2.5 g)",
               "Protein: 61.5 g", "Calories: 350 kcal",
               "Ingredients:", "2 × Chicken breast", "0.5 × Whole milk")
-    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")       # back (index 4, after edit ingredients) -> macros menu
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")       # back (index 5, after add ingredient) -> macros menu
     app.check("back at macros after recipe", "═[Macros]", "log item", "show items", "add item", "back")
     app.close()
 
@@ -1582,7 +1582,7 @@ def macros_edit_ingredients_path():
               " Chicken breast", " Chicken sandwich", " Whole milk")
     app.send("\x1b[B\r")                       # pick Chicken sandwich (index 1)
     app.check("composite options offer edit ingredients", "═[Chicken sandwich]",
-              "info", "edit name", "edit ingredients", "delete", "back")
+              "info", "edit name", "edit ingredients", "add ingredient", "delete", "back")
     grid = app.grid()
     if any("edit protein" in row for row in grid):
         raise SystemExit("FAIL: a composite's macros are derived-only, so it must not offer per-macro edits")
@@ -1621,7 +1621,7 @@ def macros_edit_ingredients_path():
               "Carbs: 0 g (of which sugars: 0 g)",
               "Protein: 90 g", "Calories: 480 kcal",
               "Ingredients:", "3 × Chicken breast")
-    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")       # back (index 4, after edit ingredients) -> macros menu
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")       # back (index 5, after add ingredient) -> macros menu
     app.check("back at macros after edits", "═[Macros]", "log item", "show items", "add item", "back")
     app.close()
 
@@ -1686,6 +1686,94 @@ def macros_edit_ingredients_path():
     if count != 0:
         raise SystemExit(f"FAIL: deleting the last ingredient must clear the item's references, got {count} rows")
     print("ok   deleting the final ingredient returns the item to a leaf: no refs in the DB, no 'edit ingredients' option, info shows the stored zero macros")
+    print()
+
+def macros_add_ingredient_path():
+    print("=== MACROS ADD-INGREDIENT PATH: a composite folds a new item into its recipe — pick, quantity, added; only items not already inside are offered ===")
+    # A composite plus two leaves not yet in it, and one item already inside —
+    # the already-inside one and the composite itself must not be offered.
+    seed_db(items=(
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
+        ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
+        ("Sandwich", (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+        ("Egg", (9.5, 3.1, 0.7, 0.7, 12.6, 143.0)),
+    ), composition=(
+        # The recipe Chicken sandwich is already made of Chicken breast.
+        ("Sandwich", (("Chicken breast", 2.0),)),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
+    app.check("item picker", "Select item", "type to filter",
+              " Chicken breast", " Egg", " Sandwich", " Whole milk")
+    app.send("Sandwich\r")                     # filter to it, pick it
+    app.check("sandwich options carry add ingredient", "═[Sandwich]",
+              "info", "edit name", "edit ingredients", "add ingredient", "delete", "back")
+
+    # 1. Add Whole milk at 0.5. The picker offers only the two items not yet in
+    # the recipe — the existing ingredient (Chicken breast) and the item itself
+    # (Sandwich) are absent, proved by exact grid rows.
+    app.send("\x1b[B" * 3 + "\r")              # add ingredient (index 3)
+    app.check("add ingredient picker", "═[Select item]", "type to filter",
+              " Egg", " Whole milk")
+    grid = app.grid()
+    if any(row.strip() == "Chicken breast" or row.strip() == "Sandwich" for row in grid):
+        raise SystemExit("FAIL: the add picker must not offer the item itself or an existing ingredient")
+    app.send("\x1b[B\r")                       # pick Whole milk (index 1)
+    app.check("milk quantity", "═[Whole milk · Quantity]", "e.g. 0.5")
+    app.send("0.5\r")
+    app.check("whole milk folded in, back at the options",
+              "Added 0.5 × Whole milk to 'Sandwich'", "═[Sandwich]", "add ingredient")
+
+    # 2. Escape in the add picker adds nothing.
+    app.send("\r")                             # add ingredient again (highlight held on it)
+    app.check("add picker now offers only Egg", "═[Select item]", "type to filter", " Egg")
+    app.send("\x1b")                           # Esc: back to the options
+    app.check("escaped add, nothing written", "═[Sandwich]", "add ingredient")
+
+    def composition_rows():
+        con = sqlite3.connect(DB)
+        rows = con.execute(
+            "SELECT i.name, ri.quantity FROM item_reference ri"
+            " JOIN items i ON i.id = ri.child_id"
+            " JOIN items p ON p.id = ri.parent_id"
+            " WHERE p.name = 'Sandwich' ORDER BY i.name").fetchall()
+        con.close()
+        return rows
+
+    if composition_rows() != [("Chicken breast", 2.0), ("Whole milk", 0.5)]:
+        raise SystemExit(f"FAIL: escaping the add must leave the recipe as-is, got {composition_rows()}")
+
+    # 3. Add Egg: a blank quantity is refused with the add form's message, then
+    # a valid factor lands it.
+    app.send("\r")                             # add ingredient again
+    app.send("\r")                             # pick Egg (the only row, index 0)
+    app.check("egg quantity", "═[Egg · Quantity]", "e.g. 0.5")
+    app.send("\r")                             # blank: refused
+    app.check("blank quantity refused", "Enter a number greater than 0",
+              "═[Egg · Quantity]")
+    app.send("1\r")
+    app.check("egg folded in", "Added 1 × Egg to 'Sandwich'", "═[Sandwich]", "add ingredient")
+
+    # 4. Info shows the grown recipe — its resolved totals and all three
+    # ingredients — then leave via back (index 5, after add ingredient).
+    app.send("\x1b[A\x1b[A\x1b[A\r")           # info (index 0)
+    app.check("info lists the new ingredient",
+              "Sandwich:",
+              "  Fat: 25.6 g (of which saturates: 6.1 g)",
+              "  Carbs: 6.4 g (of which sugars: 3.2 g)",
+              "  Protein: 74.1 g",
+              "  Calories: 493 kcal",
+              "Ingredients:", "  2 × Chicken breast", "  0.5 × Whole milk", "  1 × Egg")
+    app.send("\x1b[B" * 5 + "\r")              # back (index 5, after add ingredient) -> macros menu
+    app.check("back at macros after adding", "═[Macros]", "log item", "show items", "add item", "back")
+    app.close()
+
+    if composition_rows() != [("Chicken breast", 2.0), ("Egg", 1.0), ("Whole milk", 0.5)]:
+        raise SystemExit(f"FAIL: composition rows {composition_rows()} != the three expected ingredients")
+    print("ok   a composite folds in a new item (pick, quantity, added); the picker never offers the item itself or an existing ingredient, and info reflects the grown recipe")
     print()
 
 def macros_edit_macros_path():
@@ -1859,8 +1947,8 @@ def macros_delete_item_path():
     # that frees "Ingredient" for deletion later.
     app.send("\x1b[B\x1b[B\r")                       # show items (index 2) again
     app.send("Recipe\r")
-    app.check("recipe options", "═[Recipe]", "info", "edit name", "edit ingredients", "delete", "back")
-    app.send("\x1b[B" * 3 + "\r")              # delete (index 3, after edit ingredients)
+    app.check("recipe options", "═[Recipe]", "info", "edit name", "edit ingredients", "add ingredient", "delete", "back")
+    app.send("\x1b[B" * 4 + "\r")              # delete (index 4, after add ingredient)
     app.check("delete confirm (3rd)", "Delete item 'Recipe'?", "Yes", "No")
     app.send("\x1b[A\r")
     app.check("deleted recipe", "Deleted item 'Recipe'", "═[Macros]", "log item", "show items", "back")
@@ -2490,6 +2578,7 @@ macros_add_item_path()
 macros_add_recipe_item_path()
 macros_edit_item_name_path()
 macros_edit_ingredients_path()
+macros_add_ingredient_path()
 macros_edit_macros_path()
 macros_show_items_path()
 macros_delete_item_path()
