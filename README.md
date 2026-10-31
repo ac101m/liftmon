@@ -11,6 +11,7 @@ overload and personal records, all from the comfort of your terminal.
 - Stores workout session histories in an on-disk sqlite database (default 
   path is `~/.liftmon/db.sqlite`, but can be customised by setting
   `LIFTMON_DB_PATH` to any path of your choosing.
+- Track your macronutrient consumption.
 
 ## Installation
 
