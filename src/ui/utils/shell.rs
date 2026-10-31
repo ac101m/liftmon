@@ -234,8 +234,8 @@ impl Shell {
 
     /// Like [`read_line`], but `default` is presented as a replaceable default
     /// (e.g. the last weight used for an exercise): Enter accepts it as-is,
-    /// while the first character typed — or Backspace — overwrites it. Moving
-    /// the caret ends the replacement, so the text can still be edited.
+    /// the first character typed overwrites it, and Backspace — like a caret
+    /// move — edits it in place, a character at a time.
     pub(crate) fn read_line_default(
         &mut self,
         title: Option<String>,

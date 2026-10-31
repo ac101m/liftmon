@@ -2120,14 +2120,26 @@ def weight_default_path():
     app.check("confirm set 2", "100kg x 6 (easy) - Add to session?", "Yes", "No")
     app.send("\r")                                          # Yes: commit the set
     app.check("second set accepted the default", "100 kg × 6 · easy", "exit session")
+    # Backspace on the default edits it a character at a time: the right-most
+    # digit goes first, leaving the rest to type onto — not a wholesale wipe.
+    app.send("\r")                                          # next set
+    app.check("weight prefilled again", "═[Bench press · Weight (kg)]", "> 100")
+    app.send("\x7f")                                        # drop the trailing 0 -> "10"
+    app.check("backspace drops one digit, not the default", "> 10")
+    app.send("5\r")                                         # append to what remains: 105
+    app.send("6\r")                                         # reps
+    app.send("\r")                                          # difficulty: easy (index 0)
+    app.check("confirm set 3", "105kg x 6 (easy) - Add to session?", "Yes", "No")
+    app.send("\r")                                          # Yes: commit the set
+    app.check("third set used the backspaced-and-typed weight", "105 kg × 6 · easy", "exit session")
     app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")                              # exit session (index 4)
     app.close()
 
     d = db()
     weights_reps = sorted((s[4], s[5]) for s in d["sets"])
-    if weights_reps != [(100.0, 5), (100.0, 6)]:
-        raise SystemExit(f"FAIL: expected two 100 kg sets (x5, x6), got {weights_reps}")
-    print("ok   the weight field prefills with the last weight and Enter accepts it")
+    if weights_reps != [(100.0, 5), (100.0, 6), (105.0, 6)]:
+        raise SystemExit(f"FAIL: expected the two 100 kg sets plus the backspaced-and-typed 105 kg one, got {weights_reps}")
+    print("ok   the weight field prefills with the last weight: Enter accepts it, and Backspace edits it one digit at a time")
     print()
 
 def confirm_set_path():

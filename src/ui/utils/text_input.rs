@@ -28,11 +28,10 @@ pub(crate) struct TextInput {
     /// Column width of the last render; the caret's row/column (and hence how
     /// tall the box needs to be) is computed against this width.
     last_width: u16,
-    /// Whether the seeded text is a *default* to be overwritten: the first
-    /// character typed (or a Backspace) replaces it wholesale, so accepting
-    /// the default is just Enter and entering a new value overwrites it.
-    replace_on_type: bool,
-    /// Whether `buffer` is still the untouched seeded default.
+    /// Whether `buffer` is still the untouched seeded default. While it is, the
+    /// first character typed replaces the default wholesale (so a prefilled
+    /// field reads as "Enter to accept"); a Backspace or a caret move ends the
+    /// replacement and edits the text in place.
     replacing: bool,
 }
 
@@ -44,22 +43,21 @@ impl TextInput {
             buffer: initial.to_owned(),
             cursor: initial.len(),
             last_width: 0,
-            replace_on_type: false,
             replacing: false,
         }
     }
 
     /// Like [`Self::new`], but `initial` is presented as a replaceable default
-    /// (e.g. the last weight used): Enter accepts it as-is, while the first
-    /// character typed — or a Backspace — clears it and starts the entry over.
-    /// Moving the caret ends the replacement, so the text can still be edited.
+    /// (e.g. the last weight used): Enter accepts it as-is, the first character
+    /// typed clears it and starts the entry over, and a Backspace — like a
+    /// caret move — edits the text in place, a character at a time; the default
+    /// stops being special the moment it's touched.
     pub(crate) fn with_default(
         title: Option<String>,
         prompt: Option<String>,
         default: &str,
     ) -> Self {
         let mut input = Self::new(title, prompt, default);
-        input.replace_on_type = true;
         input.replacing = true;
         input
     }
@@ -99,8 +97,8 @@ impl TextInput {
         self.cursor = self.buffer.len();
     }
 
-    /// Clear the seeded default the first time the user edits it (typing or
-    /// Backspace), so the field is overwritten rather than appended to.
+    /// Clear the seeded default the first time the user types into it, so the
+    /// field is overwritten rather than appended to.
     fn replace_default(&mut self) {
         if self.replacing {
             self.buffer.clear();
@@ -220,7 +218,11 @@ impl Element for TextInput {
                 self.cursor += c.len_utf8();
             }
             KeyCode::Backspace => {
-                self.replace_default();
+                // A Backspace edits the field one character at a time — even a
+                // seeded default, whose right-most letter goes first. The
+                // replacement is over once it's touched, so later typing
+                // appends to what remains (as after a caret move).
+                self.replacing = false;
                 if self.cursor > 0 {
                     let start = self.buffer[..self.cursor]
                         .char_indices()
@@ -391,16 +393,31 @@ mod tests {
     }
 
     #[test]
-    fn backspace_clears_a_seeded_default() {
+    fn backspace_edits_a_seeded_default_one_character_at_a_time() {
         let mut input = TextInput::with_default(None, None, "100");
         input.on_key(key(KeyCode::Backspace));
         assert_eq!(
-            input.buffer, "",
-            "Backspace wipes the default for a fresh entry"
+            input.buffer, "10",
+            "Backspace deletes the right-most letter, not the whole default"
         );
+        assert_eq!(input.cursor, 2);
+        // One press per character, like any other field.
+        input.on_key(key(KeyCode::Backspace));
+        input.on_key(key(KeyCode::Backspace));
+        assert_eq!(input.buffer, "");
         assert_eq!(input.cursor, 0);
-        type_text(&mut input, "80");
-        assert_eq!(input.buffer, "80");
+    }
+
+    #[test]
+    fn typing_after_backspacing_a_default_appends_to_what_remains() {
+        // Backspace ends the default's wholesale-replacement promise in the
+        // same way a caret move does: the rest of the text stays, and further
+        // typing edits normally.
+        let mut input = TextInput::with_default(None, None, "100");
+        input.on_key(key(KeyCode::Backspace)); // "10"
+        type_text(&mut input, "5");
+        assert_eq!(input.buffer, "105");
+        assert_eq!(input.cursor, 3);
     }
 
     #[test]
