@@ -1476,7 +1476,7 @@ def macros_add_recipe_item_path():
     app.send("\r")                             # No (default): create
     app.check("recipe created, lands on its options",
               "Added item 'Chicken sandwich'", "═[Chicken sandwich]",
-              "info", "edit name", "edit ingredients", "back")
+              "info", "edit name", "edit ingredients", "delete", "back")
     app.send("\r")                             # info (index 0)
     app.check("composite info mirrors a leaf, ingredients listed beneath",
               "Chicken sandwich:",
@@ -1484,7 +1484,7 @@ def macros_add_recipe_item_path():
               "Carbs: 5 g (of which sugars: 2.5 g)",
               "Protein: 61.5 g", "Calories: 350 kcal",
               "Ingredients:", "2 × Chicken breast", "0.5 × Whole milk")
-    app.send("\x1b[B\x1b[B\x1b[B\r")           # back (index 3, after edit ingredients) -> macros menu
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")       # back (index 4, after edit ingredients) -> macros menu
     app.check("back at macros after recipe", "═[Macros]", "log item", "show items", "add item", "back")
     app.close()
 
@@ -1534,7 +1534,7 @@ def macros_edit_item_name_path():
     app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
     app.check("item picker", "Select item", "type to filter", " Egg", " Milk")
     app.send("\x1b[B\r")                       # pick Milk (index 1)
-    app.check("item options", "═[Milk]", "info", "edit name", "back")
+    app.check("item options", "═[Milk]", "info", "edit name", "delete", "back")
     app.send("\x1b[B\r")                       # edit name (index 1)
     app.check("new name prompt", "═[New name]", "> Milk")
     # Clear the prefilled current name (four Backspaces), then type a taken one.
@@ -1546,13 +1546,13 @@ def macros_edit_item_name_path():
     app.send("\x7f" * 3)
     app.send("Cream\r")
     app.check("renamed, prompt tracks it",
-              "Updated name of 'Milk' to 'Cream'", "═[Cream]", "info", "edit name", "back")
+              "Updated name of 'Milk' to 'Cream'", "═[Cream]", "info", "edit name", "delete", "back")
     # The re-ask keeps the highlight on "edit name" (where the rename was), so
     # move up to "info".
     app.send("\x1b[A\r")                       # info (index 0) under the new name
     app.check("info under new name", "Cream:",
               "Fat: 5.9 g (of which saturates: 2.3 g)")
-    app.send("\x1b[B" * 8 + "\r")              # back (index 8, after the six macro edits) -> macros menu
+    app.send("\x1b[B" * 9 + "\r")              # back (index 9, after the six macro edits) -> macros menu
     app.check("back at macros after rename", "═[Macros]", "log item", "show items", "add item", "back")
     app.close()
 
@@ -1582,7 +1582,7 @@ def macros_edit_ingredients_path():
               " Chicken breast", " Chicken sandwich", " Whole milk")
     app.send("\x1b[B\r")                       # pick Chicken sandwich (index 1)
     app.check("composite options offer edit ingredients", "═[Chicken sandwich]",
-              "info", "edit name", "edit ingredients", "back")
+              "info", "edit name", "edit ingredients", "delete", "back")
     grid = app.grid()
     if any("edit protein" in row for row in grid):
         raise SystemExit("FAIL: a composite's macros are derived-only, so it must not offer per-macro edits")
@@ -1621,7 +1621,7 @@ def macros_edit_ingredients_path():
               "Carbs: 0 g (of which sugars: 0 g)",
               "Protein: 90 g", "Calories: 480 kcal",
               "Ingredients:", "3 × Chicken breast")
-    app.send("\x1b[B\x1b[B\x1b[B\r")           # back (index 3, after edit ingredients) -> macros menu
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")       # back (index 4, after edit ingredients) -> macros menu
     app.check("back at macros after edits", "═[Macros]", "log item", "show items", "add item", "back")
     app.close()
 
@@ -1664,7 +1664,7 @@ def macros_edit_ingredients_path():
     app.check("last delete logs no ingredients left and re-asks as a leaf",
               "Removed Chicken breast from 'Chicken sandwich'",
               "No ingredients left",
-              "═[Chicken sandwich]", "info", "edit name", "edit protein", "back")
+              "═[Chicken sandwich]", "info", "edit name", "edit protein", "delete", "back")
     grid = app.grid()
     if any("edit ingredients" in row for row in grid):
         raise SystemExit("FAIL: a leaf must not offer 'edit ingredients' after its last ingredient is deleted")
@@ -1674,7 +1674,7 @@ def macros_edit_ingredients_path():
     app.send("\x1b[A\x1b[A\r")                 # info (index 0)
     app.check("the now-leaf shows its stored (zero) macros", "Chicken sandwich:",
               "Fat: 0 g (of which saturates: 0 g)", "Protein: 0 g", "Calories: 0 kcal")
-    app.send("\x1b[B" * 8 + "\r")              # back (index 8, leaf options) -> macros menu
+    app.send("\x1b[B" * 9 + "\r")              # back (index 9, leaf options) -> macros menu
     app.check("back at macros (2nd)", "═[Macros]")
     app.close()
 
@@ -1734,7 +1734,7 @@ def macros_edit_macros_path():
               "Fat: 5.9 g (of which saturates: 2.3 g)",
               "Carbs: 4.7 g (of which sugars: 4.7 g)",
               "Protein: 15 g", "Calories: 64 kcal")
-    app.send("\x1b[B" * 8 + "\r")              # back (index 8) -> macros menu
+    app.send("\x1b[B" * 9 + "\r")              # back (index 9) -> macros menu
     app.check("back at macros after edits", "═[Macros]", "log item", "show items", "add item", "back")
     app.close()
 
@@ -1769,13 +1769,13 @@ def macros_show_items_path():
     app.send("milk")
     app.check("picker filters to milk", "> milk", " Whole milk")
     app.send("\r")                             # pick Whole milk
-    app.check("item options", "═[Whole milk]", "info", "edit name", "back")
+    app.check("item options", "═[Whole milk]", "info", "edit name", "delete", "back")
     app.send("\r")                             # info (index 0)
     app.check("item info framed", "Whole milk:",
               "  Fat: 5.9 g (of which saturates: 2.3 g)",
               "  Carbs: 9.4 g (of which sugars: 4.7 g)",
               "  Protein: 3.3 g", "  Calories: 64 kcal")
-    app.send("\x1b[B" * 8 + "\r")              # back (index 8, after the six macro edits) -> macros menu
+    app.send("\x1b[B" * 9 + "\r")              # back (index 9, after the six macro edits) -> macros menu
     app.check("back at macros after info", "═[Macros]", "log item", "show items", "add item", "back")
     app.close()
     print("ok   the picker lists the stored items, filters them, and the per-item info logs the totals in a box")
@@ -1790,6 +1790,114 @@ def macros_show_items_path():
     app.check("no items yet", "No items yet — add one first", "═[Macros]")
     app.close()
     print("ok   with no items stored, show items logs a hint and stays on the macros screen")
+    print()
+
+def macros_delete_item_path():
+    print("=== MACROS DELETE-ITEM PATH: a lone item and a recipe delete; items used as ingredients or in logs are refused (with their use) until freed ===")
+    # One lone leaf, one item referenced as a recipe's ingredient, one
+    # unreferenced recipe, one item with a day's log on it. All four are seeds
+    # the app can browse; the proof queries run with raw sqlite (db() only
+    # exposes the workout tables).
+    seed_db(items=(
+        ("Alone", (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+        ("Ingredient", (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+        ("Recipe", (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+        ("Logged", (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+    ), composition=(
+        ("Recipe", (("Ingredient", 2.0),)),
+    ), logs=(
+        ("2026-10-29", (("Logged", 1.0, "2026-10-29 09:00:00+00:00"),)),
+    ))
+
+    def items_left():
+        con = sqlite3.connect(DB)
+        names = [r[0] for r in con.execute("SELECT name FROM items ORDER BY name").fetchall()]
+        refs  = con.execute("SELECT COUNT(*) FROM item_reference").fetchone()[0]
+        incs  = con.execute("SELECT COUNT(*) FROM macro_log_inclusions").fetchone()[0]
+        con.close()
+        return names, refs, incs
+
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
+
+    # 1. Delete the lone leaf "Alone": confirmed, gone, back on the macros menu.
+    app.check("item picker", "Select item", "type to filter", " Alone",
+              " Ingredient", " Logged", " Recipe")
+    app.send("Alone\r")
+    app.check("alone options", "═[Alone]", "info", "edit name", "delete", "back")
+    app.send("\x1b[B" * 8 + "\r")              # delete (index 8, after the six macro edits)
+    app.check("delete confirm", "Delete item 'Alone'?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes: up to it (default is No)
+    app.check("deleted lone item", "Deleted item 'Alone'", "═[Macros]", "log item", "show items", "back")
+    names, refs, incs = items_left()
+    if names != ["Ingredient", "Logged", "Recipe"] or refs != 1 or incs != 1:
+        raise SystemExit(f"FAIL: deleting 'Alone' should leave the other three, got names={names} refs={refs} incs={incs}")
+
+    # 2. "Ingredient" refuses: the recipe still holds it, so the app stays on
+    # its options with a friendly line naming the only use.
+    app.send("\x1b[B\x1b[B\r")                       # show items (index 2) again
+    app.send("Ingredient\r")
+    app.check("ingredient options", "═[Ingredient]", "info", "edit name", "delete", "back")
+    app.send("\x1b[B" * 8 + "\r")              # delete (index 8)
+    app.check("delete confirm (2nd)", "Delete item 'Ingredient'?", "Yes", "No")
+    app.send("\x1b[A\r")
+    app.check("ingredient refused",
+              # The line wraps in the terminal, so assert its two fragments.
+              "Can't delete item 'Ingredient' — it's used as an ingredient",
+              "in 1 other item",
+              "═[Ingredient]", "delete")
+    app.send("\x1b")                           # Esc: back to the macros menu
+    app.check("back at macros after refusal", "═[Macros]", "log item", "show items", "back")
+    names, refs, incs = items_left()
+    if names != ["Ingredient", "Logged", "Recipe"] or refs != 1:
+        raise SystemExit(f"FAIL: refusal must not change anything, got names={names} refs={refs}")
+
+    # 3. Delete the composite "Recipe": its own composition cascades away, and
+    # that frees "Ingredient" for deletion later.
+    app.send("\x1b[B\x1b[B\r")                       # show items (index 2) again
+    app.send("Recipe\r")
+    app.check("recipe options", "═[Recipe]", "info", "edit name", "edit ingredients", "delete", "back")
+    app.send("\x1b[B" * 3 + "\r")              # delete (index 3, after edit ingredients)
+    app.check("delete confirm (3rd)", "Delete item 'Recipe'?", "Yes", "No")
+    app.send("\x1b[A\r")
+    app.check("deleted recipe", "Deleted item 'Recipe'", "═[Macros]", "log item", "show items", "back")
+    names, refs, incs = items_left()
+    if names != ["Ingredient", "Logged"] or refs != 0 or incs != 1:
+        raise SystemExit(f"FAIL: deleting the recipe should cascade its composition, got names={names} refs={refs} incs={incs}")
+
+    # 4. "Logged" refuses: a day's log still holds it.
+    app.send("\x1b[B\x1b[B\r")                       # show items (index 2) again
+    app.send("Logged\r")
+    app.check("logged options", "═[Logged]", "info", "edit name", "delete", "back")
+    app.send("\x1b[B" * 8 + "\r")              # delete (index 8)
+    app.check("delete confirm (4th)", "Delete item 'Logged'?", "Yes", "No")
+    app.send("\x1b[A\r")
+    app.check("logged refused",
+              "Can't delete item 'Logged' — it's used in 1 log",
+              "═[Logged]", "delete")
+    app.send("\x1b")                           # Esc: back to the macros menu
+    app.check("back at macros after log refusal", "═[Macros]", "log item", "show items", "back")
+    names, refs, incs = items_left()
+    if names != ["Ingredient", "Logged"] or incs != 1:
+        raise SystemExit(f"FAIL: refusal must not change anything, got names={names} incs={incs}")
+
+    # 5. With the recipe gone, "Ingredient" is no longer referenced and now
+    # deletes cleanly — only "Logged" (still in its day's log) remains.
+    app.send("\x1b[B\x1b[B\r")                       # show items (index 2) again
+    app.send("Ingredient\r")
+    app.check("ingredient options (2nd)", "═[Ingredient]", "delete")
+    app.send("\x1b[B" * 8 + "\r")              # delete (index 8)
+    app.check("delete confirm (5th)", "Delete item 'Ingredient'?", "Yes", "No")
+    app.send("\x1b[A\r")
+    app.check("ingredient deleted once freed", "Deleted item 'Ingredient'", "═[Macros]", "show items", "back")
+    app.close()
+    names, refs, incs = items_left()
+    if names != ["Logged"] or refs != 0 or incs != 1:
+        raise SystemExit(f"FAIL: only the logged item should remain, got names={names} refs={refs} incs={incs}")
+    print("ok   lone leaves and recipes delete (the cascade freeing their ingredients); items used as ingredients or in logs are refused until freed")
     print()
 
 def muscle_groups_path():
@@ -2384,6 +2492,7 @@ macros_edit_item_name_path()
 macros_edit_ingredients_path()
 macros_edit_macros_path()
 macros_show_items_path()
+macros_delete_item_path()
 muscle_groups_path()
 exercise_muscle_groups_path()
 wrap_path()

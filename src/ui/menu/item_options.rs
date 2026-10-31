@@ -6,8 +6,13 @@
 //! and the totals its composition resolves to, as a framed section), edit its
 //! name, edit its stored macros one at a time (**leaf items only** — a
 //! composite's macros are derived, never stored), edit its ingredients
-//! (composite items only), or back out to the macros menu. Editing loops back
-//! onto this screen under the renamed item, so the prompt tracks the change.
+//! (composite items only), delete it, or back out to the macros menu. Editing
+//! loops back onto this screen under the renamed item, so the prompt tracks
+//! the change. The delete sits just above "back" on both item kinds: an item
+//! nothing references (no composite uses it, no log includes it) is removed —
+//! a composite's own composition goes with it — and a referenced one draws a
+//! refusal that stays on the screen; either way the screen is left via the
+//! macros menu.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -44,7 +49,7 @@ pub(super) fn run(
         // ingredients" option gone, the six macro edits appearing.
         let composite = !ItemReference::for_item(conn, item.id)?.is_empty();
         let options: Vec<&str> = if composite {
-            vec!["info", "edit name", "edit ingredients", "back"]
+            vec!["info", "edit name", "edit ingredients", "delete", "back"]
         } else {
             vec![
                 "info",
@@ -55,6 +60,7 @@ pub(super) fn run(
                 "edit sugars",
                 "edit protein",
                 "edit calories",
+                "delete",
                 "back",
             ]
         };
@@ -135,6 +141,44 @@ pub(super) fn run(
             // the exercise menu's muscle-group editor; it returns to this menu
             // (highlight where it was) when the user backs out of the picker.
             Some("edit ingredients") => super::edit_ingredients::run(shell, conn, &item)?,
+            // "delete": destructive, so the confirm defaults to No. An item
+            // nothing references is removed (a composite's own composition
+            // cascades away) and the screen is left for the macros menu; one
+            // still in use is refused by the schema (ON DELETE RESTRICT) — say
+            // how, and re-ask the menu, mirroring the exercise delete. A
+            // declined confirm or a refusal falls through to re-ask.
+            Some("delete") => {
+                if shell.confirm(Some(format!("Delete item '{}'?", item.name)))? {
+                    match item.delete(conn) {
+                        Ok(()) => {
+                            shell.log(format!("Deleted item '{}'", item.name));
+                            return Ok(Some(Menu::Macros)); // it no longer exists
+                        }
+                        Err(DomainError::InUse { ref name, .. }) => {
+                            // Naming only the kinds that apply: "as an
+                            // ingredient in 1 other item and in 1 log".
+                            let mut used: Vec<String> = Vec::new();
+                            let n = item.used_as_ingredient_in(conn)?;
+                            let m = item.used_in_logs(conn)?;
+                            if n == 1 {
+                                used.push("as an ingredient in 1 other item".into());
+                            } else if n > 1 {
+                                used.push(format!("as an ingredient in {n} other items"));
+                            }
+                            if m == 1 {
+                                used.push("in 1 log".into());
+                            } else if m > 1 {
+                                used.push(format!("in {m} logs"));
+                            }
+                            shell.log(format!(
+                                "Can't delete item '{name}' — it's used {}",
+                                used.join(" and ")
+                            ));
+                        }
+                        Err(err) => return Err(err.into()),
+                    }
+                }
+            }
             // "back", or Escape: the user asked to leave for the macros menu.
             _ => return Ok(Some(Menu::Macros)),
         }

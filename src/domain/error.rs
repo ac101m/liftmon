@@ -18,8 +18,9 @@ pub enum DomainError {
     },
 
     /// `delete` was asked to remove a row that other rows still reference. The
-    /// schema refuses it (ON DELETE RESTRICT, migration v3); this maps that
-    /// constraint to a friendly error the UI can report.
+    /// schema refuses it (ON DELETE RESTRICT, e.g. migration v3's workout FKs
+    /// or v8's/v9's item references); this maps that constraint to a friendly
+    /// error the UI can report.
     #[error("cannot delete {kind} '{name}' — it is still used")]
     InUse {
         /// The kind of entity, e.g. "exercise".

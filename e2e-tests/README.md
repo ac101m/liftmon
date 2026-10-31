@@ -145,7 +145,16 @@ show-items path (a filter picker of the
 stored items — typing narrows it like the exercise picker; picking one opens
 its info/back menu whose info logs the item's name, fat and carbs totals
 (each with its "of which" saturates/sugars breakdown), protein and calories in
-a framed box, and with nothing stored the screen logs a hint and stays put), the
+a framed box, and with nothing stored the screen logs a hint and stays put), the macros
+delete-item path (the "delete" option that sits just above "back" on both plain and
+composite item options confirms behind a No-defaulted Yes/No and removes the item —
+a lone leaf deletes outright, and deleting a composite cascades its own
+composition away (its item_reference rows as parent), which in turn frees its
+ingredient for deletion — while an item the schema still holds through ON DELETE
+RESTRICT is refused with a friendly line naming its use — "Can't delete item 'X' —
+it's used as an ingredient in 1 other item" and/or "in 1 log" — staying on the
+options; the DB proofs check that each refusal changes nothing, the recipe's
+delete leaves zero item_reference rows, and the freed ingredient then deletes), the
 muscle-groups path (the main menu's item lands
 on the non-filtering group picker; a group's options screen shows its info —
 name and description frame — and back/Escape return to the list and main

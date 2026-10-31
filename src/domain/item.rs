@@ -158,6 +158,74 @@ impl Item {
         Ok(())
     }
 
+    /// Delete this item's row.
+    ///
+    /// An item that anything still references is refused by the schema: a
+    /// component of another item (`item_reference.child_id`, migration v8) or
+    /// an item logged on any day (`macro_log_inclusions.item_id`, migration v9)
+    /// each trip that table's `ON DELETE RESTRICT`, surfaced here as a friendly
+    /// [`DomainError::InUse`] rather than a raw constraint error (the
+    /// `Exercise::delete` precedent). A *composite's own* composition is not a
+    /// reference — `item_reference.parent_id` is `ON DELETE CASCADE`, so a
+    /// composite's ingredients list goes with it.
+    pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
+        let changed = match conn.execute("DELETE FROM items WHERE id = ?1", params![self.id]) {
+            Ok(changed) => changed,
+            // A RESTRICT/NO ACTION violation is raised through the FK-trigger
+            // mechanism, so it reports SQLITE_CONSTRAINT_TRIGGER; 787 is the
+            // plain foreign-key code (see the exercise.rs comment).
+            Err(err)
+                if matches!(
+                    &err,
+                    rusqlite::Error::SqliteFailure(ffi_err, _)
+                        if matches!(
+                            ffi_err.extended_code,
+                            rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY
+                                | rusqlite::ffi::SQLITE_CONSTRAINT_TRIGGER
+                        )
+                ) =>
+            {
+                return Err(DomainError::InUse {
+                    kind: "item",
+                    name: self.name.clone(),
+                });
+            }
+            Err(err) => return Err(err.into()),
+        };
+        if changed == 0 {
+            return Err(DomainError::MissingRow {
+                kind: "item",
+                id: self.id,
+            });
+        }
+        Ok(())
+    }
+
+    /// How many distinct other items list this one as an ingredient — an
+    /// item used by a composite can't be deleted, and this is the count the
+    /// delete UI reports when the schema refuses.
+    pub fn used_as_ingredient_in(&self, conn: &Connection) -> Result<usize, DomainError> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(DISTINCT parent_id) FROM item_reference WHERE child_id = ?1",
+            [self.id],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
+    }
+
+    /// How many distinct macro-log days this item appears in — a logged item
+    /// can't be deleted, and this is the count the delete UI reports when the
+    /// schema refuses. (The same item can be logged several times in one day,
+    /// so the logs, not the inclusion rows, are what's counted.)
+    pub fn used_in_logs(&self, conn: &Connection) -> Result<usize, DomainError> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(DISTINCT macro_log_id) FROM macro_log_inclusions WHERE item_id = ?1",
+            [self.id],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
+    }
+
     /// Load the item with the given row `id`, if one exists — how the
     /// composition resolver looks its components up, and how the composite
     /// info screen names them.
@@ -570,5 +638,135 @@ mod tests {
             matches!(err, DomainError::CyclicComposition { .. }),
             "a planted cycle must surface as an error, not hang: {err}"
         );
+    }
+
+    #[test]
+    fn delete_removes_a_lone_leaf() {
+        let conn = test_db();
+        let item = Item::create(&conn, "whole milk", 3.6, 2.3, 4.7, 4.7, 3.3, 64.0).unwrap();
+        item.delete(&conn).unwrap();
+        assert!(
+            Item::find_by_id(&conn, item.id).unwrap().is_none(),
+            "the row is gone"
+        );
+    }
+
+    #[test]
+    fn delete_removes_a_composite_and_cascades_its_composition() {
+        let conn = test_db();
+        let chicken =
+            Item::create(&conn, "chicken breast", 4.0, 1.0, 0.0, 0.0, 30.0, 160.0).unwrap();
+        let bread = Item::create(&conn, "bread", 2.0, 0.5, 20.0, 1.0, 5.0, 100.0).unwrap();
+        let sandwich = Item::create(&conn, "sandwich", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).unwrap();
+        ItemReference::set_for_item(&conn, sandwich.id, &[(chicken.id, 2.0), (bread.id, 1.0)])
+            .unwrap();
+
+        sandwich.delete(&conn).unwrap();
+
+        assert!(Item::find_by_id(&conn, sandwich.id).unwrap().is_none());
+        // A composite's own composition cascades away with it (parent_id is ON
+        // DELETE CASCADE); the children, referenced by nothing, survive.
+        let refs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM item_reference", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(refs, 0, "no composition rows survive the composite");
+        assert!(Item::find_by_id(&conn, chicken.id).unwrap().is_some());
+        assert!(Item::find_by_id(&conn, bread.id).unwrap().is_some());
+    }
+
+    #[test]
+    fn delete_is_refused_when_used_as_an_ingredient() {
+        let conn = test_db();
+        let chicken =
+            Item::create(&conn, "chicken breast", 4.0, 1.0, 0.0, 0.0, 30.0, 160.0).unwrap();
+        let sandwich = Item::create(&conn, "sandwich", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).unwrap();
+        ItemReference::set_for_item(&conn, sandwich.id, &[(chicken.id, 2.0)]).unwrap();
+
+        let err = chicken.delete(&conn).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                DomainError::InUse { kind: "item", ref name } if name == "chicken breast"
+            ),
+            "a child used by a composite is refused as InUse"
+        );
+        // The row and the composition survive the refusal.
+        assert!(Item::find_by_id(&conn, chicken.id).unwrap().is_some());
+        assert_eq!(
+            ItemReference::for_item(&conn, sandwich.id).unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn delete_is_refused_when_used_in_a_log() {
+        use crate::domain::{MacroLog, MacroLogInclusion};
+        use chrono::{NaiveDate, Utc};
+
+        let conn = test_db();
+        let item = Item::create(&conn, "whole milk", 3.6, 2.3, 4.7, 4.7, 3.3, 64.0).unwrap();
+        let log = MacroLog::create(&conn, NaiveDate::from_ymd_opt(2026, 10, 2).unwrap()).unwrap();
+        MacroLogInclusion::add(&conn, log.id, item.id, 1.0, Utc::now()).unwrap();
+
+        let err = item.delete(&conn).unwrap_err();
+        assert!(
+            matches!(err, DomainError::InUse { kind: "item", .. }),
+            "a logged item is refused as InUse"
+        );
+        assert!(Item::find_by_id(&conn, item.id).unwrap().is_some());
+    }
+
+    #[test]
+    fn delete_reports_a_missing_row() {
+        let conn = test_db();
+        let ghost = Item {
+            id: 999,
+            name: "ghost".into(),
+            unsaturated_fats: 0.0,
+            saturated_fats: 0.0,
+            complex_carbohydrates: 0.0,
+            sugars: 0.0,
+            protein: 0.0,
+            calories: 0.0,
+        };
+        let err = ghost.delete(&conn).unwrap_err();
+        assert!(matches!(
+            err,
+            DomainError::MissingRow {
+                kind: "item",
+                id: 999
+            }
+        ));
+    }
+
+    #[test]
+    fn deletion_count_helpers_tell_where_an_item_is_used() {
+        use crate::domain::{MacroLog, MacroLogInclusion};
+        use chrono::{NaiveDate, Utc};
+
+        let conn = test_db();
+        let chicken =
+            Item::create(&conn, "chicken breast", 4.0, 1.0, 0.0, 0.0, 30.0, 160.0).unwrap();
+        let bread = Item::create(&conn, "bread", 2.0, 0.5, 20.0, 1.0, 5.0, 100.0).unwrap();
+        let sandwich = Item::create(&conn, "sandwich", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).unwrap();
+        ItemReference::set_for_item(&conn, sandwich.id, &[(chicken.id, 2.0), (bread.id, 1.0)])
+            .unwrap();
+        assert_eq!(chicken.used_as_ingredient_in(&conn).unwrap(), 1);
+        assert_eq!(bread.used_as_ingredient_in(&conn).unwrap(), 1);
+        assert_eq!(
+            sandwich.used_as_ingredient_in(&conn).unwrap(),
+            0,
+            "a composite is the parent, not the ingredient"
+        );
+
+        // The same item logged twice on one day counts as one day; a second
+        // day counts as another.
+        let day1 = MacroLog::create(&conn, NaiveDate::from_ymd_opt(2026, 10, 2).unwrap()).unwrap();
+        MacroLogInclusion::add(&conn, day1.id, chicken.id, 1.0, Utc::now()).unwrap();
+        MacroLogInclusion::add(&conn, day1.id, chicken.id, 2.0, Utc::now()).unwrap();
+        let day2 = MacroLog::create(&conn, NaiveDate::from_ymd_opt(2026, 10, 3).unwrap()).unwrap();
+        MacroLogInclusion::add(&conn, day2.id, chicken.id, 1.0, Utc::now()).unwrap();
+        assert_eq!(chicken.used_in_logs(&conn).unwrap(), 2);
+        assert_eq!(bread.used_in_logs(&conn).unwrap(), 0);
     }
 }
