@@ -3,7 +3,9 @@
 //! picker. Shared by the exercises screen's "Browse exercises" option and the
 //! freeform session's "next exercise" step. Escape backs out one level at a
 //! time: off a picker you are offered the other way to pick, and off the
-//! submenu you get [`None`] (the caller backs out of the flow).
+//! submenu you get [`None`]. What `None` means is the caller's call — the
+//! exercises browse returns to the exercises menu; the session's "next
+//! exercise" re-asks its performance menu.
 
 use rusqlite::Connection;
 
@@ -16,7 +18,8 @@ use super::select_exercise_by_group::pick_exercise;
 /// Ask how the exercise is picked, then run the chosen picker. Returns the
 /// picked exercise, or [`None`] when the user backed out (of the submenu) or
 /// there is nothing to pick. A re-asked submenu keeps its highlight on the
-/// method just used; either picker's Escape re-asks rather than leaving.
+/// method just used; either picker's Escape re-asks rather than leaving. The
+/// caller decides what `None` means (see the module doc).
 pub(super) fn pick(shell: &mut Shell, conn: &Connection) -> Result<Option<Exercise>, UiError> {
     // There is no point offering the submenu when nothing at all exists to
     // pick, so the empty-exercises case logs and leaves.

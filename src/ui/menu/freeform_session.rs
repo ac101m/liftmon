@@ -19,7 +19,10 @@
 //!   all-exercises list or the per-muscle-group browse — then run that picker.
 //!   Picking the exercise that is already the current one does not start a new
 //!   performance: it is called out and the menu is re-asked, so a repeated
-//!   pick never doubles an exercise up in the session summary,
+//!   pick never doubles an exercise up in the session summary. Backing out of
+//!   the chooser (Escape) re-asks the performance menu — the page with this
+//!   option — rather than leaving the workout (a new session's first exercise
+//!   has no menu above it, so there the chooser's Escape leaves the flow),
 //! * "show exercise info" frames the current exercise as a section — the same
 //!   name, description, muscle groups and recent personal records the
 //!   per-exercise info screen shows — then re-asks the menu. Read-only, so it
@@ -65,8 +68,10 @@ pub(super) fn run(
         shell.log("That session is no longer there");
         return Ok(Some(Menu::Sessions));
     };
-    // Leaving the flow — backing out of the submenu or a picker, or exiting
-    // the session — lands back on this session's options screen.
+    // Leaving the flow — backing out of the chooser before the session's first
+    // exercise is picked, or exiting the session — lands back on this session's
+    // options screen. (Backing out of a mid-session "next exercise" pick is
+    // different: it re-asks the performance menu, not this screen.)
     let return_to = Menu::SessionOptions { session_id };
     // A session starts at its most recent exercise; the entry is consumed
     // once, after which the flow behaves like a fresh one. An empty session (a
@@ -143,9 +148,11 @@ pub(super) fn run(
                 Some("next set") => break,
                 // Pick the next exercise.
                 Some("next exercise") => match select_exercise::pick(shell, conn)? {
-                    // Backed out of the submenu (or a picker, after re-asking):
-                    // leave the flow.
-                    None => return Ok(Some(return_to)),
+                    // Backed out of the chooser (the submenu's Escape, or
+                    // Escape/empty inside a picker): stop picking and re-ask
+                    // the performance menu — the page the user came from —
+                    // rather than leaving the flow. Nothing was changed.
+                    None => {}
                     // The exercise the user is already on: no new performance,
                     // just say so and re-ask the menu.
                     Some(picked) if picked.id == exercise.id => {

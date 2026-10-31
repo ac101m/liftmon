@@ -453,7 +453,10 @@ def leave_path():
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
     app.send("\x1b")                                        # escape the all picker: back to the submenu
     app.check("submenu again", "═[Select exercise]", "all exercises", "exercises by muscle group")
-    app.send("\x1b")                                        # escape the submenu: session stays open
+    app.send("\x1b")                                        # escape the submenu: back to the performance menu
+    app.check("back on the performance menu (next exercise still highlighted)",
+              "═[Bench press]", "next set", "next exercise", "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\x1b[B\r")                        # exit session (index 4: three down from next exercise)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -504,8 +507,8 @@ def resume_path():
     print("=== RESUME PATH: leave a session, resume it (within 6h -> no confirm) in a fresh app instance ===")
     seed_db()
     # App #1: Bench press (100/5/Yes), next exercise -> Squat (60/10/Yes),
-    # next exercise -> escape the submenu, leaving one session with two
-    # performances.
+    # next exercise -> escape the submenu (back to the performance menu),
+    # then exit the session, leaving one session with two performances.
     app = App()
     app.send("\x1b[B\r")                                    # -> Sessions
     app.send("\x1b[B\r")                                          # new session
@@ -534,7 +537,10 @@ def resume_path():
     app.check("performance menu (squat)", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\r")                                          # next exercise (still highlighted: stays in place)
     app.check("submenu (3rd)", "═[Select exercise]", "all exercises", "exercises by muscle group")
-    app.send("\x1b")                                        # escape the submenu: leave open
+    app.send("\x1b")                                        # escape the submenu: back to the performance menu
+    app.check("performance menu after submenu Esc", "═[Squat]", "next set", "next exercise",
+              "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\x1b[B\r")                        # exit session (three down from next exercise)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "resume", "summary", "back")
     app.send("\x1b")                                        # Esc on options = back to the session list
@@ -859,7 +865,7 @@ def esc_shortcut_path():
 
     # Freeform set form: Esc on the difficulty ask cancels the set; the performance
     # menu has no back option, so Esc just stays on it; escaping the submenu
-    # mid-session returns to the session's options screen.
+    # mid-session re-asks the performance menu — it does not leave the workout.
     app.send("\x1b[B\r")                                # -> Sessions
     app.send("\x1b[B\r")                                      # new session
     app.check("new session options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]", "begin", "back")
@@ -881,7 +887,10 @@ def esc_shortcut_path():
     app.check("exercise picker (2nd)", "Select exercise", " Bench press", " Squat")
     app.send("\x1b")                                    # escape the all picker: back to the submenu
     app.check("submenu again", "═[Select exercise]", "all exercises", "exercises by muscle group")
-    app.send("\x1b")                                    # escape the submenu: session stays open
+    app.send("\x1b")                                    # escape the submenu: back to the performance menu
+    app.check("performance menu after submenu Esc (2nd)", "═[Bench press]", "next set", "next exercise",
+              "show exercise info", "exit session")
+    app.send("\x1b[B\x1b[B\x1b[B\r")                    # exit session (three down from next exercise)
     app.check("back at the session's options", "═[" + date.today().strftime("%Y/%m/%d") + " · freeform session]",
               "begin", "summary", "back")
     app.send("\x1b")                                    # Esc on options = back to the session list
