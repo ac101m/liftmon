@@ -253,6 +253,59 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          always rewritten as delete + insert; see the warning in \
          src/domain/item.rs.",
     ),
+    // v9 — not FROZEN: part of the unfrozen macros feature (items through
+    // macro logging); freeze this with v7 and v8 when the feature ships. The
+    // inclusions' `quantity` column was added in place before it shipped — no
+    // database has ever run this migration, so editing it diverges no file.
+    M::up(
+        r"
+        CREATE TABLE macro_logs (
+            id   INTEGER PRIMARY KEY,
+            date TEXT NOT NULL UNIQUE
+        );
+
+        CREATE TABLE macro_log_inclusions (
+            id           INTEGER PRIMARY KEY,
+            macro_log_id INTEGER NOT NULL REFERENCES macro_logs(id) ON DELETE CASCADE,
+            item_id      INTEGER NOT NULL REFERENCES items(id)      ON DELETE RESTRICT,
+            quantity     REAL NOT NULL,
+            created_at   TEXT NOT NULL
+        );
+
+        -- FK column the per-log inclusion loaders join on.
+        CREATE INDEX idx_inclusions_log ON macro_log_inclusions(macro_log_id);
+        ",
+    )
+    .down(
+        r"
+        DROP TABLE macro_log_inclusions;
+        DROP TABLE macro_logs;
+        ",
+    )
+    .comment(
+        "Day-by-day macro logging for the macronutrient tracker. `macro_logs` \
+         is one row per day: its `date` column holds a plain calendar date \
+         (YYYY-MM-DD, not a datetime) and is UNIQUE, so there can be only one \
+         log for a date and the date doubles as the log's name — the table \
+         carries no separate name column. `macro_log_inclusions` records which \
+         items were logged on that day: the same item can appear several times \
+         — its own `id` primary key (unlike the compound-PK inclusions tables, \
+         muscle_group_reference and item_reference) permits duplicate \
+         (macro_log_id, item_id) rows — each row being one logged use of the \
+         item **at a `quantity` factor**, the same straight scale as \
+         item_reference's quantity (not a gram amount; an item's macros are in \
+         the user's chosen unit). Logging two servings can be one row with \
+         quantity 2 or two rows with quantity 1 — the day's total is the same \
+         either way — and the day's macros resolve to the sum over its rows of \
+         quantity x the item's resolved macros. Every inclusion \
+         also carries a `created_at` UTC moment, recording when the item was \
+         logged in the same timezone-aware way as the workout tables, and the \
+         idx_inclusions_log index (like the session-tree indexes) serves the \
+         per-log lookups. A log's inclusions cascade away with it (CASCADE); an \
+         item included in any log can't be deleted (RESTRICT). There is no \
+         cycle trigger: a log contains items, never other logs, so the graph \
+         cannot loop. See src/domain/macro_log.rs.",
+    ),
 ];
 
 /// The migrations, ready to apply to a connection.

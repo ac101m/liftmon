@@ -9,8 +9,9 @@
 //! [`self::macros_menu`], [`self::exercises_menu`], [`self::session_menu`],
 //! [`self::freeform_session`],
 //! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
-//! [`self::add_item`], [`self::add_recipe_item`], [`self::exercise_options`],
-//! [`self::select_muscle_group`], [`self::muscle_group_options`],
+//! [`self::add_item`], [`self::log_item`], [`self::add_recipe_item`],
+//! [`self::exercise_options`], [`self::select_muscle_group`],
+//! [`self::muscle_group_options`],
 //! [`self::show_items`] and
 //! [`self::item_options`] — with [`self::select_exercise`] (the shared
 //! "Select exercise" chooser), [`self::select_exercise_by_group`] (the
@@ -37,6 +38,7 @@ mod exercise_options;
 mod exercises_menu;
 mod freeform_session;
 mod item_options;
+mod log_item;
 mod macros_menu;
 mod main_menu;
 mod muscle_group_options;
@@ -63,6 +65,10 @@ pub(crate) enum Menu {
     ShowItems,
     /// The actions for one picked item, named by its unique name.
     ItemOptions { name: String },
+    /// The log-item screen: pick a date (default today, backdatable) and an
+    /// item, then record one use of it for that day — creating the day's log
+    /// if it's the first entry.
+    LogItem,
     /// The exercise screen (Browse exercises / Add exercise / Back).
     Exercises,
     /// The add-exercise form (name, then description).
@@ -161,6 +167,7 @@ impl Menu {
             Menu::Main => main_menu::run(shell),
             Menu::Macros => macros_menu::run(shell),
             Menu::AddItem => add_item::run(shell, conn),
+            Menu::LogItem => log_item::run(shell, conn),
             Menu::ShowItems => show_items::run(shell, conn),
             Menu::ItemOptions { name } => item_options::run(shell, conn, name),
             Menu::Exercises => exercises_menu::run(shell, conn),

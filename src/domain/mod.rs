@@ -25,6 +25,8 @@ pub mod exercise;
 mod exercise_performance;
 mod item;
 mod item_reference;
+mod macro_log;
+mod macro_log_inclusion;
 mod muscle_group;
 mod muscle_group_reference;
 mod session;
@@ -35,6 +37,9 @@ pub use self::error::DomainError;
 pub use self::exercise::Exercise;
 pub use self::item::{Item, Macros};
 pub use self::item_reference::ItemReference;
+// The macro logger (migration v9): a log per calendar date, holding item uses.
+pub use self::macro_log::MacroLog;
+pub use self::macro_log_inclusion::MacroLogInclusion;
 // The workout entities are the public surface for the session screens.
 pub use self::exercise_performance::ExercisePerformance;
 pub use self::muscle_group::{MuscleGroup, MuscleGroupCount};

@@ -49,7 +49,9 @@ What happens on a run:
    rebuilds its own file to the exact current schema (all three record tables,
    both indexes, the FK delete rules, the muscle-group tables with the 17
    default groups seeded, the macros `items` table and its `item_reference`
-   composition table (with its no-cycles trigger), `PRAGMA
+   composition table (with its no-cycles trigger), the macro-log tables — a
+   `macro_logs` row per calendar date holding `macro_log_inclusions` item-use
+   rows at a quantity factor — `PRAGMA
    user_version`), seeded with a
    couple of exercises.
 2. For each scenario it launches the binary in a fresh pseudo-terminal
@@ -76,7 +78,17 @@ history), the personal-record path (a set beating the exercise's prior Epley e1R
 set, and the exercise info screen frames the exercise with rules and lists its
 last three personal records as weight × reps with when each record was set), the
 in-use-exercise delete path, the macros path (the main menu's "Macros" item
-lands on the macros screen with its show-items/add-item/back menu), the macros
+lands on the macros screen with its log-item/show-items/add-item/back menu), the
+macro-log path (a "log item" option sits at the top of the macros menu: it asks
+for a date defaulted to today's local calendar date — typing a different date
+backdates the entry — then the item picker, and a quantity factor after that,
+defaulting to one and scaling the day's macros, then records one use of the item
+for that day, creating the day's `macro_logs` row only if it's that date's first
+entry; a second entry to the same date reuses the row rather than duplicating
+it, accepting the default date logs for today, an unparseable date re-asks with
+the text kept, a refused quantity re-asks the same way, and Escape cancels
+before anything is recorded — with the log rows and inclusions' quantities
+verified in the database), the macros
 add-item path (add item first asks whether the item is a plain or a recipe
 item; a plain item is the existing leaf form — name plus six macro fields
 entered one at a time, blank
