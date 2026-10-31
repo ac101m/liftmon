@@ -167,6 +167,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          — is left alone. The idempotent seed that runs after every migration \
          reconciles all the default rows, this one included.",
     ),
+    // FROZEN — shipped in liftmon 1.3.0. Do not edit; append a new migration.
     M::up(
         r"
         CREATE TABLE items (
@@ -195,8 +196,7 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          in yet reads as a zero-macro item. name is UNIQUE, like exercises and \
          muscle groups, so create surfaces a friendly NameTaken on a duplicate.",
     ),
-    // v8 — not FROZEN: the macros feature (items through composition) hasn't
-    // shipped yet; freeze this and v7 together when it does.
+    // FROZEN — shipped in liftmon 1.3.0. Do not edit; append a new migration.
     M::up(
         r"
         CREATE TABLE item_reference (
@@ -253,10 +253,10 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          always rewritten as delete + insert; see the warning in \
          src/domain/item.rs.",
     ),
-    // v9 — not FROZEN: part of the unfrozen macros feature (items through
-    // macro logging); freeze this with v7 and v8 when the feature ships. The
-    // inclusions' `quantity` column was added in place before it shipped — no
-    // database has ever run this migration, so editing it diverges no file.
+    // FROZEN — shipped in liftmon 1.3.0. Do not edit; append a new migration.
+    // The inclusions' `quantity` column — and the appended 'Hip abductors'
+    // seed — were added in place before this shipped: no database had run the
+    // migration yet, so editing it diverged no file.
     M::up(
         r"
         CREATE TABLE macro_logs (
