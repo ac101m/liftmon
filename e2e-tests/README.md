@@ -47,7 +47,7 @@ What happens on a run:
 1. The harness picks a random scratch filename under `/tmp` (never a fixed
    path), refuses to run if a database already exists at that name, then
    rebuilds its own file to the exact current schema (all three record tables,
-   both indexes, the FK delete rules, the muscle-group tables with the 17
+   both indexes, the FK delete rules, the muscle-group tables with the 18
    default groups seeded, the macros `items` table and its `item_reference`
    composition table (with its no-cycles trigger), the macro-log tables — a
    `macro_logs` row per calendar date holding `macro_log_inclusions` item-use

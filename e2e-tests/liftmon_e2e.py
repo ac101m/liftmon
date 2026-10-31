@@ -49,7 +49,7 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
             refs=(), items=(), composition=(), logs=()):
     """Rebuild the on-disk DB to the exact current schema (delete rules
     included) — mirroring what the app's `upgrade()` produces: the shipped
-    migrations' tables (through the macro-log tables), with the 17 default
+    migrations' tables (through the macro-log tables), with the 18 default
     muscle groups seeded — with the given exercises and, optionally, their
     muscle-group references as
     (exercise name, muscle group name) pairs, the macros items as
@@ -162,7 +162,7 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
             con.execute("INSERT INTO macro_log_inclusions"
                         " (macro_log_id, item_id, quantity, created_at) VALUES (?, ?, ?, ?)",
                         (log_id, item_id, quantity, created_at))
-    # The 17 default groups, with the descriptions the app's seed const carries
+    # The 18 default groups, with the descriptions the app's seed const carries
     # (mirroring src/db/muscle_groups.rs' INITIAL_MUSCLE_GROUPS), so the info
     # screen renders a real description.
     for name, desc in (
@@ -183,6 +183,7 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         ("Abs", "Muscles of the lower torso. Trained using crunching movements that curve the spine forward."),
         ("Obliques", "Muscles at the side of the torso. Trained with movements that twist the torso."),
         ("Hip adductors", "Muscles of the inside leg and groin. Trained using movements that squeeze the legs together."),
+        ("Hip abductors", "Muscles on the outside of the pelvis. Trained using movements that push the legs apart."),
     ):
         con.execute("INSERT INTO muscle_group (name, description) VALUES (?, ?)", (name, desc))
     # Optional muscle-group references — how the session's by-group exercise
@@ -1789,17 +1790,18 @@ def muscle_groups_path():
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\x1b[B\r")           # Muscle groups (index 3, after Macros)
     # The plain (non-filtering) list: the 9-row Choice box shows the seeded
-    # groups in name order; "Pecs" (index 10) starts below the fold, so assert
+    # groups in name order; "Pecs" (index 11) starts below the fold, so assert
     # only what is visible initially — a top, middle and bottom row — and,
-    # crucially, not "Pecs" yet (nor "Obliques", now also below the fold).
+    # crucially, not "Pecs" yet (nor "Lats"/"Obliques", now also below the
+    # fold).
     app.check("select muscle group", "═[Select muscle group]", "Abs", "Biceps",
-              "Glutes", "Lats", "Esc back")
+              "Glutes", "Hip abductors", "Hip adductors", "Esc back")
     # The dedicated "Muscle groups" picker stays plain — no exercise counts.
     # (Only the exercise-selection pickers carry them.)
     grid = app.grid()
     if any("(" in row and "exercise" in row for row in grid):
         raise SystemExit("FAIL: the main muscle-groups picker must not show exercise counts")
-    app.send("\x1b[B" * 10 + "\r")             # scroll down to Pecs (index 10)
+    app.send("\x1b[B" * 11 + "\r")             # scroll down to Pecs (index 11)
     app.check("muscle group options", "═[Pecs]", "info", "back")
     app.send("\r")                             # info
     # The info section frames "Pecs:" over its description; the text wraps at
@@ -1814,7 +1816,7 @@ def muscle_groups_path():
     con = sqlite3.connect(DB)
     count = con.execute("SELECT COUNT(*) FROM muscle_group").fetchone()[0]
     con.close()
-    if count != 17: raise SystemExit(f"FAIL: expected 17 seeded muscle groups, got {count}")
+    if count != 18: raise SystemExit(f"FAIL: expected 18 seeded muscle groups, got {count}")
     print("ok   the list is browsable, info shows a group's name and description, and the rows are untouched")
     print()
 

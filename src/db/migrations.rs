@@ -274,12 +274,26 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
 
         -- FK column the per-log inclusion loaders join on.
         CREATE INDEX idx_inclusions_log ON macro_log_inclusions(macro_log_id);
+
+        -- The 'Hip abductors' default muscle group, appended here while this
+        -- migration is still unfrozen (v9 has never run against a file, so
+        -- editing it diverges no database) the way the 'Hip adductors' default
+        -- shipped in v6: an existing file gains the new group even though the
+        -- muscle_group table itself is unchanged. Guarded by the name's
+        -- UNIQUE index (ON CONFLICT DO NOTHING): a database that already
+        -- holds the name — a fresh build's seed, or one added by hand — is
+        -- left alone. The idempotent seed that runs after every migration
+        -- reconciles all the default rows, this one included.
+        INSERT INTO muscle_group (name, description)
+        VALUES ('Hip abductors', 'Muscles on the outside of the pelvis. Trained using movements that push the legs apart.')
+        ON CONFLICT(name) DO NOTHING;
         ",
     )
     .down(
         r"
         DROP TABLE macro_log_inclusions;
         DROP TABLE macro_logs;
+        DELETE FROM muscle_group WHERE name = 'Hip abductors';
         ",
     )
     .comment(
@@ -304,7 +318,10 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          per-log lookups. A log's inclusions cascade away with it (CASCADE); an \
          item included in any log can't be deleted (RESTRICT). There is no \
          cycle trigger: a log contains items, never other logs, so the graph \
-         cannot loop. See src/domain/macro_log.rs.",
+         cannot loop. See src/domain/macro_log.rs. This migration also seeds \
+         the 'Hip abductors' default muscle group (appended in place — see the \
+         guarding INSERT at the end of its `up`), the v6 'Hip adductors' \
+         precedent.",
     ),
 ];
 

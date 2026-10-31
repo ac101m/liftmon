@@ -612,6 +612,49 @@ mod tests {
     }
 
     #[test]
+    fn v9_adds_hip_abductors_only_when_no_same_named_row_exists() {
+        let scratch = Scratch::new("v9-hip-abductors.sqlite");
+
+        // A real v8 file (the first eight migrations) that already holds a
+        // hand-added "Hip abductors" row. Upgrading through the v9 migration
+        // must leave it as the only such row — ON CONFLICT DO NOTHING on the
+        // UNIQUE name — and the seed that follows the upgrade reconciles its
+        // description to the const (the usual post-upgrade end state).
+        let v8 = Migrations::from_slice(&super::migrations::MIGRATION_DEFS[..8]);
+        let mut conn = Connection::open(&scratch.path).unwrap();
+        v8.to_latest(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO muscle_group (name, description) VALUES ('Hip abductors', 'added by hand')",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut db = Database::open(&scratch.path).unwrap();
+        assert_eq!(
+            db.status().unwrap(),
+            DbStatus::Upgradeable { from: 8, to: 9 }
+        );
+        db.upgrade().unwrap();
+
+        let hips: Vec<(i64, String)> = db
+            .connection()
+            .prepare("SELECT id, description FROM muscle_group WHERE name = 'Hip abductors'")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(hips.len(), 1, "the pre-existing row must not be duplicated");
+        let const_description = super::muscle_groups::INITIAL_MUSCLE_GROUPS
+            .iter()
+            .find(|(name, _)| *name == "Hip abductors")
+            .map(|(_, description)| *description)
+            .unwrap();
+        assert_eq!(hips[0].1, const_description);
+    }
+
+    #[test]
     fn stimulus_type_is_restricted_to_the_three_kinds() {
         let scratch = Scratch::new("stimulus-type.sqlite");
         let mut conn = Connection::open(&scratch.path).unwrap();

@@ -83,6 +83,10 @@ pub(crate) const INITIAL_MUSCLE_GROUPS: &[(&str, &str)] = &[
         "Hip adductors",
         "Muscles of the inside leg and groin. Trained using movements that squeeze the legs together.",
     ),
+    (
+        "Hip abductors",
+        "Muscles on the outside of the pelvis. Trained using movements that push the legs apart.",
+    ),
 ];
 
 /// Load the initial muscle groups into the `muscle_group` table, idempotently.
