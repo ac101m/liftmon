@@ -1325,7 +1325,7 @@ def macros_show_logs_path():
     if rows.index("2026/10/02 · 320kcal · 60g protein") > rows.index("2026/10/01 · 220kcal · 33g protein"):
         raise SystemExit("FAIL: the log picker should list the newest date first")
     app.send("2026/10/02\r")                   # filter to the newest log, pick it
-    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "delete", "back")
+    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "delete item", "delete", "back")
     app.send("\r")                             # info (index 0)
     app.check("info: totals then items",
               "Macro log for 2026/10/02:",
@@ -1350,7 +1350,7 @@ def macros_show_logs_path():
               "  Calories: 380 kcal",
               "  2 × Chicken breast",          # logged at 09:00 ...
               "  1 × Whole milk")              # ... before the milk just added
-    app.send("\x1b[B\x1b[B\r")                 # delete (index 2)
+    app.send("\x1b[B\x1b[B\x1b[B\r")           # delete (index 3, below delete item)
     app.check("delete prompt defaults to No", "Delete macro log for 2026/10/02?", "Yes", "No")
     app.send("\r")                             # No (the default): the log stays
     app.check("declined delete keeps the log", "═[Macro log for 2026/10/02]", "info", "delete")
@@ -1385,6 +1385,96 @@ def macros_show_logs_path():
     if items_left != 2:
         raise SystemExit(f"FAIL: deleting a log must not touch its items, got {items_left}")
     print("ok   a log's info shows totals then items in creation order; add item extends the day; delete (No by default) removes only that log and its inclusions")
+    print()
+
+def macros_log_delete_item_path():
+    print("=== MACROS LOG DELETE-ITEM PATH: a filter picker removes one recorded use (duplicates by id); a day emptied of items keeps its row ===")
+    # Two of the same item on one day — the table-exists-for-duplicates shape —
+    # distinguishable only by quantity. Totals for the day: 3 × Chicken breast
+    # + 1 × Whole milk.
+    seed_db(items=(
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
+        ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
+    ), logs=(
+        ("2026-10-02", (("Chicken breast", 2.0, "2026-10-02 09:00:00+00:00"),
+                        ("Whole milk", 1.0, "2026-10-02 10:00:00+00:00"),
+                        ("Chicken breast", 1.0, "2026-10-02 18:00:00+00:00"),)),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.send("\x1b[B\r")                       # show logs (index 1)
+    app.check("date picker with the day's totals", "═[Select date]",
+              "2026/10/02 · 540kcal · 93g protein")
+    app.send("2026/10/02\r")                   # filter to the day, pick it
+    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "delete item", "delete", "back")
+    app.send("\x1b[B\x1b[B\r")                 # delete item (index 2)
+    # The picker rows read exactly like the info's "Items:" list, in creation
+    # order — 2 × chicken at 09:00, milk at 10:00, then the second chicken at
+    # 18:00.
+    app.check("delete-item picker", "═[Select item to remove]", "type to filter",
+              "2 × Chicken breast", "1 × Whole milk", "1 × Chicken breast")
+    rows = [row.strip() for row in app.grid()]
+    if not (rows.index("2 × Chicken breast") < rows.index("1 × Whole milk") < rows.index("1 × Chicken breast")):
+        raise SystemExit("FAIL: the delete-item picker should list the day's items in creation order")
+    app.send("1 × Chicken breast\r")           # filter to the qty-1 use, pick it
+    app.check("remove confirm defaults to No", "Remove 1 × Chicken breast from 2026/10/02?", "Yes", "No")
+    app.send("\r")                             # No (the default): the use stays
+    app.check("declined removal keeps the item", "═[Macro log for 2026/10/02]", "delete item")
+    app.send("\r")                             # delete item again (highlight held on it)
+    app.check("delete-item picker (2nd)", "═[Select item to remove]", "1 × Chicken breast")
+    app.send("1 × Chicken breast\r")
+    app.check("remove confirm (2nd)", "Remove 1 × Chicken breast from 2026/10/02?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes: up to it, remove the use
+    app.check("removed, back on the options",
+              "Removed 1 × Chicken breast from 2026/10/02",
+              "═[Macro log for 2026/10/02]")
+    app.send("\x1b[A\x1b[A\r")                 # info (index 0) — up two from delete item
+    app.check("info reflects the removal: the qty-2 chicken and the milk survive",
+              "  Fat: 16 g (of which saturates: 4 g)",
+              "  Carbs: 10 g (of which sugars: 5 g)",
+              "  Protein: 63 g",
+              "  Calories: 380 kcal",
+              "Items:",
+              "  2 × Chicken breast",          # the 09:00 use ...
+              "  1 × Whole milk")              # ... then the milk; the 18:00 use is gone
+    rows = [row.strip() for row in app.grid()]
+    if any(row == "1 × Chicken breast" for row in rows):
+        raise SystemExit("FAIL: removing one use must not touch the other use of the same item")
+    # Empty the day as far as removals will go, then prove the guard: a day
+    # emptied of items keeps its log row (it resolves to zeros and is still
+    # listed — whole-day "delete" is the way to remove the date).
+    app.send("\x1b[B\x1b[B\r")                 # delete item again (index 2)
+    app.send("Whole milk\r")                   # filter to the milk, pick it
+    app.check("remove milk confirm", "Remove 1 × Whole milk from 2026/10/02?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes
+    app.check("removed the milk", "Removed 1 × Whole milk from 2026/10/02", "═[Macro log for 2026/10/02]")
+    app.send("\r")                             # delete item (highlight held on it)
+    app.send("2 × Chicken breast\r")
+    app.check("remove last item confirm", "Remove 2 × Chicken breast from 2026/10/02?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes
+    app.check("removed the last item", "Removed 2 × Chicken breast from 2026/10/02", "═[Macro log for 2026/10/02]")
+    app.send("\r")                             # delete item again: nothing left to remove
+    app.check("empty day guard", "No items logged on this date yet", "═[Macro log for 2026/10/02]")
+    app.send("\x1b")                           # Escape: back out to the date picker
+    app.check("back at the picker", "═[Select date]", "2026/10/02 · 0kcal · 0g protein")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    left = con.execute(
+        "SELECT COUNT(*) FROM macro_log_inclusions mi"
+        " JOIN macro_logs ml ON ml.id = mi.macro_log_id WHERE ml.date = '2026-10-02'").fetchone()[0]
+    log_row = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2026-10-02'").fetchone()[0]
+    items_left = con.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+    con.close()
+    if left != 0:
+        raise SystemExit(f"FAIL: removing every item should empty the day, got {left} inclusions")
+    if log_row != 1:
+        raise SystemExit(f"FAIL: an emptied day keeps its log row, got {log_row}")
+    if items_left != 2:
+        raise SystemExit(f"FAIL: removing uses must not touch items, got {items_left}")
+    print("ok   delete item removes exactly the picked use (duplicates by id, No by default); an emptied day keeps its row and guards 'No items logged on this date yet'")
     print()
 
 def macros_add_item_path():
@@ -2627,6 +2717,7 @@ delete_path()
 macros_path()
 macros_log_item_path()
 macros_show_logs_path()
+macros_log_delete_item_path()
 macros_add_item_path()
 macros_add_recipe_item_path()
 macros_edit_item_name_path()

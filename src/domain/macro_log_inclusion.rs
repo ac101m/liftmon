@@ -86,8 +86,8 @@ impl MacroLogInclusion {
 
     /// Drop one inclusion **by its own id**, so removing one use never touches
     /// a later use of the same item (the duplicates the table exists for).
-    /// [`DomainError::MissingRow`] when no such row exists.
-    #[allow(dead_code)] // waits on per-inclusion removal in the log review UI
+    /// [`DomainError::MissingRow`] when no such row exists. Wired to the log
+    /// options screen's "delete item" action.
     pub fn remove(conn: &Connection, inclusion_id: i64) -> Result<(), DomainError> {
         let changed = conn.execute(
             "DELETE FROM macro_log_inclusions WHERE id = ?1",

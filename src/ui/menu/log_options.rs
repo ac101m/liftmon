@@ -4,10 +4,12 @@
 //! same text the info section heads itself with), and the options show the
 //! log's info — the day's total macros in the items' format, then each item it
 //! recorded under an "Items:" heading, in creation order — add another item to
-//! the same day (the log-item flow without the date ask), delete the whole log
-//! (after a Yes/No "are you sure" that defaults to "No", taking its inclusions
-//! with it), or back out to the log picker. Deletion and backing out both
-//! return to the picker, which no longer lists a deleted date.
+//! the same day (the log-item flow without the date ask), remove one recorded
+//! item ("delete item": a filter picker over the day's logged items, then a
+//! Yes/No "are you sure" that defaults to "No", dropping exactly that one use),
+//! delete the whole log (after a Yes/No "are you sure" that defaults to "No",
+//! taking its inclusions with it), or back out to the log picker. Deleting or
+//! backing out returns to the picker, which no longer lists a deleted date.
 
 use chrono::NaiveDate;
 use ratatui::style::{Modifier, Style};
@@ -41,7 +43,7 @@ pub(super) fn run(
         };
         let (choice, selected_here) = shell.ask_selected(
             Some(format!("Macro log for {}", format_date(date))),
-            ["info", "add item", "delete", "back"],
+            ["info", "add item", "delete item", "delete", "back"],
             selected,
         )?;
         selected = selected_here;
@@ -52,6 +54,11 @@ pub(super) fn run(
             // Add another item to this date — the log-item flow without the
             // date ask, since the date is the very reason we're here.
             Some("add item") => super::log_item::record_use(shell, conn, date)?,
+            // Undo one mistaken entry: pick the use to drop from a filter
+            // picker over the day's logged items, then confirm. Stays on this
+            // menu either way (removing the last use leaves the day's empty
+            // log row — whole-day "delete" is the way to remove the date).
+            Some("delete item") => remove_item(shell, conn, &log)?,
             // Delete the log after a Yes/No "are you sure" that defaults to
             // "No" — deleting is destructive, so an explicit "Yes" is required
             // even for an accidental Enter. Unlike an item there is nothing to
@@ -94,15 +101,69 @@ fn log_info_lines(conn: &Connection, log: &MacroLog) -> Result<Vec<Line<'static>
         Style::new().add_modifier(Modifier::BOLD),
     )]));
     for inclusion in MacroLogInclusion::for_log(conn, log.id)? {
-        // The inclusion carries the item id and the quantity; the item's name
-        // comes from a lookup (`for_log` orders by creation, so the lines come
-        // out in the order the items were logged, not by name).
-        let name = Item::find_by_id(conn, inclusion.item_id)?
-            .map(|item| item.name)
-            .unwrap_or_else(|| inclusion.item_id.to_string());
-        lines.push(Line::from(format!("  {} × {}", inclusion.quantity, name)));
+        lines.push(Line::from(format!(
+            "  {}",
+            inclusion_label(conn, &inclusion)?
+        )));
     }
     Ok(lines)
+}
+
+/// "2 × Chicken breast" — the line the info's "Items:" list shows and the
+/// delete-item picker rows read. The inclusion carries the item id and the
+/// quantity; the item's name comes from a lookup (`for_log` orders by
+/// creation, so the rows come out in the order the items were logged, not by
+/// name). Identical rows (same item at the same quantity) render identically;
+/// they are interchangeable in a log, so labels needn't disambiguate them.
+fn inclusion_label(conn: &Connection, inclusion: &MacroLogInclusion) -> Result<String, UiError> {
+    let name = Item::find_by_id(conn, inclusion.item_id)?
+        .map(|item| item.name)
+        .unwrap_or_else(|| inclusion.item_id.to_string());
+    Ok(format!("{} × {}", inclusion.quantity, name))
+}
+
+/// Drop one recorded item from the day's log: a filter picker over the day's
+/// logged items (the same `{qty} × {name}` lines the info's "Items:" list
+/// shows, in creation order), then a No-defaulted Yes/No — dropping exactly
+/// the picked use by its own id, never a later use of the same item. Escape or
+/// "No" leaves the log untouched; both stay on this menu.
+fn remove_item(shell: &mut Shell, conn: &Connection, log: &MacroLog) -> Result<(), UiError> {
+    let inclusions = MacroLogInclusion::for_log(conn, log.id)?;
+    if inclusions.is_empty() {
+        // Only reachable once removal has emptied a day — a log is created by
+        // logging its first item, so there is nothing to remove until then.
+        shell.log("No items logged on this date yet");
+        return Ok(());
+    }
+    let rows: Vec<(String, i64)> = inclusions
+        .iter()
+        .map(|inclusion| Ok((inclusion_label(conn, inclusion)?, inclusion.id)))
+        .collect::<Result<_, UiError>>()?;
+    let labels: Vec<String> = rows.iter().map(|(label, _)| label.clone()).collect();
+    let Some(chosen) = shell.pick(
+        Some("Select item to remove".to_string()),
+        Some("type to filter".to_string()),
+        labels,
+    )?
+    else {
+        return Ok(()); // Escape: backed out of the picker
+    };
+    // First matching row, by label. Identical labels mean identical rows
+    // (same item, same quantity), interchangeable in a day's log, so which of
+    // the duplicates is dropped cannot be told apart in what remains.
+    let Some((_, inclusion_id)) = rows.into_iter().find(|(label, _)| label == &chosen) else {
+        shell.log("That item is no longer there");
+        return Ok(());
+    };
+    if !shell.confirm(Some(format!(
+        "Remove {chosen} from {}?",
+        format_date(log.date)
+    )))? {
+        return Ok(()); // No (the default): the use stays
+    }
+    MacroLogInclusion::remove(conn, inclusion_id)?;
+    shell.log(format!("Removed {chosen} from {}", format_date(log.date)));
+    Ok(())
 }
 
 #[cfg(test)]

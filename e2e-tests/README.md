@@ -100,10 +100,26 @@ resolved total macros in the items' format headed by that same title, then an
 of 2 × chicken breast plus 1 × whole milk reads "Fat: 16 g (of which saturates:
 4 g)", "Carbs: 10 g (of which sugars: 5 g)", "Protein: 63 g", "Calories: 380
 kcal" over "Items:" "2 × Chicken breast" and "1 × Whole milk"; "add item"
-extends that same date straight from the item picker (no date ask), and
-"delete" confirms with a No-defaulted Yes/No, removes the day's `macro_logs`
+extends that same date straight from the item picker (no date ask); "delete
+item" — just below "add item" — opens a filter picker over the day's logged
+items in creation order as `{qty} × {item}` (the same lines the "Items:" list
+shows) and removes the picked use behind a No-defaulted Yes/No, and "delete"
+confirms with a No-defaulted Yes/No, removes the day's `macro_logs`
 row with its inclusions (the cascade), and leaves the picker — the other days
 untouched), the macros
+log delete-item path (removing one mistaken entry from a day: the day's
+options' "delete item" opens that filter picker over what was logged that day,
+in creation order — the same `{qty} × {item}` lines the info's "Items:" list
+shows — typing narrows it like every picker, and picking one opens a
+No-defaulted Yes/No "Remove {qty} × {item} from {date}?"; Yes drops exactly
+that one row, so in a day that logged 2 × Chicken breast and 1 × Chicken
+breast, removing the 1 × leaves the 2 × — each use is its own row, removed by
+its own id, and identical rows are interchangeable since removing either leaves
+the same remaining log; Escape or "No" leaves the log untouched, and a day with
+nothing logged to remove guards with "No items logged on this date yet"; an
+emptied day keeps its `macro_logs` row, resolving to zeros and still listed in
+the picker as `0kcal · 0g protein`, with whole-day "delete" the way to remove
+the date), the macros
 add-item path (add item first asks whether the item is a plain or a recipe
 item; a plain item is the existing leaf form — name plus six macro fields
 entered the way a label lists them, totals first then the "of which" part:
