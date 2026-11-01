@@ -100,7 +100,7 @@ pub(super) fn run(
                 &item,
                 true,
                 &MacroPair {
-                    title: "Fat (g)",
+                    title: "Total fat (g)",
                     label: "fat",
                     total_of: |i| i.unsaturated_fats + i.saturated_fats,
                     part_of: |i| i.saturated_fats,
@@ -136,7 +136,7 @@ pub(super) fn run(
                 &item,
                 true,
                 &MacroPair {
-                    title: "Carbs (g)",
+                    title: "Total carbs (g)",
                     label: "carbs",
                     total_of: |i| i.complex_carbohydrates + i.sugars,
                     part_of: |i| i.sugars,
@@ -327,7 +327,7 @@ fn edit_macro(
 /// and the field/log wording plus the part and total names for the refusal
 /// message.
 struct MacroPair {
-    /// The edit field's heading (with units), e.g. "Fat (g)".
+    /// The edit field's heading (with units), e.g. "Total fat (g)".
     title: &'static str,
     /// The lowercase word for the "Updated … of 'item'" log line.
     label: &'static str,

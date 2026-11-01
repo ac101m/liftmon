@@ -1400,12 +1400,13 @@ def macros_add_item_path():
     app.check("item name prompt", "═[Item name]", "e.g. Milk")
     app.send("Whole milk\r")                   # name
     # Macros are entered the way a label lists them — totals first, then the
-    # "of which" part: Fat (g), Saturated fats (g), Carbs (g), Sugars (g).
-    app.check("fat prompt", "═[Fat (g)]", "blank = 0")
+    # "of which" part: Total fat (g), Saturated fats (g), Total carbs (g),
+    # Sugars (g).
+    app.check("fat prompt", "═[Total fat (g)]", "blank = 0")
     app.send("5.9\r")                          # total fat
     app.check("saturated fats prompt", "═[Saturated fats (g)]", "blank = 0")
     app.send("2.3\r")                          # of which saturates
-    app.check("carbs prompt with blank = 0 hint", "═[Carbs (g)]", "blank = 0")
+    app.check("carbs prompt with blank = 0 hint", "═[Total carbs (g)]", "blank = 0")
     app.send("\r")                             # carbs: blank default -> 0
     app.check("sugars prompt", "═[Sugars (g)]", "blank = 0")
     app.send("\r")                             # sugars: blank default -> 0
@@ -1808,11 +1809,11 @@ def macros_edit_macros_path():
     # 1. "edit fat" is prefilled with the current total (3.6 + 2.3). A total
     # below the stored part is refused, then a valid one derives the residual.
     app.send("\x1b[B\x1b[B\r")                 # edit fat (index 2)
-    app.check("fat field prefilled with the total", "═[Fat (g)]", "> 5.9")
+    app.check("fat field prefilled with the total", "═[Total fat (g)]", "> 5.9")
     app.send("\x7f" * 3)                       # clear the prefilled "5.9"
     app.send("1\r")                            # less than the stored saturated fats
     app.check("a part over its total is refused",
-              "Saturated fats can't be more than total fat", "═[Fat (g)]", "> 1")
+              "Saturated fats can't be more than total fat", "═[Total fat (g)]", "> 1")
     app.send("\x7f")                           # clear the "1"
     app.send("6\r")
     app.check("fat updated, back on the options",
@@ -1828,7 +1829,7 @@ def macros_edit_macros_path():
 
     # 3. The carb pair likewise: total, then its part.
     app.send("\x1b[B\r")                       # edit carbs (index 4)
-    app.check("carbs field prefilled with the total", "═[Carbs (g)]", "> 9.4")
+    app.check("carbs field prefilled with the total", "═[Total carbs (g)]", "> 9.4")
     app.send("\x7f" * 3)                       # clear the prefilled "9.4"
     app.send("10\r")
     app.check("carbs updated, back on the options",

@@ -65,7 +65,7 @@ fn add_item(shell: &mut Shell, conn: &Connection) -> Result<Option<Item>, UiErro
         // first, with the saturated-fats and sugars parts right after; the
         // unsaturated/complex columns hold the residuals so nothing on a label
         // needs manual subtraction.
-        let Some(fat) = ask_amount(shell, "Fat (g)")? else {
+        let Some(fat) = ask_amount(shell, "Total fat (g)")? else {
             return Ok(None); // abandoned mid-form
         };
         let Some(saturated_fats) = ask_amount_at_most(
@@ -77,7 +77,7 @@ fn add_item(shell: &mut Shell, conn: &Connection) -> Result<Option<Item>, UiErro
         else {
             return Ok(None); // abandoned mid-form
         };
-        let Some(carbs) = ask_amount(shell, "Carbs (g)")? else {
+        let Some(carbs) = ask_amount(shell, "Total carbs (g)")? else {
             return Ok(None); // abandoned mid-form
         };
         let Some(sugars) = ask_amount_at_most(

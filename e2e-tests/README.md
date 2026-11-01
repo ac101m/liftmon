@@ -107,8 +107,8 @@ untouched), the macros
 add-item path (add item first asks whether the item is a plain or a recipe
 item; a plain item is the existing leaf form — name plus six macro fields
 entered the way a label lists them, totals first then the "of which" part:
-"Fat (g)" then "Saturated fats (g)", "Carbs (g)" then "Sugars (g)", then
-protein and calories, with the unsaturated/complex residuals derived (5.9 −
+"Total fat (g)" then "Saturated fats (g)", "Total carbs (g)" then "Sugars (g)",
+then protein and calories, with the unsaturated/complex residuals derived (5.9 −
 2.3 stored) — blank
 fields default to zero per the "blank = 0" prompt, a part that would exceed its
 total is refused ("Saturated fats can't be more than total fat"), a duplicate
