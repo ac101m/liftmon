@@ -534,8 +534,10 @@ pub(super) fn resolved_macro_lines(macros: &Macros) -> Vec<Line<'static>> {
 }
 
 /// Round a value to the nearest hundredth for display, so a computed sum (a
-/// float addition like 0.1 + 0.2) never prints a long error tail.
-fn round2(x: f64) -> f64 {
+/// float addition like 0.1 + 0.2) never prints a long error tail. Shared with
+/// the show-logs picker, whose day-total labels must match the info screen's
+/// numbers.
+pub(super) fn round2(x: f64) -> f64 {
     (x * 100.0).round() / 100.0
 }
 

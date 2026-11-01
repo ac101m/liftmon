@@ -91,7 +91,9 @@ the text kept, a refused quantity re-asks the same way, and Escape cancels
 before anything is recorded — with the log rows and inclusions' quantities
 verified in the database), the macros
 show-logs path (a "show logs" option sits just below "log item": a filter picker
-over the logged dates in the app's `YYYY/MM/DD` form, newest first, lands on the
+over the logged dates in the app's `YYYY/MM/DD` form — each row carrying its
+day's resolved calories and protein as bare quantities, calories first,
+`2026/10/02 · 320kcal · 60g protein` — newest first, lands on the
 day's options screen titled "Macro log for <date>", whose info shows the day's
 resolved total macros in the items' format headed by that same title, then an
 "Items:" list of what was logged in creation order as `{qty} × {item}` — a log

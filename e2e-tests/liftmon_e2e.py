@@ -1313,11 +1313,16 @@ def macros_show_logs_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
     app.send("\x1b[B\r")                       # show logs (index 1)
-    app.check("log picker", "═[Select date]", "type to filter", "2026/10/02", "2026/10/01")
+    # Each date row carries its day's resolved calories and protein — bare
+    # quantities, calories first — so the totals are legible before opening
+    # the log.
+    app.check("log picker", "═[Select date]", "type to filter",
+              "2026/10/02 · 320kcal · 60g protein",
+              "2026/10/01 · 220kcal · 33g protein")
     # The picker lists the most recent log at the top — the show-sessions
     # order, not the oldest-first the domain returns.
     rows = [row.strip() for row in app.grid()]
-    if rows.index("2026/10/02") > rows.index("2026/10/01"):
+    if rows.index("2026/10/02 · 320kcal · 60g protein") > rows.index("2026/10/01 · 220kcal · 33g protein"):
         raise SystemExit("FAIL: the log picker should list the newest date first")
     app.send("2026/10/02\r")                   # filter to the newest log, pick it
     app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "delete", "back")
@@ -1354,11 +1359,11 @@ def macros_show_logs_path():
     app.send("\x1b[A\r")                       # Yes: up to it, delete the log
     app.check("deleted, back at the picker",
               "Deleted macro log for 2026/10/02",
-              "═[Select date]", "2026/10/01")
+              "═[Select date]", "2026/10/01 · 220kcal · 33g protein")
     # The deleted date is gone as a picker row — earlier history lines about
     # it remain, so compare the row's whole text rather than substring.
     rows = [row.strip() for row in app.grid()]
-    if any(row == "2026/10/02" for row in rows):
+    if any(row.startswith("2026/10/02") for row in rows):
         raise SystemExit("FAIL: a deleted log's date should leave the picker")
     app.close()
 
