@@ -9,6 +9,8 @@
 //! legible before opening it. The dates are UNIQUE (one log per day), so
 //! picking one names the log exactly. Escape backs out to the macros menu.
 
+use std::collections::HashMap;
+
 use rusqlite::Connection;
 
 use crate::domain::MacroLog;
@@ -29,12 +31,16 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         shell.log("No logs yet — log an item first");
         return Ok(Some(Menu::Macros));
     }
-    // Each label is one resolved-macros pass — the same per-log resolution the
+    // Each label is a resolved-macros pass — the same per-day resolution the
     // log options info screen does for the picked log — so a day's totals
-    // match the totals its info shows, rounded to the hundredth.
+    // match the totals its info shows, rounded to the hundredth. One `cache`
+    // spans the whole list: every day's items resolve at most once, so a long
+    // history that repeats the same handful of items costs a couple of hash
+    // lookups per extra day, not another DAG walk.
+    let mut cache = HashMap::new();
     let mut labels = Vec::with_capacity(logs.len());
     for log in logs.iter().rev() {
-        let macros = MacroLog::resolved_macros(conn, log.id)?;
+        let macros = MacroLog::resolved_macros_cached(conn, log.id, &mut cache)?;
         labels.push(format!(
             "{} · {}kcal · {}g protein",
             format_date(log.date),

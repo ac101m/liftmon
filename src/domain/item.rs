@@ -7,7 +7,7 @@
 //! from that graph by [`Item::resolved_macros`]) — see `src/domain/
 //! item_reference.rs` for the composition DAG.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::{Connection, params};
 
@@ -277,8 +277,27 @@ impl Item {
     /// `item_reference_no_cycles` trigger keep the graph acyclic, so the
     /// recursion terminates; a visited set turns any hand-edited loop into a
     /// [`DomainError::CyclicComposition`] rather than a hang.
+    ///
+    /// A thin wrapper over [`Item::resolved_macros_cached`] with a fresh
+    /// per-call cache — the form for a single item. Callers resolving many
+    /// items together should share one cache instead.
     pub fn resolved_macros(conn: &Connection, id: i64) -> Result<Macros, DomainError> {
-        resolve(conn, id, &mut HashSet::new())
+        Self::resolved_macros_cached(conn, id, &mut HashMap::new())
+    }
+
+    /// Like [`Item::resolved_macros`], but shares `cache` across calls, so each
+    /// item's value — the composite DAG walk among them — is computed once per
+    /// cache lifetime rather than once per reference that names it. The cache
+    /// spans exactly one screen render (read-only), which keeps the memo sound,
+    /// and the caller owns and drops it with the render. Powers the show-logs
+    /// picker, where a long history repeats a handful of items across every
+    /// day.
+    pub(crate) fn resolved_macros_cached(
+        conn: &Connection,
+        id: i64,
+        cache: &mut HashMap<i64, Macros>,
+    ) -> Result<Macros, DomainError> {
+        resolve(conn, id, &mut HashSet::new(), cache)
     }
 }
 
@@ -289,22 +308,37 @@ impl Item {
 /// both the domain and the schema guard against it — errors instead of
 /// recursing forever; each branch removes its item afterwards, so a DAG that
 /// reaches the same descendant by several routes counts it on each route.
-fn resolve(conn: &Connection, id: i64, visited: &mut HashSet<i64>) -> Result<Macros, DomainError> {
+/// `cache` memoizes completed resolutions: a value is written in only after
+/// its item's full resolve returns, so a hit is always a complete, acyclic
+/// result — safe to reuse mid-path, and invisible to `visited`'s cycle check,
+/// whose cycle items never complete and so never enter the cache.
+fn resolve(
+    conn: &Connection,
+    id: i64,
+    visited: &mut HashSet<i64>,
+    cache: &mut HashMap<i64, Macros>,
+) -> Result<Macros, DomainError> {
+    if let Some(macros) = cache.get(&id) {
+        return Ok(*macros);
+    }
     // The composition children always exist (the schema restricts deletes of
     // used items), but a raw-deleted row would surface here rather than
     // panic.
     let item = Item::find_by_id(conn, id)?.ok_or(DomainError::MissingRow { kind: "item", id })?;
     let references = ItemReference::for_item(conn, id)?;
     if references.is_empty() {
-        // A leaf: its own stored macros.
-        return Ok(Macros {
+        // A leaf: its own stored macros, memoized like any other result so a
+        // repeat reference costs a hash lookup instead of a re-walk.
+        let macros = Macros {
             unsaturated_fats: item.unsaturated_fats,
             saturated_fats: item.saturated_fats,
             complex_carbohydrates: item.complex_carbohydrates,
             sugars: item.sugars,
             protein: item.protein,
             calories: item.calories,
-        });
+        };
+        cache.insert(id, macros);
+        return Ok(macros);
     }
 
     let mut macros = Macros {
@@ -325,7 +359,7 @@ fn resolve(conn: &Connection, id: i64, visited: &mut HashSet<i64>) -> Result<Mac
                 child,
             });
         }
-        let child_macros = resolve(conn, reference.child_id, visited)?;
+        let child_macros = resolve(conn, reference.child_id, visited, cache)?;
         macros.unsaturated_fats += reference.quantity * child_macros.unsaturated_fats;
         macros.saturated_fats += reference.quantity * child_macros.saturated_fats;
         macros.complex_carbohydrates += reference.quantity * child_macros.complex_carbohydrates;
@@ -334,6 +368,7 @@ fn resolve(conn: &Connection, id: i64, visited: &mut HashSet<i64>) -> Result<Mac
         macros.calories += reference.quantity * child_macros.calories;
         visited.remove(&reference.child_id);
     }
+    cache.insert(id, macros);
     Ok(macros)
 }
 

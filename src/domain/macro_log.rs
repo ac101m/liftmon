@@ -10,6 +10,8 @@
 //! macros — a composite item counts through its composition, like everywhere
 //! else.
 
+use std::collections::HashMap;
+
 use chrono::NaiveDate;
 use rusqlite::{Connection, params};
 
@@ -104,7 +106,25 @@ impl MacroLog {
     /// be one row at 2 or two rows at 1 (the same total), and a composite item
     /// resolves through its composition; an empty log sums to all zeros, like a
     /// leaf item's zero macros.
+    ///
+    /// A thin wrapper over [`MacroLog::resolved_macros_cached`] with a fresh
+    /// per-call cache — the form for a single log. Callers resolving many days
+    /// together should share one cache across the whole batch instead.
     pub fn resolved_macros(conn: &Connection, log_id: i64) -> Result<Macros, DomainError> {
+        Self::resolved_macros_cached(conn, log_id, &mut HashMap::new())
+    }
+
+    /// Like [`MacroLog::resolved_macros`], but shares one item cache across the
+    /// whole call, so each included item — composites especially — is resolved
+    /// at most once. The show-logs picker passes one cache across every logged
+    /// day: a long history repeats a handful of items across all its days, so
+    /// the cost tracks distinct items rather than days × inclusions. The cache
+    /// spans a single screen render (read-only), which keeps the memo sound.
+    pub(crate) fn resolved_macros_cached(
+        conn: &Connection,
+        log_id: i64,
+        cache: &mut HashMap<i64, Macros>,
+    ) -> Result<Macros, DomainError> {
         let mut macros = Macros {
             unsaturated_fats: 0.0,
             saturated_fats: 0.0,
@@ -114,7 +134,7 @@ impl MacroLog {
             calories: 0.0,
         };
         for inclusion in MacroLogInclusion::for_log(conn, log_id)? {
-            let item = Item::resolved_macros(conn, inclusion.item_id)?;
+            let item = Item::resolved_macros_cached(conn, inclusion.item_id, cache)?;
             macros.unsaturated_fats += inclusion.quantity * item.unsaturated_fats;
             macros.saturated_fats += inclusion.quantity * item.saturated_fats;
             macros.complex_carbohydrates += inclusion.quantity * item.complex_carbohydrates;
@@ -251,6 +271,35 @@ mod tests {
             ),
             // 2 × A + 1.5 × (2 × A) = 5 × A.
             (5.0, 2.5, 10.0, 2.5, 15.0, 50.0)
+        );
+    }
+
+    #[test]
+    fn resolved_macros_cached_matches_fresh_resolution_across_shared_items() {
+        let (conn, a, b, first) = test_db();
+        let second =
+            MacroLog::create(&conn, NaiveDate::from_ymd_opt(2026, 10, 31).unwrap()).unwrap();
+        // Two days both logging the leaf A and the composite B = 2 × A — the
+        // long-history shape, where the same items repeat across many days.
+        for (log, qty_a, qty_b) in [(first, 2.0, 1.0), (second, 1.0, 3.0)] {
+            MacroLogInclusion::add(&conn, log.id, a.id, qty_a, moment(2026, 10, 30, 8, 0)).unwrap();
+            MacroLogInclusion::add(&conn, log.id, b.id, qty_b, moment(2026, 10, 30, 12, 0))
+                .unwrap();
+        }
+
+        // A shared cache across the days must agree with resolving each day
+        // afresh — memoization only skips repeated work, never changes the
+        // result.
+        let mut cache = HashMap::new();
+        let shared_first = MacroLog::resolved_macros_cached(&conn, first.id, &mut cache).unwrap();
+        let shared_second = MacroLog::resolved_macros_cached(&conn, second.id, &mut cache).unwrap();
+        assert_eq!(
+            shared_first,
+            MacroLog::resolved_macros(&conn, first.id).unwrap()
+        );
+        assert_eq!(
+            shared_second,
+            MacroLog::resolved_macros(&conn, second.id).unwrap()
         );
     }
 
