@@ -104,8 +104,13 @@ row with its inclusions (the cascade), and leaves the picker — the other days
 untouched), the macros
 add-item path (add item first asks whether the item is a plain or a recipe
 item; a plain item is the existing leaf form — name plus six macro fields
-entered one at a time, blank
-fields default to zero per the "blank = 0" prompt, a duplicate name is refused
+entered the way a label lists them, totals first then the "of which" part:
+"Fat (g)" then "Saturated fats (g)", "Carbs (g)" then "Sugars (g)", then
+protein and calories, with the unsaturated/complex residuals derived (5.9 −
+2.3 stored) — blank
+fields default to zero per the "blank = 0" prompt, a part that would exceed its
+total is refused ("Saturated fats can't be more than total fat"), a duplicate
+name is refused
 at the name field before any macros are typed, and abandoning the retry leaves
 the original item alone), the macros
 add-recipe-item path (a recipe item is a composite: a name, then existing
@@ -142,15 +147,22 @@ refused with "Enter a number greater than 0" and re-asks prefilled), writes
 the "Added {qty} × {child} to '{parent}'." edge and returns to the options;
 Escape in the picker or the quantity field adds nothing, the DB holds exactly
 the three expected ingredient rows, and info reflects the grown recipe), the macros
-edit-macros path (a plain item's options list one "edit \<macro\>" action per
-stored macro — unsaturated fats, saturated fats, complex carbohydrates, sugars,
-protein and calories; each opens the field prefilled with the current value,
-re-asks until it parses, and reuses the add form's parser, so clearing the
-field reads as zero (an invalid entry is refused with the add form's "Enter a
-number, or leave blank for 0" and re-asks); editing protein 3.3 → 15 and
-clearing complex carbohydrates 4.7 → 0 shows in the info and in the row, with
-the other macros and other items untouched — while a composite's derived macros
-offer no such edits), the macros
+edit-macros path (a plain item's options list "edit fat" and "edit saturated
+fats", "edit carbs" and "edit sugars" — each pair edited as a total with its
+"of which" part kept in step: "edit fat" is prefilled with the current fat
+total (5.9) and re-derives the residual unsaturated column, "edit saturated
+fats" is prefilled with the part and re-derives the residual from the stored
+total, and a part that would exceed its total is refused ("Saturated fats
+can't be more than total fat", "Sugars can't be more than total carbs") —
+plus "edit protein" and "edit calories" as single columns; every field is
+prefilled with the current value, re-asks until it parses, and reuses the add
+form's parser, so clearing a single column reads as zero (an invalid entry is
+refused with the add form's "Enter a number, or leave blank for 0" and
+re-asks); editing fat total 5.9 → 6, saturates 2.3 → 2, carbs 9.4 → 10, sugars
+4.7 → 5, protein 3.3 → 15 and clearing calories 64 → 0 shows in the info
+("Fat: 6 g (of which saturates: 2 g)", "Carbs: 10 g (of which sugars: 5 g)"),
+the residuals stored as the pair differences, and the other items untouched —
+while a composite's derived macros offer no such edits), the macros
 show-items path (a filter picker of the
 stored items — typing narrows it like the exercise picker; picking one opens
 its info/back menu whose info logs the item's name, fat and carbs totals

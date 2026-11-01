@@ -8,9 +8,14 @@
 //!
 //! In the plain form the name is asked first; a duplicate is caught there
 //! (`find_by_name`) so the six macro fields are only typed once the name is
-//! known-good. Each macro field defaults to zero when left blank (the prompt
-//! says "blank = 0"), so an item with no — or few — macros is quick to enter;
-//! only a number that cannot be read re-asks.
+//! known-good. Macros follow the label convention — a total then its "of
+//! which" part — so fat and carbs are asked as totals with the saturated fat
+//! and sugars parts right after each; the residual columns derive from those
+//! (unsaturated = fat − saturates, complex = carbs − sugars), so nothing on a
+//! label has to be subtracted by hand. Each macro field defaults to zero when
+//! left blank (the prompt says "blank = 0"), so an item with no — or few —
+//! macros is quick to enter; only a number that cannot be read — or a part
+//! that exceeds its total — re-asks.
 //!
 //! Escape backs out of the current field; the user then confirms with a
 //! Yes/No prompt. An escape with nothing typed in the name field cancels the
@@ -56,16 +61,32 @@ fn add_item(shell: &mut Shell, conn: &Connection) -> Result<Option<Item>, UiErro
             None => return Ok(None), // cancelled the form
         };
 
-        let Some(unsaturated_fats) = ask_amount(shell, "Unsaturated fats (g)")? else {
+        // Macros follow the label convention: fat and carbs are totals, asked
+        // first, with the saturated-fats and sugars parts right after; the
+        // unsaturated/complex columns hold the residuals so nothing on a label
+        // needs manual subtraction.
+        let Some(fat) = ask_amount(shell, "Fat (g)")? else {
             return Ok(None); // abandoned mid-form
         };
-        let Some(saturated_fats) = ask_amount(shell, "Saturated fats (g)")? else {
+        let Some(saturated_fats) = ask_amount_at_most(
+            shell,
+            "Saturated fats (g)",
+            fat,
+            "Saturated fats can't be more than total fat",
+        )?
+        else {
             return Ok(None); // abandoned mid-form
         };
-        let Some(complex_carbohydrates) = ask_amount(shell, "Complex carbohydrates (g)")? else {
+        let Some(carbs) = ask_amount(shell, "Carbs (g)")? else {
             return Ok(None); // abandoned mid-form
         };
-        let Some(sugars) = ask_amount(shell, "Sugars (g)")? else {
+        let Some(sugars) = ask_amount_at_most(
+            shell,
+            "Sugars (g)",
+            carbs,
+            "Sugars can't be more than total carbs",
+        )?
+        else {
             return Ok(None); // abandoned mid-form
         };
         let Some(protein) = ask_amount(shell, "Protein (g)")? else {
@@ -74,6 +95,8 @@ fn add_item(shell: &mut Shell, conn: &Connection) -> Result<Option<Item>, UiErro
         let Some(calories) = ask_amount(shell, "Calories (kcal)")? else {
             return Ok(None); // abandoned mid-form
         };
+        let unsaturated_fats = fat - saturated_fats;
+        let complex_carbohydrates = carbs - sugars;
 
         match Item::create(
             conn,
@@ -158,6 +181,44 @@ fn ask_amount(shell: &mut Shell, title: &str) -> Result<Option<f64>, UiError> {
         )? {
             ReadOutcome::Value(raw) => match parse_amount(&raw) {
                 Some(amount) => return Ok(Some(amount)),
+                None => {
+                    shell.log("Enter a number, or leave blank for 0");
+                    pending = raw;
+                }
+            },
+            ReadOutcome::Cancelled { partial } => {
+                if abandon(shell)? {
+                    return Ok(None);
+                }
+                pending = partial;
+            }
+        }
+    }
+}
+
+/// Ask for one macro quantity that must not exceed `max` — the "of which"
+/// part of a total (e.g. saturates within fat, sugars within carbs) — re-
+/// asking (prefilled) until it parses and obeys the bound, logging `too_much`
+/// when it doesn't. `None` means the user abandoned the form mid-entry.
+fn ask_amount_at_most(
+    shell: &mut Shell,
+    title: &str,
+    max: f64,
+    too_much: &str,
+) -> Result<Option<f64>, UiError> {
+    let mut pending = String::new();
+    loop {
+        match shell.read_line(
+            Some(title.to_string()),
+            Some("blank = 0".to_string()),
+            &pending,
+        )? {
+            ReadOutcome::Value(raw) => match parse_amount(&raw) {
+                Some(amount) if amount <= max => return Ok(Some(amount)),
+                Some(_) => {
+                    shell.log(too_much.to_string());
+                    pending = raw;
+                }
                 None => {
                     shell.log("Enter a number, or leave blank for 0");
                     pending = raw;

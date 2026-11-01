@@ -1394,12 +1394,14 @@ def macros_add_item_path():
     app.send("\r")                             # plain item (index 0)
     app.check("item name prompt", "═[Item name]", "e.g. Milk")
     app.send("Whole milk\r")                   # name
-    app.check("unsaturated fats prompt", "═[Unsaturated fats (g)]", "blank = 0")
-    app.send("3.6\r")                          # unsaturated fats
+    # Macros are entered the way a label lists them — totals first, then the
+    # "of which" part: Fat (g), Saturated fats (g), Carbs (g), Sugars (g).
+    app.check("fat prompt", "═[Fat (g)]", "blank = 0")
+    app.send("5.9\r")                          # total fat
     app.check("saturated fats prompt", "═[Saturated fats (g)]", "blank = 0")
-    app.send("2.3\r")                          # saturated fats
-    app.check("complex carbohydrates prompt with blank = 0 hint", "═[Complex carbohydrates (g)]", "blank = 0")
-    app.send("\r")                             # complex carbohydrates: blank default -> 0
+    app.send("2.3\r")                          # of which saturates
+    app.check("carbs prompt with blank = 0 hint", "═[Carbs (g)]", "blank = 0")
+    app.send("\r")                             # carbs: blank default -> 0
     app.check("sugars prompt", "═[Sugars (g)]", "blank = 0")
     app.send("\r")                             # sugars: blank default -> 0
     app.check("protein prompt", "═[Protein (g)]", "blank = 0")
@@ -1419,9 +1421,11 @@ def macros_add_item_path():
         " sugars, protein, calories"
         " FROM items WHERE name = 'Whole milk'").fetchone()
     con.close()
-    if row != ("Whole milk", 3.6, 2.3, 0.0, 0.0, 3.3, 64.0):
-        raise SystemExit(f"FAIL: item row {row} != the entered macros with blanks as 0.0")
-    print("ok   an item is created with the entered macros and blanks stored as 0.0")
+    # The unsaturated column stores the residual (fat − saturates); the exact
+    # f64 difference matches the same Python subtraction, bit for bit.
+    if row != ("Whole milk", 5.9 - 2.3, 2.3, 0.0, 0.0, 3.3, 64.0):
+        raise SystemExit(f"FAIL: item row {row} != the entered macros with the unsaturated residual stored")
+    print("ok   an item is created with the entered macros (total fat/carbs with their parts) and blanks stored as 0.0")
 
     # Part 2: a duplicate name is refused at the name field — before any macro
     # prompts — and abandoning the retry leaves the first item alone.
@@ -1777,7 +1781,7 @@ def macros_add_ingredient_path():
     print()
 
 def macros_edit_macros_path():
-    print("=== MACROS EDIT-MACROS PATH: a plain item's six macros each edit in place, prefilled; blank clears to zero ===")
+    print("=== MACROS EDIT-MACROS PATH: a leaf's fat/carbs edit as totals with their parts kept in step; protein/calories edit directly ===")
     seed_db(items=(
         ("Milk", (3.6, 2.3, 4.7, 4.7, 3.3, 64.0)),
         ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 31.0, 165.0)),
@@ -1789,15 +1793,52 @@ def macros_edit_macros_path():
     app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
     app.check("item picker", "Select item", "type to filter", " Chicken breast", " Milk")
     app.send("\x1b[B\r")                       # pick Milk (index 1)
-    # A leaf lists an edit action for each of its six stored macros.
-    app.check("leaf options offer one edit per macro", "═[Milk]",
-              "info", "edit name", "edit unsaturated fats", "edit saturated fats",
-              "edit complex carbohydrates", "edit sugars", "edit protein",
+    # A leaf edits its complementary pairs as totals with the "of which" part
+    # beside them (the label convention), then protein and calories alone.
+    app.check("leaf options pair up fat and carbs", "═[Milk]",
+              "info", "edit name", "edit fat", "edit saturated fats",
+              "edit carbs", "edit sugars", "edit protein",
               "edit calories", "back")
-    app.send("\x1b[B" * 6 + "\r")              # edit protein (index 6)
+
+    # 1. "edit fat" is prefilled with the current total (3.6 + 2.3). A total
+    # below the stored part is refused, then a valid one derives the residual.
+    app.send("\x1b[B\x1b[B\r")                 # edit fat (index 2)
+    app.check("fat field prefilled with the total", "═[Fat (g)]", "> 5.9")
+    app.send("\x7f" * 3)                       # clear the prefilled "5.9"
+    app.send("1\r")                            # less than the stored saturated fats
+    app.check("a part over its total is refused",
+              "Saturated fats can't be more than total fat", "═[Fat (g)]", "> 1")
+    app.send("\x7f")                           # clear the "1"
+    app.send("6\r")
+    app.check("fat updated, back on the options",
+              "Updated fat of 'Milk' to 6", "═[Milk]", "back")
+
+    # 2. "edit saturated fats" keeps the total and re-derives the residual.
+    app.send("\x1b[B\r")                       # edit saturated fats (index 3)
+    app.check("saturates field prefilled", "═[Saturated fats (g)]", "> 2.3")
+    app.send("\x7f" * 3)                       # clear the prefilled "2.3"
+    app.send("2\r")
+    app.check("saturates updated in step with the total",
+              "Updated saturated fats of 'Milk' to 2", "═[Milk]", "back")
+
+    # 3. The carb pair likewise: total, then its part.
+    app.send("\x1b[B\r")                       # edit carbs (index 4)
+    app.check("carbs field prefilled with the total", "═[Carbs (g)]", "> 9.4")
+    app.send("\x7f" * 3)                       # clear the prefilled "9.4"
+    app.send("10\r")
+    app.check("carbs updated, back on the options",
+              "Updated carbs of 'Milk' to 10", "═[Milk]", "back")
+    app.send("\x1b[B\r")                       # edit sugars (index 5)
+    app.check("sugars field prefilled", "═[Sugars (g)]", "> 4.7")
+    app.send("\x7f" * 3)                       # clear the prefilled "4.7"
+    app.send("5\r")
+    app.check("sugars updated in step with the total",
+              "Updated sugars of 'Milk' to 5", "═[Milk]", "back")
+
+    # 4. Protein edits directly; a malformed entry is refused and re-asks.
+    app.send("\x1b[B\r")                       # edit protein (index 6)
     app.check("protein field prefilled with the current value",
               "═[Protein (g)]", "> 3.3")
-    # A malformed entry is refused and the field re-asks prefilled.
     app.send("\x7f" * 3)                       # clear the prefilled "3.3"
     app.send("abc\r")                          # not a number
     app.check("malformed macro refused", "Enter a number, or leave blank for 0",
@@ -1806,22 +1847,25 @@ def macros_edit_macros_path():
     app.send("15\r")
     app.check("protein updated, back on the options",
               "Updated protein of 'Milk' to 15", "═[Milk]", "back")
-    # The re-ask keeps the highlight on "edit protein" (where the edit was), so
-    # move up two to "edit complex carbohydrates".
-    app.send("\x1b[A\x1b[A\r")                 # edit complex carbohydrates (index 4)
-    app.check("carbs field prefilled", "═[Complex carbohydrates (g)]", "> 4.7")
-    # Clearing the prefilled field and confirming reads as zero — the add
-    # form's "blank = 0" convenience carried into the editor.
-    app.send("\x7f" * 3)                       # clear the prefilled "4.7"
+
+    # 5. A cleared calories field reads as zero — the add form's "blank = 0"
+    # convenience carried into a single-column editor (a cleared pair total
+    # would instead be refused as a part over its total).
+    app.send("\x1b[B\r")                       # edit calories (index 7)
+    app.check("calories field prefilled", "═[Calories (kcal)]", "> 64")
+    app.send("\x7f\x7f")                       # clear the prefilled "64"
     app.send("\r")                             # blank: default to 0
     app.check("blank reads as zero, back on the options",
-              "Updated complex carbohydrates of 'Milk' to 0", "═[Milk]", "back")
-    app.send("\x1b[A" * 4 + "\r")              # info (index 0): up from edit complex carbohydrates
-    app.check("info reflects both edits, the rest untouched",
+              "Updated calories of 'Milk' to 0", "═[Milk]", "back")
+
+    # 6. Info shows the pairs as totals with their parts (6 = 4 unsat + 2 sat,
+    # 10 = 5 complex + 5 sugars), the edited protein, the zeroed calories.
+    app.send("\x1b[A" * 7 + "\r")              # info (index 0): up from edit calories
+    app.check("info reflects the edited pairs, the rest untouched",
               "Milk:",
-              "Fat: 5.9 g (of which saturates: 2.3 g)",
-              "Carbs: 4.7 g (of which sugars: 4.7 g)",
-              "Protein: 15 g", "Calories: 64 kcal")
+              "Fat: 6 g (of which saturates: 2 g)",
+              "Carbs: 10 g (of which sugars: 5 g)",
+              "Protein: 15 g", "Calories: 0 kcal")
     app.send("\x1b[B" * 9 + "\r")              # back (index 9) -> macros menu
     app.check("back at macros after edits", "═[Macros]", "log item", "show items", "add item", "back")
     app.close()
@@ -1834,11 +1878,14 @@ def macros_edit_macros_path():
             " sugars, protein, calories FROM items")
     }
     con.close()
-    if rows["Milk"] != (3.6, 2.3, 0.0, 4.7, 15.0, 64.0):
-        raise SystemExit(f"FAIL: Milk row {rows['Milk']} != edited macros (3.6, 2.3, 0.0, 4.7, 15.0, 64.0)")
+    # The residuals derive from the pairs (4 = 6 − 2, 5 = 10 − 5); round off the
+    # float-subtraction tails when comparing.
+    milk = tuple(round(x, 2) for x in rows["Milk"])
+    if milk != (4.0, 2.0, 5.0, 5.0, 15.0, 0.0):
+        raise SystemExit(f"FAIL: Milk row {milk} != (4.0, 2.0, 5.0, 5.0, 15.0, 0.0)")
     if rows["Chicken breast"] != (4.0, 1.0, 0.0, 0.0, 31.0, 165.0):
         raise SystemExit(f"FAIL: Chicken breast must be untouched, got {rows['Chicken breast']}")
-    print("ok   each macro edits in place (typed value, and a cleared field reads as 0), malformed entries re-ask, and the other items are untouched")
+    print("ok   fat/carbs edit as totals with their parts kept in step (a part over its total refused), blanks clear single macros to zero, the rest untouched")
     print()
 
 def macros_show_items_path():

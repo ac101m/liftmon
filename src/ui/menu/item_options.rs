@@ -4,15 +4,17 @@
 //! macros — fat and carbs totals each with their "of which" sub-breakdown,
 //! protein, calories — for a *leaf*, or for a *composite* the component lines
 //! and the totals its composition resolves to, as a framed section), edit its
-//! name, edit its stored macros one at a time (**leaf items only** — a
-//! composite's macros are derived, never stored), edit its ingredients or add
-//! a new one (composite items only), delete it, or back out to the macros
-//! menu. Editing loops back onto this screen under the renamed item, so the
-//! prompt tracks the change. The delete sits just above "back" on both item
-//! kinds: an item nothing references (no composite uses it, no log includes
-//! it) is removed — a composite's own composition goes with it — and a
-//! referenced one draws a refusal that stays on the screen; either way the
-//! screen is left via the macros menu.
+//! name, edit its stored macros one at a time — fat and carbs as totals with
+//! the saturated-fats and sugars parts kept in step, the residual column
+//! deriving from the other half — (**leaf items only**: a composite's macros
+//! are derived, never stored), edit its ingredients or add a new one
+//! (composite items only), delete it, or back out to the macros menu. Editing
+//! loops back onto this screen under the renamed item, so the prompt tracks
+//! the change. The delete sits just above "back" on both item kinds: an item
+//! nothing references (no composite uses it, no log includes it) is removed —
+//! a composite's own composition goes with it — and a referenced one draws a
+//! refusal that stays on the screen; either way the screen is left via the
+//! macros menu.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -62,9 +64,9 @@ pub(super) fn run(
             vec![
                 "info",
                 "edit name",
-                "edit unsaturated fats",
+                "edit fat",
                 "edit saturated fats",
-                "edit complex carbohydrates",
+                "edit carbs",
                 "edit sugars",
                 "edit protein",
                 "edit calories",
@@ -87,46 +89,87 @@ pub(super) fn run(
                     name = new_name;
                 }
             }
-            // Each stored macro gets its own edit field (leaf items only —
-            // these options don't appear for composites, whose macros are
-            // derived). The field is prefilled with the current value and
-            // re-asks until it parses; unchanged input writes nothing.
-            Some("edit unsaturated fats") => edit_macro(
+            // Fat and carbs are entered as totals with their "of which" part,
+            // the label convention — the residual column derives from the
+            // other half, which the pair editor keeps in step (leaf items
+            // only — these options don't appear for composites, whose macros
+            // are derived).
+            Some("edit fat") => edit_pair(
                 shell,
                 conn,
                 &item,
-                "Unsaturated fats (g)",
-                "unsaturated fats",
-                |i| i.unsaturated_fats,
-                |i, v| i.unsaturated_fats = v,
+                true,
+                &MacroPair {
+                    title: "Fat (g)",
+                    label: "fat",
+                    total_of: |i| i.unsaturated_fats + i.saturated_fats,
+                    part_of: |i| i.saturated_fats,
+                    store: |i, total, part| {
+                        i.unsaturated_fats = total - part;
+                        i.saturated_fats = part;
+                    },
+                    part_title: "Saturated fats",
+                    total_label: "total fat",
+                },
             )?,
-            Some("edit saturated fats") => edit_macro(
+            Some("edit saturated fats") => edit_pair(
                 shell,
                 conn,
                 &item,
-                "Saturated fats (g)",
-                "saturated fats",
-                |i| i.saturated_fats,
-                |i, v| i.saturated_fats = v,
+                false,
+                &MacroPair {
+                    title: "Saturated fats (g)",
+                    label: "saturated fats",
+                    total_of: |i| i.unsaturated_fats + i.saturated_fats,
+                    part_of: |i| i.saturated_fats,
+                    store: |i, total, part| {
+                        i.unsaturated_fats = total - part;
+                        i.saturated_fats = part;
+                    },
+                    part_title: "Saturated fats",
+                    total_label: "total fat",
+                },
             )?,
-            Some("edit complex carbohydrates") => edit_macro(
+            Some("edit carbs") => edit_pair(
                 shell,
                 conn,
                 &item,
-                "Complex carbohydrates (g)",
-                "complex carbohydrates",
-                |i| i.complex_carbohydrates,
-                |i, v| i.complex_carbohydrates = v,
+                true,
+                &MacroPair {
+                    title: "Carbs (g)",
+                    label: "carbs",
+                    total_of: |i| i.complex_carbohydrates + i.sugars,
+                    part_of: |i| i.sugars,
+                    store: |i, total, part| {
+                        i.complex_carbohydrates = total - part;
+                        i.sugars = part;
+                    },
+                    part_title: "Sugars",
+                    total_label: "total carbs",
+                },
             )?,
-            Some("edit sugars") => edit_macro(
+            Some("edit sugars") => edit_pair(
                 shell,
                 conn,
                 &item,
-                "Sugars (g)",
-                "sugars",
-                |i| i.sugars,
-                |i, v| i.sugars = v,
+                false,
+                &MacroPair {
+                    title: "Sugars (g)",
+                    label: "sugars",
+                    total_of: |i| i.complex_carbohydrates + i.sugars,
+                    part_of: |i| i.sugars,
+                    store: |i, total, part| {
+                        i.complex_carbohydrates = total - part;
+                        i.sugars = part;
+                    },
+                    part_title: "Sugars",
+                    total_label: "total carbs",
+                },
             )?,
+            // Protein and calories are single stored columns, so they edit
+            // directly through `edit_macro`. The field is prefilled with the
+            // current value and re-asks until it parses; unchanged input
+            // writes nothing.
             Some("edit protein") => edit_macro(
                 shell,
                 conn,
@@ -266,6 +309,109 @@ fn edit_macro(
                     set(&mut updated, value);
                     updated.save(conn)?;
                     shell.log(format!("Updated {label} of '{}' to {value}", item.name));
+                    return Ok(());
+                }
+                None => {
+                    shell.log("Enter a number, or leave blank for 0");
+                    pending = raw;
+                }
+            },
+            // Escape: leave the field, nothing written.
+            ReadOutcome::Cancelled { .. } => return Ok(()),
+        }
+    }
+}
+
+/// A complementary macro pair — fat/saturates or carbs/sugars: how to read the
+/// two stored columns' total and "of which" part, how to write them both back,
+/// and the field/log wording plus the part and total names for the refusal
+/// message.
+struct MacroPair {
+    /// The edit field's heading (with units), e.g. "Fat (g)".
+    title: &'static str,
+    /// The lowercase word for the "Updated … of 'item'" log line.
+    label: &'static str,
+    /// The pair's stored total.
+    total_of: fn(&Item) -> f64,
+    /// The pair's "of which" part.
+    part_of: fn(&Item) -> f64,
+    /// Write the total and its part back into the item's two stored columns.
+    store: fn(&mut Item, total: f64, part: f64),
+    /// The part's name for the refusal, e.g. "Saturated fats".
+    part_title: &'static str,
+    /// The total's name for the refusal, e.g. "total fat".
+    total_label: &'static str,
+}
+
+/// Edit one half of a complementary macro pair — fat/saturates or
+/// carbs/sugars — where the residual column derives from the other half (a
+/// label gives "fat (of which saturates)", so the total and its part are what
+/// get typed). `edit_total` picks which half the field edits: the **total**
+/// (prefilled with the pair's total, the part kept at its stored value and the
+/// residual recomputed) or the **part** (prefilled with the part, the total
+/// kept and the residual recomputed). The field re-asks (prefilled) until it
+/// parses, and a part that would exceed its total is refused with the same
+/// "can't be more than" message the add form uses; unchanged input writes
+/// nothing; Escape backs out.
+fn edit_pair(
+    shell: &mut Shell,
+    conn: &Connection,
+    item: &Item,
+    edit_total: bool,
+    pair: &MacroPair,
+) -> Result<(), UiError> {
+    let total_of = pair.total_of;
+    let part_of = pair.part_of;
+    let current = if edit_total {
+        total_of(item)
+    } else {
+        part_of(item)
+    };
+    let mut pending = current.to_string();
+    loop {
+        match shell.read_line(
+            Some(pair.title.to_string()),
+            Some("blank = 0".to_string()),
+            &pending,
+        )? {
+            ReadOutcome::Value(raw) => match super::add_item::parse_amount(&raw) {
+                Some(value) => {
+                    if value == current {
+                        return Ok(()); // unchanged: nothing to write
+                    }
+                    // The entered number is one half; the other keeps its
+                    // stored value, and the part may never exceed the total —
+                    // the residual would go negative.
+                    let (new_total, new_part) = if edit_total {
+                        let part = part_of(item);
+                        if value < part {
+                            shell.log(format!(
+                                "{} can't be more than {}",
+                                pair.part_title, pair.total_label
+                            ));
+                            pending = raw;
+                            continue;
+                        }
+                        (value, part)
+                    } else {
+                        let total = total_of(item);
+                        if value > total {
+                            shell.log(format!(
+                                "{} can't be more than {}",
+                                pair.part_title, pair.total_label
+                            ));
+                            pending = raw;
+                            continue;
+                        }
+                        (total, value)
+                    };
+                    let mut updated = item.clone();
+                    (pair.store)(&mut updated, new_total, new_part);
+                    updated.save(conn)?;
+                    shell.log(format!(
+                        "Updated {} of '{}' to {value}",
+                        pair.label, item.name
+                    ));
                     return Ok(());
                 }
                 None => {
