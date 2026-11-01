@@ -1284,10 +1284,60 @@ def macros_log_item_path():
         raise SystemExit(f"FAIL: the corrected factor should be stored, got {today_quantity}")
     print("ok   accepting the default date logs for today, creating its log row on demand with the corrected quantity")
 
+    # A date in the future is asked about, not refused — the clock may be
+    # wrong — behind a No-defaulted Yes/No: the default No keeps the typed text
+    # on the date field and records nothing.
+    app = App()
+    app.check("main menu (4th)", "═[Main menu]")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros
+    app.send("\r")                             # log item (index 0)
+    app.send("\x7f" * 10 + "2099/12/31\r")     # clear the prefilled date, then a far-future date
+    app.check("future date asks before logging", "2099/12/31 is a future date — log anyway?", "Yes", "No")
+    app.send("\r")                             # No is the highlighted default: decline
+    app.check("declined, date text kept", "═[Log date (YYYY/MM/DD)]", "> 2099/12/31")
+    app.send("\x1b")                           # Escape: cancel the log
+    app.check("cancelled back at macros", "═[Macros]", "log item")
+    app.close()
+    con = sqlite3.connect(DB)
+    future_rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2099-12-31'").fetchone()[0]
+    con.close()
+    if future_rows != 0:
+        raise SystemExit(f"FAIL: a declined future date must not have created a log row, got {future_rows}")
+    print("ok   the future date's confirm defaults to No, keeping the text on the field and recording nothing")
+
+    # An explicit Yes at the confirm still logs the future date — the user may
+    # know the clock is wrong — row and inclusion included.
+    app = App()
+    app.check("main menu (5th)", "═[Main menu]")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros
+    app.send("\r")                             # log item (index 0)
+    app.send("\x7f" * 10 + "2099/12/31\r")     # clear the prefilled date, then a far-future date
+    app.check("future date asks (yes path)", "2099/12/31 is a future date — log anyway?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes: insist (No is the default)
+    app.check("confirmed future date proceeds to the item", "═[Select item]", "type to filter")
+    app.send("milk\r")                         # filter to Whole milk, pick it
+    app.check("quantity field (future)", "═[Whole milk · Quantity]", "1")
+    app.send("\r")                             # accept the default: one whole milk
+    app.check("logged the future date", "Logged 1 × 'Whole milk' on 2099/12/31.", "═[Macros]")
+    app.close()
+    con = sqlite3.connect(DB)
+    future_rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2099-12-31'").fetchone()[0]
+    future_qty = con.execute(
+        "SELECT mi.quantity FROM macro_log_inclusions mi"
+        " JOIN macro_logs ml ON ml.id = mi.macro_log_id"
+        " JOIN items i ON i.id = mi.item_id"
+        " WHERE ml.date = '2099-12-31' AND i.name = 'Whole milk'").fetchone()
+    con.close()
+    if future_rows != 1:
+        raise SystemExit(f"FAIL: the confirmed future date should have one log row, got {future_rows}")
+    if future_qty != (1.0,):
+        raise SystemExit(f"FAIL: the confirmed future date's inclusion should be quantity 1, got {future_qty}")
+    print("ok   an explicit Yes logs the future date, row and inclusion included")
+
     # An unparseable date is refused and re-asks with what was typed; Escape
     # cancels before anything is recorded.
     app = App()
-    app.check("main menu (4th)", "═[Main menu]")
+    app.check("main menu (6th)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\r")                             # log item (index 0)
     app.send("\x7f" * 10 + "abc\r")            # clear the prefilled date, then a date that can't parse

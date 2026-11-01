@@ -3,7 +3,10 @@
 //! The date is asked first, prefilled with today's local calendar date — Enter
 //! accepts it, and a different date is typed in place, clearing the default
 //! first (backdating the entry: the day's log row exists independently of when
-//! the entry was actually recorded). The item comes second, through the same
+//! the entry was actually recorded). A date in the future isn't silently
+//! accepted — the clock may be wrong — so it's met with a No-defaulted "log
+//! anyway?" confirm: the safe "No" (or Escape) keeps the typed text for a fix,
+//! and an explicit "Yes" still logs. The item comes second, through the same
 //! "Select item" filter picker the other item screens use, and then the
 //! **quantity factor** — how many of the item this row records, prefilled with
 //! one so Enter logs a single use and a different factor is typed in place. A use creates
@@ -89,14 +92,30 @@ pub(super) fn record_use(
 /// Ask for the log's date: the field is prefilled with today in the app's
 /// `YYYY/MM/DD` convention — Enter accepts it, and a different date is typed in
 /// place, clearing the default first (backdating the entry). A date that won't
-/// parse re-asks with what was typed, so a single digit can be fixed. `None`
-/// when the user cancels with Escape.
+/// parse re-asks with what was typed, so a single digit can be fixed, and a
+/// date in the future is confirmed rather than trusted — the clock may be
+/// wrong. `None` when the user cancels with Escape.
 fn ask_date(shell: &mut Shell) -> Result<Option<NaiveDate>, UiError> {
     let mut pending = format_date(Local::now().date_naive());
     loop {
         let outcome = shell.read_line(Some("Log date (YYYY/MM/DD)".to_string()), None, &pending)?;
         match outcome {
             ReadOutcome::Value(raw) => match parse_date(&raw) {
+                // A date ahead of today is suspicious — the system clock may be
+                // off — but it's the user's call, so ask behind a No-defaulted
+                // "log anyway?": the safe "No" rests under Enter, and an
+                // explicit "Yes" still logs (nobody's data was in the future;
+                // the clock just said so). No or Escape keeps the typed text
+                // and re-asks, so a nearby future date is one edit away.
+                Some(date) if date > Local::now().date_naive() => {
+                    if shell.confirm(Some(format!(
+                        "{} is a future date — log anyway?",
+                        format_date(date)
+                    )))? {
+                        return Ok(Some(date));
+                    }
+                    pending = raw;
+                }
                 Some(date) => return Ok(Some(date)),
                 None => {
                     shell.log("Enter a date as YYYY/MM/DD.");

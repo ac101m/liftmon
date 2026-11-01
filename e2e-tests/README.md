@@ -88,9 +88,12 @@ the entry — then the item picker, and a quantity factor after that, prefilled
 with one and scaling the day's macros when edited, then records one use of the
 item for that day, creating the day's `macro_logs` row only if it's that date's
 first entry; a second entry to the same date reuses the row rather than
-duplicating it, accepting the default date logs for today, an unparseable date
-re-asks with the text kept, a refused quantity re-asks the same way, and Escape
-cancels before anything is recorded — with the log rows and inclusions'
+duplicating it, accepting the default date logs for today, a date in the
+future is met with a No-defaulted "… is a future date — log anyway?" Yes/No —
+the clock may be wrong — so the default No keeps the typed text on the field
+(recording nothing) while an explicit Yes still logs that date, an unparseable
+date re-asks with the text kept, a refused quantity re-asks the same way, and
+Escape cancels before anything is recorded — with the log rows and inclusions'
 quantities verified in the database), the macros
 show-logs path (a "show logs" option sits just below "log item": a filter picker
 over the logged dates in the app's `YYYY/MM/DD` form — each row carrying its
