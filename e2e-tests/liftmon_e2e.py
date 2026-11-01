@@ -1180,7 +1180,7 @@ def macros_path():
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros",
               "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # Macros (index 2, below Sessions, above Muscle groups)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B" * 4 + "\r")                # back (index 4) -> main menu
     app.check("back at main after macros", "═[Main menu]", "Macros")
     app.close()
@@ -1196,7 +1196,7 @@ def macros_log_item_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\r")                             # log item (index 0)
     app.check("date field defaults to today", "═[Log date (YYYY/MM/DD)]", date.today().strftime("%Y/%m/%d"))
     app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date (10 chars), then backdate
@@ -1311,7 +1311,7 @@ def macros_show_logs_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\r")                       # show logs (index 1)
     # Each date row carries its day's resolved calories and protein — bare
     # quantities, calories first — so the totals are legible before opening
@@ -1403,7 +1403,7 @@ def macros_log_delete_item_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\r")                       # show logs (index 1)
     app.check("date picker with the day's totals", "═[Select date]",
               "2026/10/02 · 540kcal · 93g protein")
@@ -1483,7 +1483,7 @@ def macros_add_item_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\x1b[B\r")                 # add item (index 3)
     app.check("add item type menu", "═[Add item]", "plain item", "recipe item")
     app.send("\r")                             # plain item (index 0)
@@ -1504,7 +1504,7 @@ def macros_add_item_path():
     app.send("3.3\r")                          # protein
     app.check("calories prompt", "═[Calories (kcal)]", "blank = 0")
     app.send("64\r")                           # calories
-    app.check("added item, back at macros", "Added item 'Whole milk'", "═[Macros]", "add item")
+    app.check("added item, back at macros", "Added item 'Whole milk'", "═[Macros]", "create item")
     # Esc from the macros menu returns to the main menu, so the launched
     # history holds the add as a normal (non-framed) line.
     app.send("\x1b")
@@ -1528,7 +1528,7 @@ def macros_add_item_path():
     app = App()
     app.check("main menu (2nd)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
-    app.check("macros menu (2nd)", "═[Macros]", "log item", "show items", "add item", "back")
+    app.check("macros menu (2nd)", "═[Macros]", "log item", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\x1b[B\r")                 # add item (index 3)
     app.check("add item type menu (2nd)", "═[Add item]", "plain item", "recipe item")
     app.send("\r")                             # plain item (index 0)
@@ -1537,7 +1537,7 @@ def macros_add_item_path():
     app.send("\x1b")                           # Esc: abandon the retry
     app.check("abandon confirm", "Cancel adding this item?", "Yes", "No")
     app.send("\x1b[A\r")                       # Yes: up to it, cancel the add
-    app.check("cancelled add, back at macros", "═[Macros]", "add item")
+    app.check("cancelled add, back at macros", "═[Macros]", "create item")
     app.close()
 
     count = sqlite3.connect(DB).execute("SELECT COUNT(*) FROM items").fetchone()[0]
@@ -1555,7 +1555,7 @@ def macros_add_recipe_item_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\x1b[B\r")                 # add item (index 3)
     app.check("add item type menu", "═[Add item]", "plain item", "recipe item")
     app.send("\x1b[B\r")                       # recipe item (index 1)
@@ -1585,7 +1585,7 @@ def macros_add_recipe_item_path():
               "Protein: 61.5 g", "Calories: 350 kcal",
               "Ingredients:", "2 × Chicken breast", "0.5 × Whole milk")
     app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")       # back (index 5, after add ingredient) -> macros menu
-    app.check("back at macros after recipe", "═[Macros]", "log item", "show items", "add item", "back")
+    app.check("back at macros after recipe", "═[Macros]", "log item", "show items", "create item", "back")
     app.close()
 
     con = sqlite3.connect(DB)
@@ -1610,7 +1610,7 @@ def macros_add_recipe_item_path():
     app = App()
     app.check("main menu (2nd)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
-    app.check("macros menu (2nd)", "═[Macros]", "log item", "show items", "add item", "back")
+    app.check("macros menu (2nd)", "═[Macros]", "log item", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\x1b[B\r")                 # add item (index 3)
     app.check("add item type menu (2nd)", "═[Add item]", "plain item", "recipe item")
     app.send("\x1b[B\r")                       # recipe item
@@ -1630,7 +1630,7 @@ def macros_edit_item_name_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
     app.check("item picker", "Select item", "type to filter", " Egg", " Milk")
     app.send("\x1b[B\r")                       # pick Milk (index 1)
@@ -1653,7 +1653,7 @@ def macros_edit_item_name_path():
     app.check("info under new name", "Cream:",
               "Fat: 5.9 g (of which saturates: 2.3 g)")
     app.send("\x1b[B" * 9 + "\r")              # back (index 9, after the six macro edits) -> macros menu
-    app.check("back at macros after rename", "═[Macros]", "log item", "show items", "add item", "back")
+    app.check("back at macros after rename", "═[Macros]", "log item", "show items", "create item", "back")
     app.close()
 
     con = sqlite3.connect(DB)
@@ -1676,7 +1676,7 @@ def macros_edit_ingredients_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
     app.check("item picker", "Select item", "type to filter",
               " Chicken breast", " Chicken sandwich", " Whole milk")
@@ -1722,7 +1722,7 @@ def macros_edit_ingredients_path():
               "Protein: 90 g", "Calories: 480 kcal",
               "Ingredients:", "3 × Chicken breast")
     app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")       # back (index 5, after add ingredient) -> macros menu
-    app.check("back at macros after edits", "═[Macros]", "log item", "show items", "add item", "back")
+    app.check("back at macros after edits", "═[Macros]", "log item", "show items", "create item", "back")
     app.close()
 
     con = sqlite3.connect(DB)
@@ -1804,7 +1804,7 @@ def macros_add_ingredient_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
     app.check("item picker", "Select item", "type to filter",
               " Chicken breast", " Egg", " Sandwich", " Whole milk")
@@ -1868,7 +1868,7 @@ def macros_add_ingredient_path():
               "  Calories: 493 kcal",
               "Ingredients:", "  2 × Chicken breast", "  0.5 × Whole milk", "  1 × Egg")
     app.send("\x1b[B" * 5 + "\r")              # back (index 5, after add ingredient) -> macros menu
-    app.check("back at macros after adding", "═[Macros]", "log item", "show items", "add item", "back")
+    app.check("back at macros after adding", "═[Macros]", "log item", "show items", "create item", "back")
     app.close()
 
     if composition_rows() != [("Chicken breast", 2.0), ("Egg", 1.0), ("Whole milk", 0.5)]:
@@ -1885,7 +1885,7 @@ def macros_edit_macros_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
     app.check("item picker", "Select item", "type to filter", " Chicken breast", " Milk")
     app.send("\x1b[B\r")                       # pick Milk (index 1)
@@ -1963,7 +1963,7 @@ def macros_edit_macros_path():
               "Carbs: 10 g (of which sugars: 5 g)",
               "Protein: 15 g", "Calories: 0 kcal")
     app.send("\x1b[B" * 9 + "\r")              # back (index 9) -> macros menu
-    app.check("back at macros after edits", "═[Macros]", "log item", "show items", "add item", "back")
+    app.check("back at macros after edits", "═[Macros]", "log item", "show items", "create item", "back")
     app.close()
 
     con = sqlite3.connect(DB)
@@ -1993,7 +1993,7 @@ def macros_show_items_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
     app.check("item picker", "Select item", "type to filter", " Chicken breast", " Whole milk")
     # Typing filters the list down like the exercise picker.
@@ -2007,7 +2007,7 @@ def macros_show_items_path():
               "  Carbs: 9.4 g (of which sugars: 4.7 g)",
               "  Protein: 3.3 g", "  Calories: 64 kcal")
     app.send("\x1b[B" * 9 + "\r")              # back (index 9, after the six macro edits) -> macros menu
-    app.check("back at macros after info", "═[Macros]", "log item", "show items", "add item", "back")
+    app.check("back at macros after info", "═[Macros]", "log item", "show items", "create item", "back")
     app.close()
     print("ok   the picker lists the stored items, filters them, and the per-item info logs the totals in a box")
 
@@ -2051,7 +2051,7 @@ def macros_delete_item_path():
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
-    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
+    app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "create item", "back")
     app.send("\x1b[B\x1b[B\r")                       # show items (index 2)
 
     # 1. Delete the lone leaf "Alone": confirmed, gone, back on the macros menu.

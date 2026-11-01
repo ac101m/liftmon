@@ -78,8 +78,9 @@ history), the personal-record path (a set beating the exercise's prior Epley e1R
 set, and the exercise info screen frames the exercise with rules and lists its
 last three personal records as weight × reps with when each record was set), the
 in-use-exercise delete path, the macros path (the main menu's "Macros" item
-lands on the macros screen with its log-item/show-logs/show-items/add-item/back
-menu), the
+lands on the macros screen with its log-item/show-logs/show-items/create-item/back
+menu — "create item" (renamed from "add item" so it can't be confused with the
+log options' per-day "add item") launches the plain/recipe item form), the
 macro-log path (a "log item" option sits at the top of the macros menu: it asks
 for a date prefilled with today's local calendar date — Enter accepts it, and a
 different date is typed in place, clearing the prefilled date first, backdating
@@ -121,7 +122,8 @@ nothing logged to remove guards with "No items logged on this date yet"; an
 emptied day keeps its `macro_logs` row, resolving to zeros and still listed in
 the picker as `0kcal · 0g protein`, with whole-day "delete" the way to remove
 the date), the macros
-add-item path (add item first asks whether the item is a plain or a recipe
+add-item path ("create item" at the bottom of the macros menu first asks
+whether the item is a plain or a recipe
 item; a plain item is the existing leaf form — name plus six macro fields
 entered the way a label lists them, totals first then the "of which" part:
 "Total fat (g)" then "Saturated fats (g)", "Total carbs (g)" then "Sugars (g)",
