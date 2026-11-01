@@ -302,9 +302,10 @@ fn ask_set(
 }
 
 /// Ask for the set's weight in kg, re-asking (with what was typed prefilled)
-/// until it parses. `None` when the user backed out with Escape. The field
-/// defaults to the last weight used for the exercise, so a repeated weight
-/// is just Enter — typing a new value overwrites the default.
+/// until it parses. `None` when the user backed out with Escape. The field is
+/// prefilled with the last weight used for the exercise, so a repeated weight
+/// is just Enter — and a new one is typed normally (clearing the prefill
+/// first), like any other field.
 fn ask_weight(
     shell: &mut Shell,
     conn: &Connection,
@@ -314,24 +315,12 @@ fn ask_weight(
         .map(|weight| format!("{weight}"))
         .unwrap_or_default();
     let mut pending = default;
-    let mut first_ask = true;
     loop {
-        // Only the first ask presents the prefill as a replaceable default; a
-        // re-ask after a bad parse edits what was typed instead.
-        let outcome = if first_ask {
-            first_ask = false;
-            shell.read_line_default(
-                Some(field_title(&exercise.name, "Weight (kg)")),
-                Some("e.g. 100".to_string()),
-                &pending,
-            )?
-        } else {
-            shell.read_line(
-                Some(field_title(&exercise.name, "Weight (kg)")),
-                Some("e.g. 100".to_string()),
-                &pending,
-            )?
-        };
+        let outcome = shell.read_line(
+            Some(field_title(&exercise.name, "Weight (kg)")),
+            Some("e.g. 100".to_string()),
+            &pending,
+        )?;
         match outcome {
             ReadOutcome::Value(raw) => match parse_weight(&raw) {
                 Some(weight) => return Ok(Some(weight)),

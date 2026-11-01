@@ -81,15 +81,16 @@ in-use-exercise delete path, the macros path (the main menu's "Macros" item
 lands on the macros screen with its log-item/show-logs/show-items/add-item/back
 menu), the
 macro-log path (a "log item" option sits at the top of the macros menu: it asks
-for a date defaulted to today's local calendar date — typing a different date
-backdates the entry — then the item picker, and a quantity factor after that,
-defaulting to one and scaling the day's macros, then records one use of the item
-for that day, creating the day's `macro_logs` row only if it's that date's first
-entry; a second entry to the same date reuses the row rather than duplicating
-it, accepting the default date logs for today, an unparseable date re-asks with
-the text kept, a refused quantity re-asks the same way, and Escape cancels
-before anything is recorded — with the log rows and inclusions' quantities
-verified in the database), the macros
+for a date prefilled with today's local calendar date — Enter accepts it, and a
+different date is typed in place, clearing the prefilled date first, backdating
+the entry — then the item picker, and a quantity factor after that, prefilled
+with one and scaling the day's macros when edited, then records one use of the
+item for that day, creating the day's `macro_logs` row only if it's that date's
+first entry; a second entry to the same date reuses the row rather than
+duplicating it, accepting the default date logs for today, an unparseable date
+re-asks with the text kept, a refused quantity re-asks the same way, and Escape
+cancels before anything is recorded — with the log rows and inclusions'
+quantities verified in the database), the macros
 show-logs path (a "show logs" option sits just below "log item": a filter picker
 over the logged dates in the app's `YYYY/MM/DD` form — each row carrying its
 day's resolved calories and protein as bare quantities, calories first,

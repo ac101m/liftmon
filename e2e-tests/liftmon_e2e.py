@@ -383,7 +383,7 @@ def end_path():
     app.check("info leaves the performance menu up", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\x1b[A\x1b[A\r")                              # next set: back up to index 0 (info stays highlighted)
     app.check("weight prompt (2nd set)", "═[Bench press · Weight (kg)]", "> 100")
-    app.send("102.5\r")
+    app.send("\x7f" * 3 + "102.5\r")                        # clear the prefilled 100, then the new weight
     app.send("4\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("confirm set 2", "102.5kg x 4 (hard) - Add to session?", "Yes", "No")
@@ -583,7 +583,7 @@ def resume_path():
               "═[Squat]", "next set", "next exercise", "show exercise info", "exit session")
     app.send("\r")                                          # next set
     app.check("weight prompt (resumed)", "═[Squat · Weight (kg)]", "> 60")
-    app.send("70\r")                                        # weight
+    app.send("\x7f" * 2 + "70\r")                           # clear the prefilled 60, then the new weight
     app.send("8\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm resumed set", "70kg x 8 (failure) - Add to session?", "Yes", "No")
@@ -765,7 +765,7 @@ def duplicate_exercise_path():
     # The next set still lands on the SAME performance.
     app.send("\x1b[A\r")                                    # next set: up to it (next-exercise stays highlighted)
     app.check("weight prompt (2nd set)", "═[Bench press · Weight (kg)]", "> 100")
-    app.send("60\r")                                        # weight
+    app.send("\x7f" * 3 + "60\r")                           # clear the prefilled 100, then the new weight
     app.send("8\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm 2nd bench set", "60kg x 8 (failure) - Add to session?", "Yes", "No")
@@ -1056,7 +1056,7 @@ def personal_record_path():
     # Set 2: 102.5 × 3 — heavier but a lower e1RM (112.75 < 116.67), so NOT a PR.
     app.send("\r")                                          # next set
     app.check("weight prompt (2nd set)", "═[Bench press · Weight (kg)]")
-    app.send("102.5\r")
+    app.send("\x7f" * 3 + "102.5\r")                        # clear the prefilled 100, then the new weight
     app.send("3\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("confirm set 2", "102.5kg x 3 (hard) - Add to session?", "Yes", "No")
@@ -1068,7 +1068,7 @@ def personal_record_path():
 
     # Set 3: 100 × 6 — same weight, more reps → e1RM 120, a new best.
     app.send("\r")                                          # next set
-    app.send("100\r")                                       # weight
+    app.send("\x7f" * 5 + "100\r")                          # clear the prefilled 102.5, then the weight
     app.send("6\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("confirm set 3", "100kg x 6 (hard) - Add to session?", "Yes", "No")
@@ -1077,7 +1077,7 @@ def personal_record_path():
 
     # Set 4: 110 × 5 — e1RM 128.33, the best yet.
     app.send("\r")                                          # next set
-    app.send("110\r")                                       # weight
+    app.send("\x7f" * 3 + "110\r")                          # clear the prefilled 100, then the weight
     app.send("5\r")                                         # reps
     app.send("\x1b[B\r")                                    # difficulty: pretty tough -> hard
     app.check("confirm set 4", "110kg x 5 (hard) - Add to session?", "Yes", "No")
@@ -1199,7 +1199,7 @@ def macros_log_item_path():
     app.check("macros menu", "═[Macros]", "log item", "show logs", "show items", "add item", "back")
     app.send("\r")                             # log item (index 0)
     app.check("date field defaults to today", "═[Log date (YYYY/MM/DD)]", date.today().strftime("%Y/%m/%d"))
-    app.send("2026/10/01\r")                   # backdate (first keystroke overwrites the default)
+    app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date (10 chars), then backdate
     app.check("item picker", "═[Select item]", "type to filter", " Chicken breast", " Whole milk")
     app.send("milk\r")                         # filter to Whole milk, pick it
     app.check("quantity field defaults to one", "═[Whole milk · Quantity]", "1")
@@ -1233,10 +1233,10 @@ def macros_log_item_path():
     app.check("main menu (2nd)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\r")                             # log item (index 0)
-    app.send("2026/10/01\r")                   # backdate again
+    app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date, then backdate again
     app.send("breast\r")                       # filter to Chicken breast, pick it
     app.check("quantity field (2nd)", "═[Chicken breast · Quantity]", "1")
-    app.send("2.5\r")                          # type a factor (first keystroke overwrites the default)
+    app.send("\x7f2.5\r")                      # clear the prefilled 1, then type the factor
     app.check("logged into a reused day's log", "Logged 2.5 × 'Chicken breast' on 2026/10/01.", "═[Macros]")
     app.close()
     con = sqlite3.connect(DB)
@@ -1267,9 +1267,9 @@ def macros_log_item_path():
     app.send("\r")                             # accept the default: today
     app.send("breast\r")                       # pick Chicken breast
     app.check("quantity field (3rd)", "═[Chicken breast · Quantity]", "1")
-    app.send("0\r")                            # a factor an entry can't have
+    app.send("\x7f0\r")                        # clear the prefilled 1; a factor an entry can't have
     app.check("zero quantity refused", "Enter a number greater than 0", "═[Chicken breast · Quantity]", "> 0")
-    app.send("2\r")                            # fix it (first keystroke overwrites the 0)
+    app.send("\x7f2\r")                        # clear the refused 0, then fix it
     app.check("logged for today", f"Logged 2 × 'Chicken breast' on {today_slashed}.", "═[Macros]")
     app.close()
     con = sqlite3.connect(DB)
@@ -1290,7 +1290,7 @@ def macros_log_item_path():
     app.check("main menu (4th)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\r")                             # log item (index 0)
-    app.send("abc\r")                          # a date that can't parse
+    app.send("\x7f" * 10 + "abc\r")            # clear the prefilled date, then a date that can't parse
     app.check("invalid date refused", "Enter a date as YYYY/MM/DD.", "═[Log date (YYYY/MM/DD)]", "> abc")
     app.send("\x1b")                           # Escape: cancel the log
     app.check("cancelled back at macros", "═[Macros]", "log item")
@@ -2528,7 +2528,7 @@ def confirm_set_path():
     # is entered but Esc'd at the confirmation.
     app.send("\r")                                          # next set
     app.check("weight prefilled", "═[Bench press · Weight (kg)]", "> 110")
-    app.send("120\r")                                       # weight
+    app.send("\x7f" * 3 + "120\r")                          # clear the prefilled 110, then the new weight
     app.send("6\r")                                         # reps
     app.send("\x1b[B\x1b[B\r")                              # difficulty: failure
     app.check("confirm set C", "120kg x 6 (failure) - Add to session?", "Yes", "No")

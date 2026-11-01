@@ -1,11 +1,12 @@
 //! The log-item screen: record one use of an item against a calendar day.
 //!
-//! The date is asked first, defaulting to today's local calendar date — Enter
-//! accepts it, typing a different date backdates the entry (the day's log row
-//! exists independently of when the entry was actually recorded). The item
-//! comes second, through the same "Select item" filter picker the other item
-//! screens use, and then the **quantity factor** — how many of the item this
-//! row records, defaulting to one and typing anything scales it. A use creates
+//! The date is asked first, prefilled with today's local calendar date — Enter
+//! accepts it, and a different date is typed in place, clearing the default
+//! first (backdating the entry: the day's log row exists independently of when
+//! the entry was actually recorded). The item comes second, through the same
+//! "Select item" filter picker the other item screens use, and then the
+//! **quantity factor** — how many of the item this row records, prefilled with
+//! one so Enter logs a single use and a different factor is typed in place. A use creates
 //! a [`MacroLogInclusion`] at that quantity for the day, and the day's
 //! [`MacroLog`] row itself only if it doesn't exist yet — so a date's first
 //! entry makes the row, later entries reuse it.
@@ -85,30 +86,21 @@ pub(super) fn record_use(
     Ok(())
 }
 
-/// Ask for the log's date: the first ask presents today as a replaceable
-/// default (Enter accepts it, typing a different `YYYY/MM/DD` backdates), and
-/// a date that won't parse re-asks with what was typed, so a single digit can
-/// be fixed. `None` when the user cancels with Escape.
+/// Ask for the log's date: the field is prefilled with today in the app's
+/// `YYYY/MM/DD` convention — Enter accepts it, and a different date is typed in
+/// place, clearing the default first (backdating the entry). A date that won't
+/// parse re-asks with what was typed, so a single digit can be fixed. `None`
+/// when the user cancels with Escape.
 fn ask_date(shell: &mut Shell) -> Result<Option<NaiveDate>, UiError> {
-    // Today in the app's `YYYY/MM/DD` date convention (the session screens'
-    // format_date), the value the field presents as its replaceable default.
-    let today = format_date(Local::now().date_naive());
-    // `pending` seeds the field after a refused date; `None` means the first
-    // ask, which presents today's date as the replaceable default.
-    let mut pending: Option<String> = None;
+    let mut pending = format_date(Local::now().date_naive());
     loop {
-        let outcome = match &pending {
-            None => {
-                shell.read_line_default(Some("Log date (YYYY/MM/DD)".to_string()), None, &today)?
-            }
-            Some(raw) => shell.read_line(Some("Log date (YYYY/MM/DD)".to_string()), None, raw)?,
-        };
+        let outcome = shell.read_line(Some("Log date (YYYY/MM/DD)".to_string()), None, &pending)?;
         match outcome {
             ReadOutcome::Value(raw) => match parse_date(&raw) {
                 Some(date) => return Ok(Some(date)),
                 None => {
                     shell.log("Enter a date as YYYY/MM/DD.");
-                    pending = Some(raw);
+                    pending = raw;
                 }
             },
             ReadOutcome::Cancelled { .. } => return Ok(None),
@@ -116,26 +108,22 @@ fn ask_date(shell: &mut Shell) -> Result<Option<NaiveDate>, UiError> {
     }
 }
 
-/// Ask how many of the picked item this row records: the first ask presents 1
-/// as a replaceable default (Enter logs a single item, typing anything scales),
-/// and a quantity that won't parse re-asks with what was typed, so a "2." or
-/// "0" left on the default can be fixed the same way the date field's re-ask
-/// works. `None` when the user cancels with Escape — nothing is recorded.
+/// Ask how many of the picked item this row records: the field is prefilled
+/// with 1 — Enter logs a single item, and a different factor is typed in
+/// place, clearing the default first. A quantity that won't parse re-asks with
+/// what was typed, so a "2." or "0" left on the prefill can be fixed the same
+/// way the date field's re-ask works. `None` when the user cancels with Escape
+/// — nothing is recorded.
 fn ask_quantity(shell: &mut Shell, item_name: &str) -> Result<Option<f64>, UiError> {
-    // `pending` seeds the field after a refused quantity; `None` means the
-    // first ask, which presents 1 as the replaceable default.
-    let mut pending: Option<String> = None;
+    let mut pending = "1".to_string();
     loop {
-        let outcome = match &pending {
-            None => shell.read_line_default(Some(format!("{item_name} · Quantity")), None, "1")?,
-            Some(raw) => shell.read_line(Some(format!("{item_name} · Quantity")), None, raw)?,
-        };
+        let outcome = shell.read_line(Some(format!("{item_name} · Quantity")), None, &pending)?;
         match outcome {
             ReadOutcome::Value(raw) => match parse_quantity(&raw) {
                 Some(quantity) => return Ok(Some(quantity)),
                 None => {
                     shell.log("Enter a number greater than 0");
-                    pending = Some(raw);
+                    pending = raw;
                 }
             },
             ReadOutcome::Cancelled { .. } => return Ok(None),

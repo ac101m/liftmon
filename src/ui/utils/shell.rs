@@ -232,20 +232,6 @@ impl Shell {
         self.run_read_line(&mut input)
     }
 
-    /// Like [`read_line`], but `default` is presented as a replaceable default
-    /// (e.g. the last weight used for an exercise): Enter accepts it as-is,
-    /// the first character typed overwrites it, and Backspace — like a caret
-    /// move — edits it in place, a character at a time.
-    pub(crate) fn read_line_default(
-        &mut self,
-        title: Option<String>,
-        prompt: Option<String>,
-        default: &str,
-    ) -> Result<ReadOutcome, UiError> {
-        let mut input = TextInput::with_default(title, prompt, default);
-        self.run_read_line(&mut input)
-    }
-
     /// Run a text-input element to completion and harvest its outcome.
     fn run_read_line(&mut self, input: &mut TextInput) -> Result<ReadOutcome, UiError> {
         match self.run(input)? {
