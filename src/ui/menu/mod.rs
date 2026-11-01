@@ -6,7 +6,9 @@
 //! Ctrl+C).
 //!
 //! Each screen's behaviour lives in its own file — see [`self::main_menu`],
-//! [`self::macros_menu`], [`self::exercises_menu`], [`self::session_menu`],
+//! [`self::macros_menu`], [`self::macros_items`] (the macros screen's items
+//! submenu), [`self::macros_logs`] (its log submenu),
+//! [`self::exercises_menu`], [`self::session_menu`],
 //! [`self::freeform_session`],
 //! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
 //! [`self::add_item`], [`self::log_item`], [`self::show_logs`],
@@ -42,6 +44,8 @@ mod freeform_session;
 mod item_options;
 mod log_item;
 mod log_options;
+mod macros_items;
+mod macros_logs;
 mod macros_menu;
 mod main_menu;
 mod muscle_group_options;
@@ -58,8 +62,14 @@ mod show_logs;
 pub(crate) enum Menu {
     /// The top-level menu (Exercises / Sessions / Exit).
     Main,
-    /// The macros screen (Show items / Add item / Back).
+    /// The macros screen (Items / Logs / Back).
     Macros,
+    /// The items submenu (Show items / New item / Back), branching the macros
+    /// screen's item flows off from its log flows.
+    MacrosItems,
+    /// The log submenu (Log item / History / Back), branching the macros
+    /// screen's day-log flows off from its item flows.
+    MacrosLogs,
     /// The add-item screen: choose a plain item (a leaf — name and six stored
     /// macros) or a recipe item (a composite of existing items, each a
     /// quantity factor), then run that form.
@@ -176,6 +186,8 @@ impl Menu {
         match self {
             Menu::Main => main_menu::run(shell),
             Menu::Macros => macros_menu::run(shell),
+            Menu::MacrosItems => macros_items::run(shell),
+            Menu::MacrosLogs => macros_logs::run(shell),
             Menu::AddItem => add_item::run(shell, conn),
             Menu::LogItem => log_item::run(shell, conn),
             Menu::ShowLogs => show_logs::run(shell, conn),

@@ -23,14 +23,14 @@ use crate::ui::utils::{ReadOutcome, Shell, UiError};
 use super::Menu;
 
 /// Drive the whole recipe flow, returning the screen to move to next: the new
-/// item's options screen when it was created, or the macros menu when the user
-/// cancelled (or when there were no items to compose with yet).
+/// item's options screen when it was created, or the items submenu when the
+/// user cancelled (or when there were no items to compose with yet).
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     let mut prefill = String::new();
     loop {
         let name = match ask_name(shell, conn, &prefill)? {
             Some(name) => name,
-            None => return Ok(Some(Menu::Macros)), // cancelled the flow
+            None => return Ok(Some(Menu::MacrosItems)), // cancelled the flow
         };
 
         // Composing needs existing items to reference, and the picker asserts
@@ -39,11 +39,11 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         let mut available = Item::all(conn)?;
         if available.is_empty() {
             shell.log("No items yet — add a plain item first");
-            return Ok(Some(Menu::Macros));
+            return Ok(Some(Menu::MacrosItems));
         }
 
         let Some(pairs) = collect_components(shell, conn, &mut available)? else {
-            return Ok(Some(Menu::Macros)); // abandoned the flow
+            return Ok(Some(Menu::MacrosItems)); // abandoned the flow
         };
 
         // A composite's stored macros are unused (derived-only), so create

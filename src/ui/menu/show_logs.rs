@@ -7,7 +7,8 @@
 //! added to — with the day's resolved calories and protein riding along as a
 //! suffix (`2026/10/02 · 320kcal · 60g protein`), so a day's totals are
 //! legible before opening it. The dates are UNIQUE (one log per day), so
-//! picking one names the log exactly. Escape backs out to the macros menu.
+//! picking one names the log exactly. Escape backs out to the log submenu
+//! ([`super::macros_logs`]).
 
 use std::collections::HashMap;
 
@@ -22,14 +23,14 @@ use super::item_options::round2;
 use super::select_session::format_date;
 
 /// Ask the user to filter and pick one day's log, landing on its options
-/// screen. Escape backs out to the macros menu.
+/// screen. Escape backs out to the log submenu.
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     // `MacroLog::all` returns oldest first — the reverse of the order the
     // picker wants, so the most recent log reads at the top.
     let logs = MacroLog::all(conn)?;
     if logs.is_empty() {
         shell.log("No logs yet — log an item first");
-        return Ok(Some(Menu::Macros));
+        return Ok(Some(Menu::MacrosLogs));
     }
     // Each label is a resolved-macros pass — the same per-day resolution the
     // log options info screen does for the picked log — so a day's totals
@@ -54,7 +55,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         labels,
     )?
     else {
-        return Ok(Some(Menu::Macros)); // Escape: backed out
+        return Ok(Some(Menu::MacrosLogs)); // Escape: backed out
     };
 
     // Each label begins with its fixed-width (10-char) date, and dates are
@@ -64,7 +65,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         .find(|log| chosen.starts_with(&format_date(log.date)))
     else {
         shell.log("That log is no longer there");
-        return Ok(Some(Menu::Macros));
+        return Ok(Some(Menu::MacrosLogs));
     };
     Ok(Some(Menu::LogOptions { date: log.date }))
 }

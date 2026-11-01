@@ -78,10 +78,14 @@ history), the personal-record path (a set beating the exercise's prior Epley e1R
 set, and the exercise info screen frames the exercise with rules and lists its
 last three personal records as weight × reps with when each record was set), the
 in-use-exercise delete path, the macros path (the main menu's "Macros" item
-lands on the macros screen with its log-item/show-logs/show-items/create-item/back
-menu — "create item" (renamed from "add item" so it can't be confused with the
-log options' per-day "add item") launches the plain/recipe item form), the
-macro-log path (a "log item" option sits at the top of the macros menu: it asks
+lands on the macros screen, which branches into two submenus rather than
+listing every flow flat: "items" — whose "show items" and "new item" hold the
+item flows, "new item" launching the plain/recipe item form — and "logs" — whose
+"log item" and "history" hold the day-log flows — plus "back"; the split
+keeps the macros menu short, and renames the old "create item" to "new item"
+and "show logs" to "history" so neither can be confused with the log
+options' per-day "add item"), the
+macro-log path (the log submenu's "log item" option: it asks
 for a date prefilled with today's local calendar date — Enter accepts it, and a
 different date is typed in place, clearing the prefilled date first, backdating
 the entry — then the item picker, and a quantity factor after that, prefilled
@@ -95,7 +99,7 @@ the clock may be wrong — so the default No keeps the typed text on the field
 date re-asks with the text kept, a refused quantity re-asks the same way, and
 Escape cancels before anything is recorded — with the log rows and inclusions'
 quantities verified in the database), the macros
-show-logs path (a "show logs" option sits just below "log item": a filter picker
+show-logs path (the log submenu's "history" option: a filter picker
 over the logged dates in the app's `YYYY/MM/DD` form — each row carrying its
 day's resolved calories and protein as bare quantities, calories first,
 `2026/10/02 · 320kcal · 60g protein` — newest first, lands on the
@@ -125,7 +129,7 @@ nothing logged to remove guards with "No items logged on this date yet"; an
 emptied day keeps its `macro_logs` row, resolving to zeros and still listed in
 the picker as `0kcal · 0g protein`, with whole-day "delete" the way to remove
 the date), the macros
-add-item path ("create item" at the bottom of the macros menu first asks
+add-item path (the items submenu's "new item" first asks
 whether the item is a plain or a recipe
 item; a plain item is the existing leaf form — name plus six macro fields
 entered the way a label lists them, totals first then the "of which" part:
@@ -187,7 +191,7 @@ re-asks); editing fat total 5.9 → 6, saturates 2.3 → 2, carbs 9.4 → 10, su
 ("Fat: 6 g (of which saturates: 2 g)", "Carbs: 10 g (of which sugars: 5 g)"),
 the residuals stored as the pair differences, and the other items untouched —
 while a composite's derived macros offer no such edits), the macros
-show-items path (a filter picker of the
+show-items path (the items submenu's "show items" opens a filter picker of the
 stored items — typing narrows it like the exercise picker; picking one opens
 its info/back menu whose info logs the item's name, fat and carbs totals
 (each with its "of which" saturates/sugars breakdown), protein and calories in

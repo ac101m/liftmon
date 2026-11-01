@@ -16,9 +16,10 @@
 //!
 //! Escape at the date field, the picker or the quantity field cancels the whole
 //! thing: nothing has been recorded yet, so there is no in-progress state to
-//! confirm abandoning. After a successful log the screen returns to the macros
-//! menu. The pick-then-quantity-then-record body is [`record_use`], shared with
-//! the log options screen's "add item" (which already knows its date).
+//! confirm abandoning. After a successful log the screen returns to the log
+//! submenu ([`super::macros_logs`]). The pick-then-quantity-then-record body is
+//! [`record_use`], shared with the log options screen's "add item" (which
+//! already knows its date).
 
 use chrono::{Local, NaiveDate, Utc};
 use rusqlite::Connection;
@@ -32,13 +33,13 @@ use super::add_recipe_item::parse_quantity;
 use super::select_session::format_date;
 
 /// Ask for the date, then record the day's use via [`record_use`]. Always
-/// returns to the macros menu (nothing is recorded on Escape).
+/// returns to the log submenu (nothing is recorded on Escape).
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     let Some(date) = ask_date(shell)? else {
-        return Ok(Some(Menu::Macros)); // Escape: nothing recorded yet
+        return Ok(Some(Menu::MacrosLogs)); // Escape: nothing recorded yet
     };
     record_use(shell, conn, date)?;
-    Ok(Some(Menu::Macros))
+    Ok(Some(Menu::MacrosLogs))
 }
 
 /// Pick an item, ask its quantity factor, and record the use against `date` —

@@ -34,19 +34,19 @@ use crate::ui::utils::{ReadOutcome, Shell, UiError};
 use super::Menu;
 
 /// The add-item screen: ask which kind of item to add, then run that form. A
-/// plain item returns to the macros menu; a recipe item hands over to
-/// [`super::add_recipe_item`], which lands on the new item's options screen
-/// (or the macros menu when cancelled).
+/// plain item returns to the items submenu ([`super::macros_items`]); a recipe
+/// item hands over to [`super::add_recipe_item`], which lands on the new
+/// item's options screen (or the items submenu when cancelled).
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
     let choice = shell.ask(Some("Add item".to_string()), ["plain item", "recipe item"])?;
     match choice.as_deref() {
         Some("plain item") => {
             add_item(shell, conn)?;
-            Ok(Some(Menu::Macros))
+            Ok(Some(Menu::MacrosItems))
         }
         Some("recipe item") => super::add_recipe_item::run(shell, conn),
         // "Escape": leave without adding anything.
-        _ => Ok(Some(Menu::Macros)),
+        _ => Ok(Some(Menu::MacrosItems)),
     }
 }
 

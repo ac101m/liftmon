@@ -8,13 +8,13 @@
 //! the saturated-fats and sugars parts kept in step, the residual column
 //! deriving from the other half — (**leaf items only**: a composite's macros
 //! are derived, never stored), edit its ingredients or add a new one
-//! (composite items only), delete it, or back out to the macros menu. Editing
-//! loops back onto this screen under the renamed item, so the prompt tracks
-//! the change. The delete sits just above "back" on both item kinds: an item
-//! nothing references (no composite uses it, no log includes it) is removed —
-//! a composite's own composition goes with it — and a referenced one draws a
-//! refusal that stays on the screen; either way the screen is left via the
-//! macros menu.
+//! (composite items only), delete it, or back out to the items submenu
+//! ([`super::macros_items`]). Editing loops back onto this screen under the
+//! renamed item, so the prompt tracks the change. The delete sits just above
+//! "back" on both item kinds: an item nothing references (no composite uses
+//! it, no log includes it) is removed — a composite's own composition goes
+//! with it — and a referenced one draws a refusal that stays on the screen;
+//! either way the screen is left via the items submenu.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -206,7 +206,7 @@ pub(super) fn run(
                     match item.delete(conn) {
                         Ok(()) => {
                             shell.log(format!("Deleted item '{}'", item.name));
-                            return Ok(Some(Menu::Macros)); // it no longer exists
+                            return Ok(Some(Menu::MacrosItems)); // it no longer exists
                         }
                         Err(DomainError::InUse { ref name, .. }) => {
                             // Naming only the kinds that apply: "as an
@@ -233,8 +233,8 @@ pub(super) fn run(
                     }
                 }
             }
-            // "back", or Escape: the user asked to leave for the macros menu.
-            _ => return Ok(Some(Menu::Macros)),
+            // "back", or Escape: the user asked to leave for the items submenu.
+            _ => return Ok(Some(Menu::MacrosItems)),
         }
     }
 }
