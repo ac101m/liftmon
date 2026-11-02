@@ -208,8 +208,27 @@ impl Shell {
     /// things, resuming a stale session, discarding in-progress work), where
     /// an accidental Enter should decline, never confirm.
     pub(crate) fn confirm(&mut self, title: Option<String>) -> Result<bool, UiError> {
-        let mut choice =
-            Choice::with_selected(title, ["Yes".to_string(), "No".to_string()].to_vec(), 1);
+        self.confirm_on(title, 1)
+    }
+
+    /// Ask a "Yes" / "No" list with "Yes" as the highlighted default — the
+    /// rare confirm that isn't destructive, where the common answer is yes:
+    /// e.g. a recipe's "Add another item?", answered "Yes" for every component
+    /// until the user deliberately finishes. Escape — and a selected "No" —
+    /// both proceed no further.
+    pub(crate) fn confirm_yes_default(&mut self, title: Option<String>) -> Result<bool, UiError> {
+        self.confirm_on(title, 0)
+    }
+
+    /// The shared prompt body: a "Yes" / "No" list with `selected` (0 = "Yes",
+    /// 1 = "No") as the highlighted row — the answer an Enter returns. Escape
+    /// counts as "No" whichever way the default leans.
+    fn confirm_on(&mut self, title: Option<String>, selected: usize) -> Result<bool, UiError> {
+        let mut choice = Choice::with_selected(
+            title,
+            ["Yes".to_string(), "No".to_string()].to_vec(),
+            selected,
+        );
         match self.run(&mut choice)? {
             ElementResult::Value(answer) => Ok(answer == "Yes"),
             ElementResult::Cancelled => Ok(false),

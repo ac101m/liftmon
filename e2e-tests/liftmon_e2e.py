@@ -1706,13 +1706,13 @@ def macros_add_recipe_item_path():
     app.check("chicken quantity", "═[Chicken breast · Quantity]", "e.g. 0.5")
     app.send("2\r")                            # quantity factor
     app.check("add another prompt", "Add another item?", "Yes", "No")
-    app.send("\x1b[A\r")                       # Yes: up to it, add another component
+    app.send("\r")                             # Yes (default): add another component
     app.check("second picker drops the chosen item", "═[Select item]", "type to filter", " Whole milk")
     app.send("\r")                             # pick Whole milk (index 0)
     app.check("milk quantity", "═[Whole milk · Quantity]", "e.g. 0.5")
     app.send("0.5\r")                          # quantity factor
     app.check("final add another prompt", "Add another item?", "Yes", "No")
-    app.send("\r")                             # No (default): create
+    app.send("\x1b[B\r")                       # No: down to it, finish the recipe
     app.check("recipe created, lands on its options",
               "Added item 'Chicken sandwich'", "═[Chicken sandwich]",
               "info", "edit name", "edit ingredients", "add ingredient", "delete", "back")

@@ -112,7 +112,9 @@ fn collect_components(
         };
         pairs.push((item.id, quantity));
 
-        if !shell.confirm(Some("Add another item?".to_string()))? {
+        // "Yes" is the highlighted default: composing is usually several steps,
+        // so an accidental Enter keeps adding; stopping is the deliberate "No".
+        if !shell.confirm_yes_default(Some("Add another item?".to_string()))? {
             return Ok(Some(pairs));
         }
     }
