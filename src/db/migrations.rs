@@ -323,6 +323,35 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          guarding INSERT at the end of its `up`), the v6 'Hip adductors' \
          precedent.",
     ),
+    // Not yet frozen (schema v10, this build's latest): free-text notes hung
+    // off a day's log. Once this ships, append a new migration rather than
+    // editing it.
+    M::up(
+        r"
+        CREATE TABLE macro_log_notes (
+            id           INTEGER PRIMARY KEY,
+            macro_log_id INTEGER NOT NULL REFERENCES macro_logs(id) ON DELETE CASCADE,
+            note         TEXT NOT NULL,
+            created_at   TEXT NOT NULL
+        );
+
+        -- FK column the per-log note loaders join on.
+        CREATE INDEX idx_notes_log ON macro_log_notes(macro_log_id);
+        ",
+    )
+    .down("DROP TABLE macro_log_notes;")
+    .comment(
+        "Free-text notes recorded against a day's macro log. `macro_logs` \
+         held only items before; a note is a plain line of text (the user's \
+         own words about the day — how it went, why a total is what it is), \
+         `macro_log_notes` giving every day any number of them. The row's own \
+         `id` primary key (nothing here is unique) lets several notes share \
+         one log, each created at its own `created_at` UTC moment in the same \
+         timezone-aware TEXT format as every other `created_at` column, and \
+         the idx_notes_log index (like idx_inclusions_log) serves the per-log \
+         lookups. A log's notes cascade away with it (CASCADE), the same \
+         rule as its inclusions. See src/domain/macro_log_note.rs.",
+    ),
 ];
 
 /// The migrations, ready to apply to a connection.

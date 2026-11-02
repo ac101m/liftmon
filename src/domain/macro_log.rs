@@ -85,10 +85,10 @@ impl MacroLog {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// Remove this log. Its inclusions go with it — the schema's `ON DELETE
-    /// CASCADE` (migration v9) deletes them with the row, so one statement is
-    /// enough. Errors with [`DomainError::MissingRow`] when the log is already
-    /// gone.
+    /// Remove this log. Its inclusions and notes go with it — the schema's
+    /// `ON DELETE CASCADE` (migrations v9 and v10) deletes them with the row,
+    /// so one statement is enough. Errors with [`DomainError::MissingRow`]
+    /// when the log is already gone.
     pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
         let changed = conn.execute("DELETE FROM macro_logs WHERE id = ?1", [self.id])?;
         if changed == 0 {

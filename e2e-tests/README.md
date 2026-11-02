@@ -51,7 +51,7 @@ What happens on a run:
    default groups seeded, the macros `items` table and its `item_reference`
    composition table (with its no-cycles trigger), the macro-log tables — a
    `macro_logs` row per calendar date holding `macro_log_inclusions` item-use
-   rows at a quantity factor — `PRAGMA
+   rows at a quantity factor and `macro_log_notes` free-text notes — `PRAGMA
    user_version`), seeded with a
    couple of exercises.
 2. For each scenario it launches the binary in a fresh pseudo-terminal

@@ -3,7 +3,9 @@
 //! The prompt is `Macro log for <date>` (the app's `YYYY/MM/DD` date — the
 //! same text the info section heads itself with), and the options show the
 //! log's info — the day's total macros in the items' format, then each item it
-//! recorded under an "Items:" heading, in creation order — add another item to
+//! recorded under an "Items:" heading, in creation order, and any notes under
+//! a "Notes:" heading —
+//! add another item to
 //! the same day (the log-item flow without the date ask — see
 //! [`super::log_item::record_use`], which is shared), create a **new item**
 //! from here (the items submenu's add-item flow, plain or recipe, landing back
@@ -11,18 +13,22 @@
 //! remove one recorded
 //! item ("delete item": a filter picker over the day's logged items, then a
 //! Yes/No "are you sure" that defaults to "No", dropping exactly that one use),
-//! delete the whole log (after a Yes/No "are you sure" that defaults to "No",
-//! taking its inclusions with it), or back out to the log picker. Deleting or
-//! backing out returns to the picker, which no longer lists a deleted date.
+//! then **add note** (a free-text line recorded against the day, shown in the
+//! info) and **show notes** (a filter picker over the day's notes, each picked
+//! one opening its [`super::note_options`] screen to edit or delete it),
+//! **delete log** (after a Yes/No "are you sure" that defaults to "No",
+//! taking all the items and notes with it), or back out to the log picker.
+//! Deleting or backing out returns to the picker, which no longer lists a
+//! deleted date.
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Utc};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
-use crate::domain::{Item, MacroLog, MacroLogInclusion};
+use crate::domain::{Item, MacroLog, MacroLogInclusion, MacroLogNote};
 
-use crate::ui::utils::{Shell, UiError};
+use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
 use super::item_options::{heading, resolved_macro_lines};
@@ -52,7 +58,9 @@ pub(super) fn run(
                 "add item",
                 "new item",
                 "delete item",
-                "delete",
+                "add note",
+                "show notes",
+                "delete log",
                 "back",
             ],
             selected,
@@ -76,15 +84,26 @@ pub(super) fn run(
             // Undo one mistaken entry: pick the use to drop from a filter
             // picker over the day's logged items, then confirm. Stays on this
             // menu either way (removing the last use leaves the day's empty
-            // log row — whole-day "delete" is the way to remove the date).
+            // log row — whole-day "delete log" is the way to remove the date).
             Some("delete item") => remove_item(shell, conn, &log)?,
+            // Record a free-text note against the day (its words, not a
+            // menu-label): the info section lists it under "Notes:" from here
+            // on, and "show notes" can reach it for editing or deleting.
+            Some("add note") => add_note(shell, conn, &log)?,
+            // Browse the day's notes; picking one opens its note-options
+            // screen (edit / delete / back). Nothing to show stays here.
+            Some("show notes") => {
+                if let Some(note_id) = show_notes(shell, conn, &log)? {
+                    return Ok(Some(Menu::NoteOptions { date, note_id }));
+                }
+            }
             // Delete the log after a Yes/No "are you sure" that defaults to
             // "No" — deleting is destructive, so an explicit "Yes" is required
             // even for an accidental Enter. Unlike an item there is nothing to
-            // refuse: a log's inclusions belong to it, so the schema deletes
-            // them with the row (ON DELETE CASCADE) — and the picker we return
-            // to no longer lists the date.
-            Some("delete") => {
+            // refuse: a log's inclusions and notes belong to it, so the schema
+            // deletes them with the row (ON DELETE CASCADE) — and the picker
+            // we return to no longer lists the date.
+            Some("delete log") => {
                 if shell.confirm(Some(format!("Delete macro log for {}?", format_date(date))))? {
                     let Some(log) = MacroLog::find_by_date(conn, date)? else {
                         shell.log("That log is no longer there");
@@ -108,32 +127,113 @@ pub(super) fn run(
 /// menu title (`Macro log for <date>`, styled like an item's name heading),
 /// then the items it recorded under a bold "Items:" heading, in the order they
 /// were logged (`created_at`, then row id), each `{qty} × {name}` like a
-/// composite's ingredients.
+/// composite's ingredients, and then any notes under a bold "Notes:" heading,
+/// in the order they were written.
 fn log_info_lines(conn: &Connection, log: &MacroLog) -> Result<Vec<Line<'static>>, UiError> {
     let mut lines = vec![heading(&format!("Macro log for {}", format_date(log.date)))];
     // A day with nothing logged — its row made by "create log", or emptied by
     // removals — has no macros to sum and no items to list, so say so instead
-    // of printing a row of zeroed totals under an empty "Items:" heading.
+    // of printing a row of zeroed totals under an empty "Items:" heading. Its
+    // notes (if any) still print, further down.
     let inclusions = MacroLogInclusion::for_log(conn, log.id)?;
     if inclusions.is_empty() {
         lines.push(Line::from("  No items logged yet.".to_string()));
-        return Ok(lines);
+    } else {
+        let macros = MacroLog::resolved_macros(conn, log.id)?;
+        lines.extend(resolved_macro_lines(&macros));
+        // A bold section heading, flush with the section title; the items are
+        // indented two spaces beneath it.
+        lines.push(Line::from(vec![Span::styled(
+            "Items:",
+            Style::new().add_modifier(Modifier::BOLD),
+        )]));
+        for inclusion in inclusions {
+            lines.push(Line::from(format!(
+                "  {}",
+                inclusion_label(conn, &inclusion)?
+            )));
+        }
     }
-    let macros = MacroLog::resolved_macros(conn, log.id)?;
-    lines.extend(resolved_macro_lines(&macros));
-    // A bold section heading, flush with the section title; the items are
-    // indented two spaces beneath it.
-    lines.push(Line::from(vec![Span::styled(
-        "Items:",
-        Style::new().add_modifier(Modifier::BOLD),
-    )]));
-    for inclusion in inclusions {
-        lines.push(Line::from(format!(
-            "  {}",
-            inclusion_label(conn, &inclusion)?
-        )));
+    // Any notes the day carries, under a bold "Notes:" heading, in the order
+    // they were written — but only when there are some: a note-less day's
+    // info is unchanged by this feature. Each note leads with a hyphen
+    // bullet (on the items' two-space indent), so a note spanning several
+    // lines reads as one bulleted point rather than many.
+    let notes = MacroLogNote::for_log(conn, log.id)?;
+    if !notes.is_empty() {
+        lines.push(Line::from(vec![Span::styled(
+            "Notes:",
+            Style::new().add_modifier(Modifier::BOLD),
+        )]));
+        for note in notes {
+            lines.push(Line::from(format!("  - {}", note.note)));
+        }
     }
     Ok(lines)
+}
+
+/// Ask for the note's text and record it against the log, re-asking from
+/// what was typed when it comes back empty (edit_name's pattern: the field
+/// prefills nothing here, but the retry keeps the rejected input). Escape
+/// stays on this menu without a note. "Added note" joins the log line, and
+/// the info section lists it under "Notes:" from here on.
+fn add_note(shell: &mut Shell, conn: &Connection, log: &MacroLog) -> Result<(), UiError> {
+    let mut prefill = String::new();
+    loop {
+        match shell.read_line(Some("Add note".to_string()), None, &prefill)? {
+            ReadOutcome::Value(text) => {
+                let text = text.trim().to_owned();
+                if text.is_empty() {
+                    shell.log("The note cannot be empty");
+                    prefill.clear();
+                    continue;
+                }
+                MacroLogNote::create(conn, log.id, text, Utc::now())?;
+                shell.log("Added note");
+                return Ok(());
+            }
+            ReadOutcome::Cancelled { .. } => return Ok(()),
+        }
+    }
+}
+
+/// Browse the day's notes in a filter picker (each row the note's text, in
+/// the order written) and return the picked one's own id, or [`None`] when
+/// the user backs out (or there is nothing to show).
+fn show_notes(
+    shell: &mut Shell,
+    conn: &Connection,
+    log: &MacroLog,
+) -> Result<Option<i64>, UiError> {
+    let notes = MacroLogNote::for_log(conn, log.id)?;
+    if notes.is_empty() {
+        // A day's log exists from "create log" (or from items removed since),
+        // so "show notes" finds a log with no notes — worth saying nothing
+        // rather than opening an empty list.
+        shell.log("No notes on this date yet");
+        return Ok(None);
+    }
+    let rows: Vec<(String, i64)> = notes
+        .iter()
+        .map(|note| (note.note.clone(), note.id))
+        .collect();
+    let labels: Vec<String> = rows.iter().map(|(label, _)| label.clone()).collect();
+    let Some(chosen) = shell.pick(
+        Some("Select note".to_string()),
+        Some("type to filter".to_string()),
+        labels,
+    )?
+    else {
+        return Ok(None); // Escape: backed out of the picker
+    };
+    // First matching row, by label. Notes with identical text pick the first
+    // written; a filter picker can't reach the id, and editing or deleting
+    // any identical-text note reads the same on the day.
+    let Some((_, note_id)) = rows.into_iter().find(|(label, _)| label == &chosen) else {
+        shell.log("That note is no longer there");
+        return Ok(None);
+    };
+    Ok(Some(note_id))
 }
 
 /// "2 × Chicken breast" — the line the info's "Items:" list shows and the
@@ -197,7 +297,7 @@ fn remove_item(shell: &mut Shell, conn: &Connection, log: &MacroLog) -> Result<(
 mod tests {
     use super::*;
     use crate::db::apply_schema;
-    use crate::domain::Item;
+    use crate::domain::{Item, MacroLogNote};
     use chrono::NaiveDate;
 
     /// An in-memory database with the full schema applied — needed for the
@@ -284,5 +384,86 @@ mod tests {
         let bold = Style::new().add_modifier(Modifier::BOLD);
         assert_eq!(lines[0].spans[0].style, bold);
         assert_eq!(lines[1].spans[0].style, Style::new());
+    }
+
+    #[test]
+    fn info_lists_notes_under_a_notes_heading_after_the_items() {
+        let (conn, log) = test_db();
+        // Two notes written after the items, in different moments, so the
+        // info lists them in written order, beneath the items.
+        MacroLogNote::create(
+            &conn,
+            log.id,
+            "Slept badly".to_string(),
+            moment(2026, 10, 2, 21, 0),
+        )
+        .unwrap();
+        MacroLogNote::create(
+            &conn,
+            log.id,
+            "Did well".to_string(),
+            moment(2026, 10, 2, 22, 0),
+        )
+        .unwrap();
+
+        let lines = log_info_lines(&conn, &log).unwrap();
+        assert_eq!(
+            lines_text(&lines),
+            [
+                // The heading is the menu-title text, with the day's resolved
+                // totals beneath.
+                "Macro log for 2026/10/02:",
+                "  Fat: 16 g (of which saturates: 4 g)",
+                "  Carbs: 10 g (of which sugars: 5 g)",
+                "  Protein: 63 g",
+                "  Calories: 380 kcal",
+                "Items:",
+                "  1 × Whole milk",
+                "  2 × Chicken breast",
+                // The notes sit beneath their own bold heading, each indented
+                // two spaces like an item and leading with a hyphen bullet, in
+                // written order.
+                "Notes:",
+                "  - Slept badly",
+                "  - Did well",
+            ]
+        );
+        // The Notes: heading is bold like Items:; the notes themselves plain.
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        assert_eq!(lines[8].spans[0].style, bold);
+        assert_eq!(lines[9].spans[0].style, Style::new());
+        assert_eq!(lines[10].spans[0].style, Style::new());
+    }
+
+    #[test]
+    fn info_of_a_log_without_items_still_lists_its_notes() {
+        let (conn, _) = test_db();
+        // "create log" makes an empty day; a note added to it must still
+        // print after the "no items" line — the early no-macros path can't
+        // hide notes behind the zeroed-totals shortcut.
+        let empty = MacroLog::create(&conn, NaiveDate::from_ymd_opt(2026, 10, 3).unwrap()).unwrap();
+        MacroLogNote::create(
+            &conn,
+            empty.id,
+            "Rest day".to_string(),
+            moment(2026, 10, 3, 12, 0),
+        )
+        .unwrap();
+
+        let lines = log_info_lines(&conn, &empty).unwrap();
+        assert_eq!(
+            lines_text(&lines),
+            [
+                "Macro log for 2026/10/03:",
+                "  No items logged yet.",
+                "Notes:",
+                "  - Rest day",
+            ]
+        );
+        // The section title and Notes: heading are bold; the note is plain.
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        assert_eq!(lines[0].spans[0].style, bold);
+        assert_eq!(lines[2].spans[0].style, bold);
+        assert_eq!(lines[3].spans[0].style, Style::new());
     }
 }

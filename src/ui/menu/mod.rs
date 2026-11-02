@@ -51,6 +51,7 @@ mod macros_logs;
 mod macros_menu;
 mod main_menu;
 mod muscle_group_options;
+mod note_options;
 mod select_exercise;
 mod select_exercise_by_group;
 mod select_muscle_group;
@@ -95,6 +96,9 @@ pub(crate) enum Menu {
     /// The actions for one picked day's log, identified by its date (UNIQUE —
     /// one log per day, so the date names the log).
     LogOptions { date: NaiveDate },
+    /// The actions for one picked note on a day's log, identified by its own
+    /// row id; the date names the log to return to.
+    NoteOptions { date: NaiveDate, note_id: i64 },
     /// The exercise screen (Browse exercises / Add exercise / Back).
     Exercises,
     /// The add-exercise form (name, then description).
@@ -199,6 +203,7 @@ impl Menu {
             Menu::LogItem => log_item::run(shell, conn),
             Menu::ShowLogs => show_logs::run(shell, conn),
             Menu::LogOptions { date } => log_options::run(shell, conn, date),
+            Menu::NoteOptions { date, note_id } => note_options::run(shell, conn, date, note_id),
             Menu::ShowItems => show_items::run(shell, conn),
             Menu::ItemOptions { name } => item_options::run(shell, conn, name),
             Menu::Exercises => exercises_menu::run(shell, conn),

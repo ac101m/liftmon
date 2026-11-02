@@ -43,7 +43,7 @@ os.chdir("/tmp")
 # The newest schema version this build knows. seed_db stamps it, and the splash
 # path asserts the startup splash reports it, so a schema migration both bumps
 # the seed and flips the assertion in the same run.
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat")),
             refs=(), items=(), composition=(), logs=()):
@@ -127,6 +127,15 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         quantity     REAL NOT NULL,
         created_at   TEXT NOT NULL)""")
     con.execute("CREATE INDEX idx_inclusions_log ON macro_log_inclusions(macro_log_id)")
+    # Free-text notes on a day's log (migration v10): several per log, each
+    # with its own id, text and UTC created_at moment — mirroring the app's
+    # schema so the seed matches exactly what `upgrade()` produces.
+    con.execute("""CREATE TABLE macro_log_notes (
+        id           INTEGER PRIMARY KEY,
+        macro_log_id INTEGER NOT NULL REFERENCES macro_logs(id) ON DELETE CASCADE,
+        note         TEXT NOT NULL,
+        created_at   TEXT NOT NULL)""")
+    con.execute("CREATE INDEX idx_notes_log ON macro_log_notes(macro_log_id)")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
     # Optional macros items — (name, macros) pairs, macros the six REAL columns
@@ -1246,7 +1255,7 @@ def macros_create_log_path():
     app.send("\x1b[B\r")                       # create log (index 1)
     app.check("create-log date field defaults to today", "═[Log date (YYYY/MM/DD)]", today_slashed)
     app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date (10 chars), then backdate
-    app.check("created a backdated log", "Created a macro log for 2026/10/01.", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "delete", "back")
+    app.check("created a backdated log", "Created a macro log for 2026/10/01.", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
     app.send("\x1b[B\r")                       # add item (index 1) on the log options
     app.send("milk\r")                         # filter to Whole milk, pick it
     app.check("quantity field defaults to one", "═[Whole milk · Quantity]", "1")
@@ -1394,7 +1403,7 @@ def macros_log_new_item_path():
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
     app.send("\x1b[B\r")                       # create log (index 1)
     app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date, then backdate
-    app.check("log options for the backdate", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "delete", "back")
+    app.check("log options for the backdate", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
     # "new item" runs the items submenu's add-item flow (plain/recipe chooser)
     # from here, and lands back on this date's log options.
     app.send("\x1b[B\x1b[B\r")                 # new item (index 2)
@@ -1457,7 +1466,7 @@ def macros_show_logs_path():
     if rows.index("2026/10/02 · 320kcal | 60g protein") > rows.index("2026/10/01 · 220kcal | 33g protein"):
         raise SystemExit("FAIL: the log picker should list the newest date first")
     app.send("2026/10/02\r")                   # filter to the newest log, pick it
-    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "delete", "back")
+    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
     app.send("\r")                             # info (index 0)
     app.check("info: totals then items",
               "Macro log for 2026/10/02:",
@@ -1482,7 +1491,7 @@ def macros_show_logs_path():
               "  Calories: 380 kcal",
               "  2 × Chicken breast",          # logged at 09:00 ...
               "  1 × Whole milk")              # ... before the milk just added
-    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")     # delete (index 4, below delete item)
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")     # delete log (index 6, below show notes)
     app.check("delete prompt defaults to No", "Delete macro log for 2026/10/02?", "Yes", "No")
     app.send("\r")                             # No (the default): the log stays
     app.check("declined delete keeps the log", "═[Macro log for 2026/10/02]", "info", "delete")
@@ -1564,6 +1573,96 @@ def macros_log_alignment_path():
     print("ok   the picker's protein readouts share one column across differently wide calorie totals")
     print()
 
+def macros_log_notes_path():
+    print("=== MACROS LOG NOTES PATH: add a note, see it in the info, edit it in its note options, then delete it (No-defaulted) ===")
+    seed_db(items=(
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
+    ), logs=(
+        ("2026-10-02", (("Chicken breast", 1.0, "2026-10-02 09:00:00+00:00"),)),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "items", "logs", "back")
+    app.send("\x1b[B\r")                       # -> Macro logs (index 1)
+    app.send("\x1b[B\x1b[B\r")                 # history (index 2)
+    app.send("2026/10/02\r")                   # filter to the day, pick it
+    app.check("log options with the note actions",
+              "═[Macro log for 2026/10/02]",
+              "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
+
+    # Add a note: down four from info to "add note" (index 4), type the text.
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")
+    app.check("add note prompt", "═[Add note]")
+    app.send("Slept well\r")
+    app.check("added, back on the log options", "Added note", "═[Macro log for 2026/10/02]")
+
+    # The info now carries the note under its own Notes: heading, after the items.
+    app.send("\x1b[A\x1b[A\x1b[A\x1b[A\r")           # info (index 0): up four from add note
+    app.check("info shows the note",
+              "Macro log for 2026/10/02:",
+              "  Protein: 30 g", "  Calories: 160 kcal",
+              "Items:", "  1 × Chicken breast",
+              "Notes:", "  - Slept well")
+
+    # Show notes: a filter picker over the day's notes; picking one opens the
+    # note's own options screen (edit / delete / back), titled by its text.
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")     # show notes (index 5)
+    app.check("notes picker", "═[Select note]", "type to filter", "Slept well")
+    app.send("\r")                             # pick the note
+    app.check("note options", "═[Slept well]", "edit", "delete", "back")
+
+    # Edit it: clear the prefilled current text, type the new wording; the
+    # prompt re-titles to the new text.
+    app.send("\r")                             # edit (index 0)
+    app.check("edit prompt prefilled", "═[Edit note]", "Slept well")
+    app.send("\x7f" * 10 + "Slept badly\r")    # clear 'Slept well' (10 chars), rewrite it
+    app.check("edited, re-titled", "Updated note", "═[Slept badly]", "edit", "delete", "back")
+
+    # Back out, and the info reflects the edited wording.
+    app.send("\x1b[B\x1b[B\r")                 # back (index 2) -> log options
+    app.check("back at the log options", "═[Macro log for 2026/10/02]")
+    app.send("\r")                             # info (index 0)
+    app.check("info shows the edited note", "Notes:", "  - Slept badly")
+
+    # Delete it: show notes again, pick, then a No-defaulted confirm that
+    # leaves the note on "No" and removes it on an explicit "Yes".
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")     # show notes (index 5)
+    app.check("notes picker (2nd)", "═[Select note]", "Slept badly")
+    app.send("\r")                             # pick the edited note
+    app.check("note options (2nd)", "═[Slept badly]", "edit", "delete", "back")
+    app.send("\x1b[B\r")                       # delete (index 1)
+    app.check("delete note confirm defaults to No", "Delete this note?", "Yes", "No")
+    app.send("\r")                             # No (the default): the note stays
+    app.check("declined delete stays on the note", "═[Slept badly]", "edit", "delete", "back")
+    app.send("\r")                             # delete again (highlight held on it)
+    app.check("delete note confirm (2nd)", "Delete this note?", "Yes", "No")
+    app.send("\x1b[A\r")                       # Yes: up to it, delete the note
+    app.check("deleted, back on the log options", "Deleted note", "═[Macro log for 2026/10/02]")
+
+    # The info still renders (its notes are simply gone — the DB check below
+    # proves it), and "show notes" now reports there are none rather than
+    # opening an empty list.
+    app.send("\r")                             # info (index 0)
+    app.check("info after the delete", "Macro log for 2026/10/02:", "  Calories: 160 kcal")
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")     # show notes (index 5)
+    app.check("show notes reports none left", "No notes on this date yet", "═[Macro log for 2026/10/02]")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    notes = con.execute("SELECT COUNT(*) FROM macro_log_notes").fetchone()[0]
+    log_row = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2026-10-02'").fetchone()[0]
+    inclusions = con.execute(
+        "SELECT COUNT(*) FROM macro_log_inclusions mi"
+        " JOIN macro_logs ml ON ml.id = mi.macro_log_id WHERE ml.date = '2026-10-02'").fetchone()[0]
+    con.close()
+    if notes != 0:
+        raise SystemExit(f"FAIL: deleting the note should leave no macro_log_notes rows, got {notes}")
+    if log_row != 1 or inclusions != 1:
+        raise SystemExit(f"FAIL: deleting a note must not touch its log or items, got {log_row}/{inclusions}")
+    print("ok   a note adds to the info's Notes: section, edits in place from its note options, and a No-defaulted delete removes it (and only it)")
+    print()
+
 def macros_log_delete_item_path():
     print("=== MACROS LOG DELETE-ITEM PATH: a filter picker removes one recorded use (duplicates by id); a day emptied of items keeps its row ===")
     # Two of the same item on one day — the table-exists-for-duplicates shape —
@@ -1586,7 +1685,7 @@ def macros_log_delete_item_path():
     app.check("date picker with the day's totals", "═[Select date]",
               "2026/10/02 · 540kcal | 93g protein")
     app.send("2026/10/02\r")                   # filter to the day, pick it
-    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "delete", "back")
+    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
     app.send("\x1b[B\x1b[B\x1b[B\r")           # delete item (index 3)
     # The picker rows read exactly like the info's "Items:" list, in creation
     # order — 2 × chicken at 09:00, milk at 10:00, then the second chicken at
@@ -2913,6 +3012,7 @@ macros_create_log_path()
 macros_log_new_item_path()
 macros_show_logs_path()
 macros_log_alignment_path()
+macros_log_notes_path()
 macros_log_delete_item_path()
 macros_add_item_path()
 macros_add_recipe_item_path()
