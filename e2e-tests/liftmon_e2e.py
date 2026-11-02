@@ -1449,12 +1449,12 @@ def macros_show_logs_path():
     # quantities, calories first — so the totals are legible before opening
     # the log.
     app.check("log picker", "═[Select date]", "type to filter",
-              "2026/10/02 ·  320kcal  60g protein",
-              "2026/10/01 ·  220kcal  33g protein")
+              "2026/10/02 · 320kcal | 60g protein",
+              "2026/10/01 · 220kcal | 33g protein")
     # The picker lists the most recent log at the top — the show-sessions
     # order, not the oldest-first the domain returns.
     rows = [row.strip() for row in app.grid()]
-    if rows.index("2026/10/02 ·  320kcal  60g protein") > rows.index("2026/10/01 ·  220kcal  33g protein"):
+    if rows.index("2026/10/02 · 320kcal | 60g protein") > rows.index("2026/10/01 · 220kcal | 33g protein"):
         raise SystemExit("FAIL: the log picker should list the newest date first")
     app.send("2026/10/02\r")                   # filter to the newest log, pick it
     app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "delete", "back")
@@ -1491,7 +1491,7 @@ def macros_show_logs_path():
     app.send("\x1b[A\r")                       # Yes: up to it, delete the log
     app.check("deleted, back at the picker",
               "Deleted macro log for 2026/10/02",
-              "═[Select date]", "2026/10/01 ·  220kcal  33g protein")
+              "═[Select date]", "2026/10/01 · 220kcal | 33g protein")
     # The deleted date is gone as a picker row — earlier history lines about
     # it remain, so compare the row's whole text rather than substring.
     rows = [row.strip() for row in app.grid()]
@@ -1519,6 +1519,51 @@ def macros_show_logs_path():
     print("ok   a log's info shows totals then items in creation order; add item extends the day; delete (No by default) removes only that log and its inclusions")
     print()
 
+def macros_log_alignment_path():
+    print("=== MACROS LOG ALIGNMENT: the history picker's protein readouts line up on one column whatever the day's calorie width ===")
+    # Three days whose resolved calories labels differ in width — 1234kcal is
+    # four digits wide, 320.25kcal is fractional, 60kcal is narrow. The field
+    # holding calories is as wide as the longest of them (320.25kcal, 10
+    # chars), then a ` | ` separates the pair, so every row's protein quantity
+    # starts at the same column.
+    seed_db(items=(
+        ("Big meal", (0.0, 0.0, 0.0, 0.0, 90.0, 1234.0)),
+        ("Weighted dip", (0.0, 0.0, 0.0, 0.0, 12.5, 320.25)),
+        ("Egg", (0.0, 0.0, 0.0, 0.0, 5.0, 60.0)),
+    ), logs=(
+        ("2026-10-03", (("Big meal", 1.0, "2026-10-03 09:00:00+00:00"),)),
+        ("2026-10-02", (("Weighted dip", 1.0, "2026-10-02 09:00:00+00:00"),)),
+        ("2026-10-01", (("Egg", 1.0, "2026-10-01 09:00:00+00:00"),)),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "items", "logs", "back")
+    app.send("\x1b[B\r")                       # -> Macro logs (index 1)
+    app.send("\x1b[B\x1b[B\r")                 # history (index 2)
+    # Each row's calories are right-aligned into a field as wide as the
+    # longest of them, then a pipe — the "g protein" suffix starts on the
+    # same column on every row.
+    app.check("wide calories", "2026/10/03 ·   1234kcal | 90g protein")
+    app.check("fractional calories", "2026/10/02 · 320.25kcal | 12.5g protein")
+    app.check("narrow calories", "2026/10/01 ·     60kcal | 5g protein")
+    # The visible proof of alignment: whichever row, the protein quantity
+    # (the trailing "N...g protein") starts at the same column — locating the
+    # quantity proper, not the "g protein" suffix, which each value's own
+    # width shifts.
+    rows = [row.strip() for row in app.grid()]
+    protein_start = None
+    for date in ("2026/10/03", "2026/10/02", "2026/10/01"):
+        row = next(r for r in rows if r.startswith(date))
+        col = re.search(r"[0-9.]*g protein$", row).start()
+        if protein_start is None:
+            protein_start = col
+        elif col != protein_start:
+            raise SystemExit(f"FAIL: {date}'s protein readout starts at column {col}, other rows at {protein_start}")
+    app.close()
+    print("ok   the picker's protein readouts share one column across differently wide calorie totals")
+    print()
+
 def macros_log_delete_item_path():
     print("=== MACROS LOG DELETE-ITEM PATH: a filter picker removes one recorded use (duplicates by id); a day emptied of items keeps its row ===")
     # Two of the same item on one day — the table-exists-for-duplicates shape —
@@ -1539,7 +1584,7 @@ def macros_log_delete_item_path():
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
     app.send("\x1b[B\x1b[B\r")                 # history (index 2)
     app.check("date picker with the day's totals", "═[Select date]",
-              "2026/10/02 ·  540kcal  93g protein")
+              "2026/10/02 · 540kcal | 93g protein")
     app.send("2026/10/02\r")                   # filter to the day, pick it
     app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "delete", "back")
     app.send("\x1b[B\x1b[B\x1b[B\r")           # delete item (index 3)
@@ -2867,6 +2912,7 @@ macros_log_item_path()
 macros_create_log_path()
 macros_log_new_item_path()
 macros_show_logs_path()
+macros_log_alignment_path()
 macros_log_delete_item_path()
 macros_add_item_path()
 macros_add_recipe_item_path()

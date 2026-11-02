@@ -5,9 +5,10 @@
 //! newest date first — the same most-recent-first reading the session list
 //! gives its sessions, since a log is usually wanted for a day the user just
 //! added to — with the day's resolved calories and protein riding along as a
-//! suffix (`2026/10/02 ·  320kcal  60g protein`), so a day's totals are
-//! legible before opening it. The calories are right-aligned to a fixed
-//! field, so the protein quantity always starts at the same column.
+//! suffix (`2026/10/02 · 320kcal | 60g protein`), so a day's totals are
+//! legible before opening it. The calories are right-aligned to the widest
+//! calories label among the shown options, so every protein quantity starts
+//! at the same column, the pipe separating the pair.
 //! A day with nothing logged reads `· nothing
 //! recorded` instead — there are no totals to show. The dates are UNIQUE (one
 //! log per day), so
@@ -45,34 +46,50 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     // history that repeats the same handful of items costs a couple of hash
     // lookups per extra day, not another DAG walk.
     let mut cache = HashMap::new();
-    let mut labels = Vec::with_capacity(logs.len());
+    // Two passes. First resolve every date's totals and remember the widest
+    // calories label, so the second pass can right-align all of them to that
+    // width — the "longest calories text of any option + 2 spaces" column,
+    // where every row's protein quantity starts. Any day can widen the
+    // column, whether its total is 4 digits or fractional; the whole column
+    // flexes to fit rather than letting one row's protein spill sideways.
+    // One `cache` spans the bunch: each day's items resolve at most once.
+    let mut rows = Vec::with_capacity(logs.len());
+    let mut calorie_width = 0usize;
     for log in logs.iter().rev() {
         let date = format_date(log.date);
+        if MacroLogInclusion::for_log(conn, log.id)?.is_empty() {
+            rows.push((date, None));
+        } else {
+            let macros = MacroLog::resolved_macros_cached(conn, log.id, &mut cache)?;
+            let kcal = format!("{}kcal", round2(macros.calories));
+            calorie_width = calorie_width.max(kcal.len());
+            rows.push((date, Some((kcal, round2(macros.protein)))));
+        }
+    }
+    let mut labels = Vec::with_capacity(rows.len());
+    for (date, totals) in rows {
         // A day with nothing logged — its row made by "create log", or emptied
         // by removals — has no totals to carry, so its row reads "nothing
-        // recorded" instead of "0kcal · 0g protein", and resolves nothing.
+        // recorded" instead of "0kcal | 0g protein", and resolves nothing.
         // Only the trailing "nothing recorded" is dimmed (an attribute, not a
         // hard-coded colour, so it stays legible under any terminal theme) —
         // the date and separator keep their full strength, so an empty day
         // still reads normally and just its placeholder recedes.
-        let label = if MacroLogInclusion::for_log(conn, log.id)?.is_empty() {
-            Line::from(vec![
+        let label = match totals {
+            None => Line::from(vec![
                 Span::raw(format!("{date} · ")),
                 Span::styled("nothing recorded", Style::new().add_modifier(Modifier::DIM)),
-            ])
-        } else {
-            let macros = MacroLog::resolved_macros_cached(conn, log.id, &mut cache)?;
-            // The calories are right-aligned within a fixed field so every
-            // row's protein quantity starts at the same column — ` 540kcal`
-            // lines up under `  60kcal`, the numbers' right edges flush —
-            // with two spaces separating the pair. A day whose totals outgrow
-            // the 8-wide field (a 4-digit count already fills it) just shifts
-            // that one row.
-            Line::from(format!(
-                "{date} · {:>8}  {}g protein",
-                format!("{}kcal", round2(macros.calories)),
-                round2(macros.protein),
-            ))
+            ]),
+            // The calories are right-aligned within the widest calories label
+            // — a shorter ` 540kcal` lines up under a `1234kcal` with its
+            // right edge on the same column — then a ` | ` separates the
+            // pair, so every protein quantity starts on the same column.
+            Some((kcal, protein)) => Line::from(format!(
+                "{date} · {kcal:>calorie_width$} | {protein}g protein",
+                kcal = kcal,
+                protein = protein,
+                calorie_width = calorie_width,
+            )),
         };
         labels.push(label);
     }
