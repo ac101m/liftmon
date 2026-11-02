@@ -108,13 +108,16 @@ the database), the macros
 show-logs path (the log submenu's "history" option: a filter picker
 over the logged dates in the app's `YYYY/MM/DD` form — each row carrying its
 day's resolved calories and protein as bare quantities, calories first,
-`2026/10/02 · 320kcal · 60g protein` — newest first, lands on the
+`2026/10/02 · 320kcal · 60g protein` (a day with nothing logged reads
+`· nothing recorded` instead) — newest first, lands on the
 day's options screen titled "Macro log for <date>", whose info shows the day's
 resolved total macros in the items' format headed by that same title, then an
 "Items:" list of what was logged in creation order as `{qty} × {item}` — a log
 of 2 × chicken breast plus 1 × whole milk reads "Fat: 16 g (of which saturates:
 4 g)", "Carbs: 10 g (of which sugars: 5 g)", "Protein: 63 g", "Calories: 380
-kcal" over "Items:" "2 × Chicken breast" and "1 × Whole milk"; "add item"
+kcal" over "Items:" "2 × Chicken breast" and "1 × Whole milk" (an empty day's
+info skips the totals and the list, saying "No items logged yet." instead);
+"add item"
 extends that same date straight from the item picker (no date ask); "delete
 item" — just below "add item" — opens a filter picker over the day's logged
 items in creation order as `{qty} × {item}` (the same lines the "Items:" list
@@ -132,8 +135,9 @@ breast, removing the 1 × leaves the 2 × — each use is its own row, removed b
 its own id, and identical rows are interchangeable since removing either leaves
 the same remaining log; Escape or "No" leaves the log untouched, and a day with
 nothing logged to remove guards with "No items logged on this date yet"; an
-emptied day keeps its `macro_logs` row, resolving to zeros and still listed in
-the picker as `0kcal · 0g protein`, with whole-day "delete" the way to remove
+emptied day keeps its `macro_logs` row and is still listed in the picker, now
+as `· nothing recorded` (its info "No items logged yet."), with whole-day
+"delete" the way to remove
 the date), the macros
 add-item path (the items submenu's "new item" first asks
 whether the item is a plain or a recipe

@@ -6,7 +6,9 @@
 //! gives its sessions, since a log is usually wanted for a day the user just
 //! added to — with the day's resolved calories and protein riding along as a
 //! suffix (`2026/10/02 · 320kcal · 60g protein`), so a day's totals are
-//! legible before opening it. The dates are UNIQUE (one log per day), so
+//! legible before opening it. A day with nothing logged reads `· nothing
+//! recorded` instead — there are no totals to show. The dates are UNIQUE (one
+//! log per day), so
 //! picking one names the log exactly. Escape backs out to the log submenu
 //! ([`super::macros_logs`]).
 
@@ -14,7 +16,7 @@ use std::collections::HashMap;
 
 use rusqlite::Connection;
 
-use crate::domain::MacroLog;
+use crate::domain::{MacroLog, MacroLogInclusion};
 
 use crate::ui::utils::{Shell, UiError};
 
@@ -41,13 +43,21 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     let mut cache = HashMap::new();
     let mut labels = Vec::with_capacity(logs.len());
     for log in logs.iter().rev() {
-        let macros = MacroLog::resolved_macros_cached(conn, log.id, &mut cache)?;
-        labels.push(format!(
-            "{} · {}kcal · {}g protein",
-            format_date(log.date),
-            round2(macros.calories),
-            round2(macros.protein),
-        ));
+        let date = format_date(log.date);
+        // A day with nothing logged — its row made by "create log", or emptied
+        // by removals — has no totals to carry, so its row reads "nothing
+        // recorded" instead of "0kcal · 0g protein", and resolves nothing.
+        let label = if MacroLogInclusion::for_log(conn, log.id)?.is_empty() {
+            format!("{date} · nothing recorded")
+        } else {
+            let macros = MacroLog::resolved_macros_cached(conn, log.id, &mut cache)?;
+            format!(
+                "{date} · {}kcal · {}g protein",
+                round2(macros.calories),
+                round2(macros.protein),
+            )
+        };
+        labels.push(label);
     }
     let Some(chosen) = shell.pick(
         Some("Select date".to_string()),

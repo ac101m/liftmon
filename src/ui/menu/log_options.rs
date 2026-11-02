@@ -92,6 +92,14 @@ pub(super) fn run(
 /// composite's ingredients.
 fn log_info_lines(conn: &Connection, log: &MacroLog) -> Result<Vec<Line<'static>>, UiError> {
     let mut lines = vec![heading(&format!("Macro log for {}", format_date(log.date)))];
+    // A day with nothing logged — its row made by "create log", or emptied by
+    // removals — has no macros to sum and no items to list, so say so instead
+    // of printing a row of zeroed totals under an empty "Items:" heading.
+    let inclusions = MacroLogInclusion::for_log(conn, log.id)?;
+    if inclusions.is_empty() {
+        lines.push(Line::from("  No items logged yet.".to_string()));
+        return Ok(lines);
+    }
     let macros = MacroLog::resolved_macros(conn, log.id)?;
     lines.extend(resolved_macro_lines(&macros));
     // A bold section heading, flush with the section title; the items are
@@ -100,7 +108,7 @@ fn log_info_lines(conn: &Connection, log: &MacroLog) -> Result<Vec<Line<'static>
         "Items:",
         Style::new().add_modifier(Modifier::BOLD),
     )]));
-    for inclusion in MacroLogInclusion::for_log(conn, log.id)? {
+    for inclusion in inclusions {
         lines.push(Line::from(format!(
             "  {}",
             inclusion_label(conn, &inclusion)?
@@ -239,5 +247,23 @@ mod tests {
         assert_eq!(lines[0].spans[0].style, bold);
         assert_eq!(lines[5].spans[0].style, bold);
         assert_eq!(lines[6].spans[0].style, Style::new());
+    }
+
+    #[test]
+    fn info_of_an_empty_log_says_no_items_instead_of_zeroed_macros() {
+        let (conn, _) = test_db();
+        // A second day with nothing logged — the shape "create log" produces,
+        // or any day emptied by removals. Its info names the day, then says no
+        // items instead of a row of zeroed totals under an empty Items list.
+        let empty = MacroLog::create(&conn, NaiveDate::from_ymd_opt(2026, 10, 3).unwrap()).unwrap();
+        let lines = log_info_lines(&conn, &empty).unwrap();
+        assert_eq!(
+            lines_text(&lines),
+            ["Macro log for 2026/10/03:", "  No items logged yet."]
+        );
+        // The section title is bold; the "no items" line is plain.
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        assert_eq!(lines[0].spans[0].style, bold);
+        assert_eq!(lines[1].spans[0].style, Style::new());
     }
 }

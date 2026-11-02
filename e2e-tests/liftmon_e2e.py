@@ -1298,8 +1298,17 @@ def macros_create_log_path():
     app.check("create-log date field (3rd)", "═[Log date (YYYY/MM/DD)]", today_slashed)
     app.send("\r")                             # accept the default: today
     app.check("created today's empty log", f"Created a macro log for {today_slashed}.", f"═[Macro log for {today_slashed}]")
-    app.send("\x1b")                           # Escape: back to the date picker
-    app.send("\x1b")                           # Escape: back to the log submenu
+    app.send("\r")                             # info (index 0) on the empty log
+    # An empty log's info says no items rather than printing zeroed macros
+    # under an empty Items list.
+    app.check("empty log info says no items", "No items logged yet.")
+    grid = "\n".join(app.grid())
+    if "Calories:" in grid or "Items:" in grid:
+        raise SystemExit("FAIL: an empty log's info should print no macros and no Items list")
+    app.send("\x1b")                           # Escape: back out to the date picker
+    app.check("empty log listed as nothing recorded", "═[Select date]", f"{today_slashed} · nothing recorded")
+    app.send("\x1b")                           # Escape: back out to the log submenu
+    app.check("back at the log submenu", "═[Macro logs]", "log item", "create log", "history", "back")
     app.close()
     con = sqlite3.connect(DB)
     today_rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = ?",
@@ -1518,8 +1527,8 @@ def macros_log_delete_item_path():
     if any(row == "1 × Chicken breast" for row in rows):
         raise SystemExit("FAIL: removing one use must not touch the other use of the same item")
     # Empty the day as far as removals will go, then prove the guard: a day
-    # emptied of items keeps its log row (it resolves to zeros and is still
-    # listed — whole-day "delete" is the way to remove the date).
+    # emptied of items keeps its log row, its picker row reading "nothing
+    # recorded" — whole-day "delete" is the way to remove the date.
     app.send("\x1b[B\x1b[B\r")                 # delete item again (index 2)
     app.send("Whole milk\r")                   # filter to the milk, pick it
     app.check("remove milk confirm", "Remove 1 × Whole milk from 2026/10/02?", "Yes", "No")
@@ -1533,7 +1542,7 @@ def macros_log_delete_item_path():
     app.send("\r")                             # delete item again: nothing left to remove
     app.check("empty day guard", "No items logged on this date yet", "═[Macro log for 2026/10/02]")
     app.send("\x1b")                           # Escape: back out to the date picker
-    app.check("back at the picker", "═[Select date]", "2026/10/02 · 0kcal · 0g protein")
+    app.check("back at the picker", "═[Select date]", "2026/10/02 · nothing recorded")
     app.close()
 
     con = sqlite3.connect(DB)
@@ -1549,7 +1558,7 @@ def macros_log_delete_item_path():
         raise SystemExit(f"FAIL: an emptied day keeps its log row, got {log_row}")
     if items_left != 2:
         raise SystemExit(f"FAIL: removing uses must not touch items, got {items_left}")
-    print("ok   delete item removes exactly the picked use (duplicates by id, No by default); an emptied day keeps its row and guards 'No items logged on this date yet'")
+    print("ok   delete item removes exactly the picked use (duplicates by id, No by default); an emptied day keeps its row (listed as 'nothing recorded') and guards 'No items logged on this date yet'")
     print()
 
 def macros_add_item_path():
