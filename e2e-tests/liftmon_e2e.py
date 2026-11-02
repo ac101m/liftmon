@@ -1246,7 +1246,7 @@ def macros_create_log_path():
     app.send("\x1b[B\r")                       # create log (index 1)
     app.check("create-log date field defaults to today", "═[Log date (YYYY/MM/DD)]", today_slashed)
     app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date (10 chars), then backdate
-    app.check("created a backdated log", "Created a macro log for 2026/10/01.", "═[Macro log for 2026/10/01]", "info", "add item", "delete item", "delete", "back")
+    app.check("created a backdated log", "Created a macro log for 2026/10/01.", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "delete", "back")
     app.send("\x1b[B\r")                       # add item (index 1) on the log options
     app.send("milk\r")                         # filter to Whole milk, pick it
     app.check("quantity field defaults to one", "═[Whole milk · Quantity]", "1")
@@ -1380,6 +1380,55 @@ def macros_create_log_path():
     print("ok   an unparseable date re-asks with the text kept, and Escape cancels to the log submenu")
     print()
 
+
+def macros_log_new_item_path():
+    print("=== MACROS LOG NEW-ITEM PATH: 'new item' on a log's options — create the item there, then log it to that date straight away ===")
+    seed_db(items=(
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
+        ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
+    ))
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "items", "logs", "back")
+    app.send("\x1b[B\r")                       # -> Macro logs (index 1)
+    app.send("\x1b[B\r")                       # create log (index 1)
+    app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date, then backdate
+    app.check("log options for the backdate", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "delete", "back")
+    # "new item" runs the items submenu's add-item flow (plain/recipe chooser)
+    # from here, and lands back on this date's log options.
+    app.send("\x1b[B\x1b[B\r")                 # new item (index 2)
+    app.check("add item type menu", "═[Create new item]", "plain item", "recipe item")
+    app.send("\r")                             # plain item (index 0)
+    app.check("item name prompt", "═[Item name]", "e.g. Milk")
+    app.send("Egg\r")                          # the new plain item's name
+    app.send("\r" * 6)                         # six macro fields, all blank (0)
+    app.check("added the item, back at the log options", "Added item 'Egg'", "═[Macro log for 2026/10/01]", "new item")
+    # The fresh item is one "add item" from being logged — the highlight is
+    # held on "new item" (index 2), so add item (index 1) is one up.
+    app.send("\x1b[A\r")                       # add item (index 1)
+    app.check("item picker now offers the new item", "═[Select item]", " Egg", " Chicken breast", " Whole milk")
+    app.send("egg\r")                          # filter to the new Egg, pick it
+    app.check("quantity field defaults to one", "═[Egg · Quantity]", "1")
+    app.send("\r")                             # accept the default: one egg
+    app.check("logged the just-created item straight to the date", "Logged 1 × 'Egg' on 2026/10/01.", "═[Macro log for 2026/10/01]")
+    app.close()
+    con = sqlite3.connect(DB)
+    egg_count = con.execute("SELECT COUNT(*) FROM items WHERE name = 'Egg'").fetchone()[0]
+    inclusions = con.execute(
+        "SELECT mi.quantity, i.name FROM macro_log_inclusions mi"
+        " JOIN macro_logs ml ON ml.id = mi.macro_log_id"
+        " JOIN items i ON i.id = mi.item_id"
+        " WHERE ml.date = '2026-10-01'").fetchall()
+    con.close()
+    if egg_count != 1:
+        raise SystemExit(f"FAIL: 'new item' on the log options should have created the Egg item, got {egg_count}")
+    if inclusions != [(1.0, "Egg")]:
+        raise SystemExit(f"FAIL: 2026-10-01 should hold exactly the new Egg at qty 1, got {inclusions}")
+    print("ok   a log's 'new item' creates the item in place, and one 'add item' later it is logged to the date")
+    print()
+
+
 def macros_show_logs_path():
     print("=== MACROS SHOW-LOGS PATH: browse logs newest-first; a log's options show its totals and items, extend it, and delete the whole day (No-defaulted) ===")
     seed_db(items=(
@@ -1408,7 +1457,7 @@ def macros_show_logs_path():
     if rows.index("2026/10/02 · 320kcal · 60g protein") > rows.index("2026/10/01 · 220kcal · 33g protein"):
         raise SystemExit("FAIL: the log picker should list the newest date first")
     app.send("2026/10/02\r")                   # filter to the newest log, pick it
-    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "delete item", "delete", "back")
+    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "delete", "back")
     app.send("\r")                             # info (index 0)
     app.check("info: totals then items",
               "Macro log for 2026/10/02:",
@@ -1433,7 +1482,7 @@ def macros_show_logs_path():
               "  Calories: 380 kcal",
               "  2 × Chicken breast",          # logged at 09:00 ...
               "  1 × Whole milk")              # ... before the milk just added
-    app.send("\x1b[B\x1b[B\x1b[B\r")           # delete (index 3, below delete item)
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")     # delete (index 4, below delete item)
     app.check("delete prompt defaults to No", "Delete macro log for 2026/10/02?", "Yes", "No")
     app.send("\r")                             # No (the default): the log stays
     app.check("declined delete keeps the log", "═[Macro log for 2026/10/02]", "info", "delete")
@@ -1492,8 +1541,8 @@ def macros_log_delete_item_path():
     app.check("date picker with the day's totals", "═[Select date]",
               "2026/10/02 · 540kcal · 93g protein")
     app.send("2026/10/02\r")                   # filter to the day, pick it
-    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "delete item", "delete", "back")
-    app.send("\x1b[B\x1b[B\r")                 # delete item (index 2)
+    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "delete", "back")
+    app.send("\x1b[B\x1b[B\x1b[B\r")           # delete item (index 3)
     # The picker rows read exactly like the info's "Items:" list, in creation
     # order — 2 × chicken at 09:00, milk at 10:00, then the second chicken at
     # 18:00.
@@ -1514,7 +1563,7 @@ def macros_log_delete_item_path():
     app.check("removed, back on the options",
               "Removed 1 × Chicken breast from 2026/10/02",
               "═[Macro log for 2026/10/02]")
-    app.send("\x1b[A\x1b[A\r")                 # info (index 0) — up two from delete item
+    app.send("\x1b[A\x1b[A\x1b[A\r")           # info (index 0) — up three from delete item
     app.check("info reflects the removal: the qty-2 chicken and the milk survive",
               "  Fat: 16 g (of which saturates: 4 g)",
               "  Carbs: 10 g (of which sugars: 5 g)",
@@ -1529,7 +1578,7 @@ def macros_log_delete_item_path():
     # Empty the day as far as removals will go, then prove the guard: a day
     # emptied of items keeps its log row, its picker row reading "nothing
     # recorded" — whole-day "delete" is the way to remove the date.
-    app.send("\x1b[B\x1b[B\r")                 # delete item again (index 2)
+    app.send("\x1b[B\x1b[B\x1b[B\r")           # delete item again (index 3)
     app.send("Whole milk\r")                   # filter to the milk, pick it
     app.check("remove milk confirm", "Remove 1 × Whole milk from 2026/10/02?", "Yes", "No")
     app.send("\x1b[A\r")                       # Yes
@@ -1570,7 +1619,7 @@ def macros_add_item_path():
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
     app.send("\x1b[B\r")                       # new item (index 1)
-    app.check("add item type menu", "═[Add item]", "plain item", "recipe item")
+    app.check("add item type menu", "═[Create new item]", "plain item", "recipe item")
     app.send("\r")                             # plain item (index 0)
     app.check("item name prompt", "═[Item name]", "e.g. Milk")
     app.send("Whole milk\r")                   # name
@@ -1619,7 +1668,7 @@ def macros_add_item_path():
     app.check("macros menu (2nd)", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
     app.send("\x1b[B\r")                       # new item (index 1)
-    app.check("add item type menu (2nd)", "═[Add item]", "plain item", "recipe item")
+    app.check("add item type menu (2nd)", "═[Create new item]", "plain item", "recipe item")
     app.send("\r")                             # plain item (index 0)
     app.send("Whole milk\r")                   # the taken name
     app.check("duplicate refused at the name", "An item named 'Whole milk' already exists", "═[Item name]", "> Whole milk")
@@ -1647,7 +1696,7 @@ def macros_add_recipe_item_path():
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
     app.send("\x1b[B\r")                       # new item (index 1)
-    app.check("add item type menu", "═[Add item]", "plain item", "recipe item")
+    app.check("add item type menu", "═[Create new item]", "plain item", "recipe item")
     app.send("\x1b[B\r")                       # recipe item (index 1)
     app.check("recipe name prompt", "═[Recipe name]", "e.g. Sandwich")
     app.send("Chicken sandwich\r")             # name
@@ -1703,7 +1752,7 @@ def macros_add_recipe_item_path():
     app.check("macros menu (2nd)", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
     app.send("\x1b[B\r")                       # new item (index 1)
-    app.check("add item type menu (2nd)", "═[Add item]", "plain item", "recipe item")
+    app.check("add item type menu (2nd)", "═[Create new item]", "plain item", "recipe item")
     app.send("\x1b[B\r")                       # recipe item
     app.check("recipe name prompt (2nd)", "═[Recipe name]", "e.g. Sandwich")
     app.send("Sandwich\r")                     # name
@@ -2816,6 +2865,7 @@ delete_path()
 macros_path()
 macros_log_item_path()
 macros_create_log_path()
+macros_log_new_item_path()
 macros_show_logs_path()
 macros_log_delete_item_path()
 macros_add_item_path()

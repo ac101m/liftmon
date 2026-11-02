@@ -7,8 +7,10 @@
 //! like the plain-item form (including the duplicate pre-check — a composite
 //! shares the `items` table's unique name with leaves), then existing items
 //! are picked one at a time with a quantity factor each, until the user says
-//! they are done. Only then is the item created, landing on its options screen
-//! so its composition (and resolved totals) can be seen right away.
+//! they are done. Only then is the item created — the caller decides the
+//! landing: the items submenu sends a created composite to its own options
+//! screen so its composition (and resolved totals) can be seen right away,
+//! while the log options screen's "new item" just returns to the log.
 //!
 //! Escape backs out of the current field; the user then confirms with a
 //! Yes/No prompt, exactly as in the plain-item form. Nothing is written until
@@ -20,17 +22,20 @@ use crate::domain::{DomainError, Item, ItemReference};
 
 use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
-use super::Menu;
-
-/// Drive the whole recipe flow, returning the screen to move to next: the new
-/// item's options screen when it was created, or the items submenu when the
-/// user cancelled (or when there were no items to compose with yet).
-pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
+/// Drive the whole recipe flow, returning the created item — or [`None`] when
+/// the user cancelled (or when there were no items to compose with yet). The
+/// caller decides where to go next: the items submenu's "new item" lands a
+/// created composite on its own options screen, while the log options screen's
+/// "new item" returns to the log.
+pub(super) fn create_recipe_item(
+    shell: &mut Shell,
+    conn: &Connection,
+) -> Result<Option<Item>, UiError> {
     let mut prefill = String::new();
     loop {
         let name = match ask_name(shell, conn, &prefill)? {
             Some(name) => name,
-            None => return Ok(Some(Menu::MacrosItems)), // cancelled the flow
+            None => return Ok(None), // cancelled the flow
         };
 
         // Composing needs existing items to reference, and the picker asserts
@@ -39,11 +44,11 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         let mut available = Item::all(conn)?;
         if available.is_empty() {
             shell.log("No items yet — add a plain item first");
-            return Ok(Some(Menu::MacrosItems));
+            return Ok(None);
         }
 
         let Some(pairs) = collect_components(shell, conn, &mut available)? else {
-            return Ok(Some(Menu::MacrosItems)); // abandoned the flow
+            return Ok(None); // abandoned the flow
         };
 
         // A composite's stored macros are unused (derived-only), so create
@@ -55,7 +60,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
             Ok(item) => {
                 ItemReference::set_for_item(conn, item.id, &pairs)?;
                 shell.log(format!("Added item '{}'", item.name));
-                return Ok(Some(Menu::ItemOptions { name: item.name }));
+                return Ok(Some(item));
             }
             Err(DomainError::NameTaken { name, .. }) => {
                 shell.log(format!("An item named '{name}' already exists"));

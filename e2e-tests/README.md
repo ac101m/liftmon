@@ -118,13 +118,20 @@ of 2 × chicken breast plus 1 × whole milk reads "Fat: 16 g (of which saturates
 kcal" over "Items:" "2 × Chicken breast" and "1 × Whole milk" (an empty day's
 info skips the totals and the list, saying "No items logged yet." instead);
 "add item"
-extends that same date straight from the item picker (no date ask); "delete
-item" — just below "add item" — opens a filter picker over the day's logged
+extends that same date straight from the item picker (no date ask); "new item"
+runs the items submenu's add-item form (plain or recipe) from here and lands
+back on the same date's options, so the fresh item is one "add item" away from
+being logged — create-then-log without leaving the day; "delete
+item" opens a filter picker over the day's logged
 items in creation order as `{qty} × {item}` (the same lines the "Items:" list
 shows) and removes the picked use behind a No-defaulted Yes/No, and "delete"
 confirms with a No-defaulted Yes/No, removes the day's `macro_logs`
 row with its inclusions (the cascade), and leaves the picker — the other days
 untouched), the macros
+log new-item path (the log options' "new item" runs the items submenu's add-item
+form — the "Create new item" plain/recipe chooser — from here and returns to the same
+date's options, so one further "add item" logs the fresh item straight to the
+date, an Egg created and logged that way verified in the database), the macros
 log delete-item path (removing one mistaken entry from a day: the day's
 options' "delete item" opens that filter picker over what was logged that day,
 in creation order — the same `{qty} × {item}` lines the info's "Items:" list

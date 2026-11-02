@@ -35,19 +35,52 @@ use super::Menu;
 
 /// The add-item screen: ask which kind of item to add, then run that form. A
 /// plain item returns to the items submenu ([`super::macros_items`]); a recipe
-/// item hands over to [`super::add_recipe_item`], which lands on the new
-/// item's options screen (or the items submenu when cancelled).
+/// item lands on the new item's options screen (or the items submenu when
+/// cancelled).
 pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, UiError> {
-    let choice = shell.ask(Some("Add item".to_string()), ["plain item", "recipe item"])?;
-    match choice.as_deref() {
+    Ok(Some(match add_new_item(shell, conn)? {
+        // A just-created recipe item is best shown off — its composition (and
+        // resolved totals) can be seen right away on its own options screen.
+        NewItemOutcome::Recipe(Some(item)) => Menu::ItemOptions { name: item.name },
+        // A plain item (created or not), a cancelled recipe, or Escape: back to
+        // the items submenu.
+        _ => Menu::MacrosItems,
+    }))
+}
+
+/// How an add-item run ended — the caller's landing depends on both the kind
+/// (a created recipe would otherwise land on its own options) and where the
+/// run began.
+pub(super) enum NewItemOutcome {
+    /// A plain-item run ended — created or cancelled. The callers need no
+    /// more detail: a plain item lands in the same place either way.
+    Plain,
+    /// A recipe-item run: `Some` when created, `None` when cancelled.
+    Recipe(Option<Item>),
+}
+
+/// Choose "plain item" vs "recipe item" and run that form, returning how it
+/// ended. Shared by the items submenu's `run` and the log options screen's
+/// "new item", so the caller decides where to go afterwards.
+pub(super) fn add_new_item(
+    shell: &mut Shell,
+    conn: &Connection,
+) -> Result<NewItemOutcome, UiError> {
+    let choice = shell.ask(
+        Some("Create new item".to_string()),
+        ["plain item", "recipe item"],
+    )?;
+    Ok(match choice.as_deref() {
         Some("plain item") => {
             add_item(shell, conn)?;
-            Ok(Some(Menu::MacrosItems))
+            NewItemOutcome::Plain
         }
-        Some("recipe item") => super::add_recipe_item::run(shell, conn),
+        Some("recipe item") => {
+            NewItemOutcome::Recipe(super::add_recipe_item::create_recipe_item(shell, conn)?)
+        }
         // "Escape": leave without adding anything.
-        _ => Ok(Some(Menu::MacrosItems)),
-    }
+        _ => NewItemOutcome::Plain,
+    })
 }
 
 /// Drive the whole form, retrying from the name when it turns out to be taken.

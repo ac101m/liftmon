@@ -4,7 +4,11 @@
 //! same text the info section heads itself with), and the options show the
 //! log's info — the day's total macros in the items' format, then each item it
 //! recorded under an "Items:" heading, in creation order — add another item to
-//! the same day (the log-item flow without the date ask), remove one recorded
+//! the same day (the log-item flow without the date ask — see
+//! [`super::log_item::record_use`], which is shared), create a **new item**
+//! from here (the items submenu's add-item flow, plain or recipe, landing back
+//! on this log so a fresh item is one "add item" away from being logged),
+//! remove one recorded
 //! item ("delete item": a filter picker over the day's logged items, then a
 //! Yes/No "are you sure" that defaults to "No", dropping exactly that one use),
 //! delete the whole log (after a Yes/No "are you sure" that defaults to "No",
@@ -43,7 +47,14 @@ pub(super) fn run(
         };
         let (choice, selected_here) = shell.ask_selected(
             Some(format!("Macro log for {}", format_date(date))),
-            ["info", "add item", "delete item", "delete", "back"],
+            [
+                "info",
+                "add item",
+                "new item",
+                "delete item",
+                "delete",
+                "back",
+            ],
             selected,
         )?;
         selected = selected_here;
@@ -54,6 +65,14 @@ pub(super) fn run(
             // Add another item to this date — the log-item flow without the
             // date ask, since the date is the very reason we're here.
             Some("add item") => super::log_item::record_use(shell, conn, date)?,
+            // Make a fresh item from here — the items submenu's add-item flow
+            // (plain or recipe) — landing back on this log so the new item is
+            // one "add item" away from being logged. A date's log is the
+            // common reason to want a new item at all, so creating one needn't
+            // mean leaving the log flow.
+            Some("new item") => {
+                super::add_item::add_new_item(shell, conn)?;
+            }
             // Undo one mistaken entry: pick the use to drop from a filter
             // picker over the day's logged items, then confirm. Stays on this
             // menu either way (removing the last use leaves the day's empty
