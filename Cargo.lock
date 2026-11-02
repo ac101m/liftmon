@@ -674,7 +674,7 @@ dependencies = [
 
 [[package]]
 name = "liftmon"
-version = "1.3.2-SNAPSHOT"
+version = "1.3.3-SNAPSHOT"
 dependencies = [
  "chrono",
  "crossterm",
