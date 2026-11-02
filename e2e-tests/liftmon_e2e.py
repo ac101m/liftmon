@@ -1188,170 +1188,187 @@ def macros_path():
     print()
 
 def macros_log_item_path():
-    print("=== MACROS LOG-ITEM PATH: log an item against a date (default today, backdatable); the day's log row is created on demand and reused ===")
+    print("=== MACROS LOG-ITEM PATH: log a use on the spot — no date ask, straight from the item picker, against today ===")
     seed_db(items=(
         ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
         ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
     ))
+    today_slashed = date.today().strftime("%Y/%m/%d")
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
     app.send("\r")                             # log item (index 0)
-    app.check("date field defaults to today", "═[Log date (YYYY/MM/DD)]", date.today().strftime("%Y/%m/%d"))
+    # The on-the-spot log asks no date — the item picker comes straight up.
+    app.check("log item goes straight to the item picker", "═[Select item]", "type to filter", " Chicken breast", " Whole milk")
+    if "Log date (YYYY/MM/DD)" in "\n".join(app.grid()):
+        raise SystemExit("FAIL: 'log item' must not ask for a date — it logs against today")
+    app.send("breast\r")                       # filter to Chicken breast, pick it
+    app.check("quantity field defaults to one", "═[Chicken breast · Quantity]", "1")
+    app.send("\x7f0\r")                        # clear the prefilled 1; a factor an entry can't have
+    app.check("zero quantity refused", "Enter a number greater than 0", "═[Chicken breast · Quantity]", "> 0")
+    app.send("\x7f2\r")                        # clear the refused 0, then fix it
+    app.check("logged for today", f"Logged 2 × 'Chicken breast' on {today_slashed}.", "═[Macro logs]", "log item", "create log", "history", "back")
+    app.close()
+    con = sqlite3.connect(DB)
+    today_logs = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = ?",
+                             (date.today().isoformat(),)).fetchone()[0]
+    today_quantity = con.execute(
+        "SELECT mi.quantity FROM macro_log_inclusions mi"
+        " JOIN macro_logs ml ON ml.id = mi.macro_log_id"
+        " JOIN items i ON i.id = mi.item_id"
+        " WHERE ml.date = ? AND i.name = 'Chicken breast'",
+        (date.today().isoformat(),)).fetchone()[0]
+    con.close()
+    if today_logs != 1:
+        raise SystemExit(f"FAIL: expected one log row for today, got {today_logs}")
+    if today_quantity != 2.0:
+        raise SystemExit(f"FAIL: the corrected factor should be stored, got {today_quantity}")
+    print("ok   'log item' records the use straight against today, creating its log row on demand")
+    print()
+
+def macros_create_log_path():
+    print("=== MACROS CREATE-LOG PATH: a date (default today, backdatable, the future-date confirm) makes or opens that day's log and lands on its options ===")
+    seed_db(items=(
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
+        ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
+    ))
+    today_slashed = date.today().strftime("%Y/%m/%d")
+
+    # Backdating a brand-new date creates the log and lands on its options,
+    # where "add item" extends it — the historical-log use case end to end.
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "items", "logs", "back")
+    app.send("\x1b[B\r")                       # -> Macro logs (index 1)
+    app.send("\x1b[B\r")                       # create log (index 1)
+    app.check("create-log date field defaults to today", "═[Log date (YYYY/MM/DD)]", today_slashed)
     app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date (10 chars), then backdate
-    app.check("item picker", "═[Select item]", "type to filter", " Chicken breast", " Whole milk")
+    app.check("created a backdated log", "Created a macro log for 2026/10/01.", "═[Macro log for 2026/10/01]", "info", "add item", "delete item", "delete", "back")
+    app.send("\x1b[B\r")                       # add item (index 1) on the log options
     app.send("milk\r")                         # filter to Whole milk, pick it
     app.check("quantity field defaults to one", "═[Whole milk · Quantity]", "1")
     app.send("\r")                             # accept the default: one whole milk
-    app.check("logged a backdated item", "Logged 1 × 'Whole milk' on 2026/10/01.", "═[Macro logs]", "log item", "history", "back")
+    app.check("added to the created log", "Logged 1 × 'Whole milk' on 2026/10/01.", "═[Macro log for 2026/10/01]")
+    app.send("\x1b")                           # Escape: back out to the date picker
+    app.check("back at the date picker", "═[Select date]", "type to filter")
+    app.send("\x1b")                           # Escape: back out to the log submenu
+    app.check("back at the log submenu", "═[Macro logs]", "log item", "create log", "history", "back")
     app.close()
-
     con = sqlite3.connect(DB)
     if con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2026-10-01'").fetchone()[0] != 1:
-        raise SystemExit("FAIL: the backdated date should have exactly one macro_logs row")
-    if con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = ?",
-                   (date.today().isoformat(),)).fetchone()[0] != 0:
-        raise SystemExit("FAIL: today's log should not exist until it is logged to")
-    milk_inclusions = con.execute(
-        "SELECT mi.quantity, mi.created_at FROM macro_log_inclusions mi"
+        raise SystemExit("FAIL: creating the backdated log should write exactly one macro_logs row")
+    milk_qty = con.execute(
+        "SELECT mi.quantity FROM macro_log_inclusions mi"
         " JOIN macro_logs ml ON ml.id = mi.macro_log_id"
         " JOIN items i ON i.id = mi.item_id"
-        " WHERE ml.date = '2026-10-01' AND i.name = 'Whole milk'").fetchall()
+        " WHERE ml.date = '2026-10-01' AND i.name = 'Whole milk'").fetchone()
     con.close()
-    if len(milk_inclusions) != 1:
-        raise SystemExit(f"FAIL: expected one Whole milk inclusion for 2026-10-01, got {len(milk_inclusions)}")
-    if milk_inclusions[0][0] != 1.0:
-        raise SystemExit(f"FAIL: accepting the default should record a quantity of 1, got {milk_inclusions[0][0]}")
-    if stored_local_date(milk_inclusions[0][1]) != date.today():
-        raise SystemExit(f"FAIL: the inclusion's created_at {milk_inclusions[0][1]} is not today's moment")
-    print("ok   a backdated log writes its inclusion at the default quantity, creating the day's log row on demand")
+    if milk_qty != (1.0,):
+        raise SystemExit(f"FAIL: the created log's added item should be quantity 1, got {milk_qty}")
+    print("ok   a backdated create makes the day's log and its options add item to it")
 
-    # Same launch: logging to the same date again reuses the existing row
-    # rather than duplicating it (the find-or-create path).
+    # The same date again opens the existing log rather than creating a second
+    # one (a date holds one log) — and the console says so.
     app = App()
     app.check("main menu (2nd)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\r")                             # log item (index 0)
-    app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date, then backdate again
-    app.send("breast\r")                       # filter to Chicken breast, pick it
-    app.check("quantity field (2nd)", "═[Chicken breast · Quantity]", "1")
-    app.send("\x7f2.5\r")                      # clear the prefilled 1, then type the factor
-    app.check("logged into a reused day's log", "Logged 2.5 × 'Chicken breast' on 2026/10/01.", "═[Macro logs]", "log item", "history", "back")
+    app.send("\x1b[B\r")                       # create log (index 1)
+    app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date, then the same backdate
+    app.check("existing log is announced", "A macro log for 2026/10/01 already exists.", "═[Macro log for 2026/10/01]")
+    app.send("\x1b")                           # Escape: back to the date picker
+    app.send("\x1b")                           # Escape: back to the log submenu
     app.close()
     con = sqlite3.connect(DB)
-    log_rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2026-10-01'").fetchone()[0]
-    inclusion_rows = con.execute(
-        "SELECT COUNT(*) FROM macro_log_inclusions mi"
-        " JOIN macro_logs ml ON ml.id = mi.macro_log_id WHERE ml.date = '2026-10-01'").fetchone()[0]
-    chicken_quantity = con.execute(
-        "SELECT mi.quantity FROM macro_log_inclusions mi"
-        " JOIN macro_logs ml ON ml.id = mi.macro_log_id"
-        " JOIN items i ON i.id = mi.item_id"
-        " WHERE ml.date = '2026-10-01' AND i.name = 'Chicken breast'").fetchone()[0]
+    rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2026-10-01'").fetchone()[0]
     con.close()
-    if log_rows != 1 or inclusion_rows != 2:
-        raise SystemExit(f"FAIL: expected 1 log row and 2 inclusions for 2026-10-01, got {log_rows}/{inclusion_rows}")
-    if chicken_quantity != 2.5:
-        raise SystemExit(f"FAIL: the typed factor should be stored as the row's quantity, got {chicken_quantity}")
-    print("ok   a second entry to the same date reuses the existing day's log row, scaled by its typed quantity")
+    if rows != 1:
+        raise SystemExit(f"FAIL: opening an existing date must not add a second log row, got {rows}")
+    print("ok   an already-logged date is opened without a duplicate row, with a distinct message")
 
-    # Accepting the default date logs for today, creating today's row on demand.
-    today = date.today().isoformat()                     # canonical YYYY-MM-DD, what the DB stores
-    today_slashed = date.today().strftime("%Y/%m/%d")    # the app's rendered form
+    # Accepting the default date creates an empty log for today.
     app = App()
     app.check("main menu (3rd)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\r")                             # log item (index 0)
-    app.check("date field defaults to today (3rd)", "═[Log date (YYYY/MM/DD)]", today_slashed)
+    app.send("\x1b[B\r")                       # create log (index 1)
+    app.check("create-log date field (3rd)", "═[Log date (YYYY/MM/DD)]", today_slashed)
     app.send("\r")                             # accept the default: today
-    app.send("breast\r")                       # pick Chicken breast
-    app.check("quantity field (3rd)", "═[Chicken breast · Quantity]", "1")
-    app.send("\x7f0\r")                        # clear the prefilled 1; a factor an entry can't have
-    app.check("zero quantity refused", "Enter a number greater than 0", "═[Chicken breast · Quantity]", "> 0")
-    app.send("\x7f2\r")                        # clear the refused 0, then fix it
-    app.check("logged for today", f"Logged 2 × 'Chicken breast' on {today_slashed}.", "═[Macro logs]", "log item", "history", "back")
+    app.check("created today's empty log", f"Created a macro log for {today_slashed}.", f"═[Macro log for {today_slashed}]")
+    app.send("\x1b")                           # Escape: back to the date picker
+    app.send("\x1b")                           # Escape: back to the log submenu
     app.close()
     con = sqlite3.connect(DB)
-    today_logs = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = ?", (today,)).fetchone()[0]
-    today_quantity = con.execute(
-        "SELECT mi.quantity FROM macro_log_inclusions mi"
-        " JOIN macro_logs ml ON ml.id = mi.macro_log_id WHERE ml.date = ?", (today,)).fetchone()[0]
+    today_rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = ?",
+                             (date.today().isoformat(),)).fetchone()[0]
+    today_inclusions = con.execute(
+        "SELECT COUNT(*) FROM macro_log_inclusions mi"
+        " JOIN macro_logs ml ON ml.id = mi.macro_log_id"
+        " WHERE ml.date = ?", (date.today().isoformat(),)).fetchone()[0]
     con.close()
-    if today_logs != 1:
-        raise SystemExit(f"FAIL: expected one log row for {today}, got {today_logs}")
-    if today_quantity != 2.0:
-        raise SystemExit(f"FAIL: the corrected factor should be stored, got {today_quantity}")
-    print("ok   accepting the default date logs for today, creating its log row on demand with the corrected quantity")
+    if today_rows != 1:
+        raise SystemExit(f"FAIL: accepting the default should create today's log row, got {today_rows}")
+    if today_inclusions != 0:
+        raise SystemExit(f"FAIL: the created log should be empty, got {today_inclusions} inclusions")
+    print("ok   the default date creates today's (empty) log row on demand")
 
-    # A date in the future is asked about, not refused — the clock may be
-    # wrong — behind a No-defaulted Yes/No: the default No keeps the typed text
-    # on the date field and records nothing.
+    # A future date is confirmed, not refused — the default No keeps the typed
+    # text on the field and creates nothing.
     app = App()
     app.check("main menu (4th)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\r")                             # log item (index 0)
+    app.send("\x1b[B\r")                       # create log (index 1)
     app.send("\x7f" * 10 + "2099/12/31\r")     # clear the prefilled date, then a far-future date
-    app.check("future date asks before logging", "2099/12/31 is a future date — log anyway?", "Yes", "No")
+    app.check("future date asks before creating", "2099/12/31 is a future date — log anyway?", "Yes", "No")
     app.send("\r")                             # No is the highlighted default: decline
     app.check("declined, date text kept", "═[Log date (YYYY/MM/DD)]", "> 2099/12/31")
-    app.send("\x1b")                           # Escape: cancel the log
-    app.check("cancelled back at the log submenu", "═[Macro logs]", "log item", "history", "back")
+    app.send("\x1b")                           # Escape: cancel the create
+    app.check("cancelled back at the log submenu", "═[Macro logs]", "log item", "create log", "history", "back")
     app.close()
     con = sqlite3.connect(DB)
     future_rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2099-12-31'").fetchone()[0]
     con.close()
     if future_rows != 0:
         raise SystemExit(f"FAIL: a declined future date must not have created a log row, got {future_rows}")
-    print("ok   the future date's confirm defaults to No, keeping the text on the field and recording nothing")
+    print("ok   the future date's confirm defaults to No, keeping the text and creating nothing")
 
-    # An explicit Yes at the confirm still logs the future date — the user may
-    # know the clock is wrong — row and inclusion included.
+    # An explicit Yes at the confirm still creates the future date's log.
     app = App()
     app.check("main menu (5th)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\r")                             # log item (index 0)
+    app.send("\x1b[B\r")                       # create log (index 1)
     app.send("\x7f" * 10 + "2099/12/31\r")     # clear the prefilled date, then a far-future date
     app.check("future date asks (yes path)", "2099/12/31 is a future date — log anyway?", "Yes", "No")
     app.send("\x1b[A\r")                       # Yes: insist (No is the default)
-    app.check("confirmed future date proceeds to the item", "═[Select item]", "type to filter")
-    app.send("milk\r")                         # filter to Whole milk, pick it
-    app.check("quantity field (future)", "═[Whole milk · Quantity]", "1")
-    app.send("\r")                             # accept the default: one whole milk
-    app.check("logged the future date", "Logged 1 × 'Whole milk' on 2099/12/31.", "═[Macro logs]", "log item", "history", "back")
+    app.check("confirmed future date creates the log", "Created a macro log for 2099/12/31.", "═[Macro log for 2099/12/31]")
+    app.send("\x1b")                           # Escape: back to the date picker
+    app.send("\x1b")                           # Escape: back to the log submenu
     app.close()
     con = sqlite3.connect(DB)
     future_rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2099-12-31'").fetchone()[0]
-    future_qty = con.execute(
-        "SELECT mi.quantity FROM macro_log_inclusions mi"
-        " JOIN macro_logs ml ON ml.id = mi.macro_log_id"
-        " JOIN items i ON i.id = mi.item_id"
-        " WHERE ml.date = '2099-12-31' AND i.name = 'Whole milk'").fetchone()
     con.close()
     if future_rows != 1:
         raise SystemExit(f"FAIL: the confirmed future date should have one log row, got {future_rows}")
-    if future_qty != (1.0,):
-        raise SystemExit(f"FAIL: the confirmed future date's inclusion should be quantity 1, got {future_qty}")
-    print("ok   an explicit Yes logs the future date, row and inclusion included")
+    print("ok   an explicit Yes creates the future date's log row")
 
     # An unparseable date is refused and re-asks with what was typed; Escape
-    # cancels before anything is recorded.
+    # cancels before anything is created.
     app = App()
     app.check("main menu (6th)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\r")                             # log item (index 0)
+    app.send("\x1b[B\r")                       # create log (index 1)
     app.send("\x7f" * 10 + "abc\r")            # clear the prefilled date, then a date that can't parse
     app.check("invalid date refused", "Enter a date as YYYY/MM/DD.", "═[Log date (YYYY/MM/DD)]", "> abc")
-    app.send("\x1b")                           # Escape: cancel the log
-    app.check("cancelled back at the log submenu", "═[Macro logs]", "log item", "history", "back")
+    app.send("\x1b")                           # Escape: cancel the create
+    app.check("cancelled back at the log submenu", "═[Macro logs]", "log item", "create log", "history", "back")
     app.close()
-    print("ok   an unparseable date re-asks with the text kept, and Escape cancels to the macros menu")
+    print("ok   an unparseable date re-asks with the text kept, and Escape cancels to the log submenu")
     print()
 
 def macros_show_logs_path():
@@ -1369,7 +1386,7 @@ def macros_show_logs_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\r")                       # history (index 1)
+    app.send("\x1b[B\x1b[B\r")                 # history (index 2)
     # Each date row carries its day's resolved calories and protein — bare
     # quantities, calories first — so the totals are legible before opening
     # the log.
@@ -1462,7 +1479,7 @@ def macros_log_delete_item_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\r")                       # history (index 1)
+    app.send("\x1b[B\x1b[B\r")                 # history (index 2)
     app.check("date picker with the day's totals", "═[Select date]",
               "2026/10/02 · 540kcal · 93g protein")
     app.send("2026/10/02\r")                   # filter to the day, pick it
@@ -2789,6 +2806,7 @@ personal_record_path()
 delete_path()
 macros_path()
 macros_log_item_path()
+macros_create_log_path()
 macros_show_logs_path()
 macros_log_delete_item_path()
 macros_add_item_path()

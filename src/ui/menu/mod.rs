@@ -11,7 +11,8 @@
 //! [`self::exercises_menu`], [`self::session_menu`],
 //! [`self::freeform_session`],
 //! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
-//! [`self::add_item`], [`self::log_item`], [`self::show_logs`],
+//! [`self::add_item`], [`self::create_log`], [`self::log_item`],
+//! [`self::show_logs`],
 //! [`self::log_options`], [`self::add_recipe_item`],
 //! [`self::exercise_options`], [`self::select_muscle_group`],
 //! [`self::muscle_group_options`],
@@ -36,6 +37,7 @@ use crate::ui::utils::{Shell, UiError};
 mod add_exercise;
 mod add_item;
 mod add_recipe_item;
+mod create_log;
 mod edit_ingredients;
 mod exercise_muscle_groups;
 mod exercise_options;
@@ -67,8 +69,8 @@ pub(crate) enum Menu {
     /// The items submenu (Show items / New item / Back), branching the macros
     /// screen's item flows off from its log flows.
     MacrosItems,
-    /// The log submenu (Log item / History / Back), branching the macros
-    /// screen's day-log flows off from its item flows.
+    /// The log submenu (Log item / Create log / History / Back), branching the
+    /// macros screen's day-log flows off from its item flows.
     MacrosLogs,
     /// The add-item screen: choose a plain item (a leaf — name and six stored
     /// macros) or a recipe item (a composite of existing items, each a
@@ -79,9 +81,13 @@ pub(crate) enum Menu {
     ShowItems,
     /// The actions for one picked item, named by its unique name.
     ItemOptions { name: String },
-    /// The log-item screen: pick a date (default today, backdatable) and an
-    /// item, then record one use of it for that day — creating the day's log
-    /// if it's the first entry.
+    /// The create-log screen: pick a date (default today, backdatable, future
+    /// date warned) and open that day's log's options — creating the day's log
+    /// first if it doesn't exist. The counterpart of [`Menu::LogItem`], which
+    /// logs a use against today without asking the date.
+    CreateLog,
+    /// The log-item screen: record one use of an item against today, creating
+    /// today's log if it's the day's first entry.
     LogItem,
     /// The show-logs screen: browse the stored logs' dates with the filter
     /// picker, newest first, then into that log's options screen.
@@ -189,6 +195,7 @@ impl Menu {
             Menu::MacrosItems => macros_items::run(shell),
             Menu::MacrosLogs => macros_logs::run(shell),
             Menu::AddItem => add_item::run(shell, conn),
+            Menu::CreateLog => create_log::run(shell, conn),
             Menu::LogItem => log_item::run(shell, conn),
             Menu::ShowLogs => show_logs::run(shell, conn),
             Menu::LogOptions { date } => log_options::run(shell, conn, date),

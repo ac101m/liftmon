@@ -81,24 +81,30 @@ in-use-exercise delete path, the macros path (the main menu's "Macros" item
 lands on the macros screen, which branches into two submenus rather than
 listing every flow flat: "items" — whose "show items" and "new item" hold the
 item flows, "new item" launching the plain/recipe item form — and "logs" — whose
-"log item" and "history" hold the day-log flows — plus "back"; the split
+"log item", "create log" and "history" hold the day-log flows — plus "back"; the split
 keeps the macros menu short, and renames the old "create item" to "new item"
 and "show logs" to "history" so neither can be confused with the log
 options' per-day "add item"), the
-macro-log path (the log submenu's "log item" option: it asks
-for a date prefilled with today's local calendar date — Enter accepts it, and a
-different date is typed in place, clearing the prefilled date first, backdating
-the entry — then the item picker, and a quantity factor after that, prefilled
-with one and scaling the day's macros when edited, then records one use of the
-item for that day, creating the day's `macro_logs` row only if it's that date's
-first entry; a second entry to the same date reuses the row rather than
-duplicating it, accepting the default date logs for today, a date in the
-future is met with a No-defaulted "… is a future date — log anyway?" Yes/No —
-the clock may be wrong — so the default No keeps the typed text on the field
-(recording nothing) while an explicit Yes still logs that date, an unparseable
-date re-asks with the text kept, a refused quantity re-asks the same way, and
-Escape cancels before anything is recorded — with the log rows and inclusions'
-quantities verified in the database), the macros
+macro-log path (the log submenu's "log item" option: **no date is asked** — the
+on-the-spot log records straight against today — the item picker comes up right
+away, then a quantity factor
+prefilled with one and scaling the day's macros when edited,
+recording one use of the item for today and
+creating today's `macro_logs` row on demand; a refused quantity re-asks with
+the text kept, and Escape cancels before anything is recorded — with the log
+row and inclusion's quantity verified in the database), the macros
+create-log path (the log submenu's "create log" option: a date field prefilled
+with today's local calendar date — Enter accepts it, and a different date is
+typed in place, clearing the prefilled date first, backdating the entry — then
+that day's log is made, or merely opened if it already exists (a date holds one
+log), the console announcing which with "Created a macro log for …." or "A
+macro log for … already exists.", and the screen lands on that log's options,
+where "add item" extends the date; a date in the future is met with a
+No-defaulted "… is a future date — log anyway?" Yes/No — the clock may be wrong
+— so the default No keeps the typed text on the field (creating nothing) while
+an explicit Yes still creates, an unparseable date re-asks with the text kept,
+and Escape cancels before anything is created — with the log rows verified in
+the database), the macros
 show-logs path (the log submenu's "history" option: a filter picker
 over the logged dates in the app's `YYYY/MM/DD` form — each row carrying its
 day's resolved calories and protein as bare quantities, calories first,
