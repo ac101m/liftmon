@@ -49,7 +49,8 @@ system where you store your workouts, please do be careful!
 7) Create a tag at the head of the release branch in the form `v<version>`.
 8) Check out master and bump the snapshot version in `Cargo.toml` by one minor
    version (ensuring the `-SNAPSHOT` suffix is in place).
-9) Commit the new snapshot version with the message "bump snapshot version".
+9) Commit the new snapshot version with the message "bump snapshot version" and
+   push master to remote.
 
 ## Uninstalling
 
