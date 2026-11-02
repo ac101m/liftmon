@@ -97,8 +97,8 @@ create-log path (the log submenu's "create log" option: a date field prefilled
 with today's local calendar date — Enter accepts it, and a different date is
 typed in place, clearing the prefilled date first, backdating the entry — then
 that day's log is made, or merely opened if it already exists (a date holds one
-log), the console announcing which with "Created a macro log for …." or "A
-macro log for … already exists.", and the screen lands on that log's options,
+log), the console announcing which with "Created a macro log for …." or
+"Opening existing log for ….", and the screen lands on that log's options,
 where "add item" extends the date; a date in the future is met with a
 No-defaulted "… is a future date — log anyway?" Yes/No — the clock may be wrong
 — so the default No keeps the typed text on the field (creating nothing) while

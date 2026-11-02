@@ -1278,7 +1278,7 @@ def macros_create_log_path():
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
     app.send("\x1b[B\r")                       # create log (index 1)
     app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date, then the same backdate
-    app.check("existing log is announced", "A macro log for 2026/10/01 already exists.", "═[Macro log for 2026/10/01]")
+    app.check("existing log is announced", "Opening existing log for 2026/10/01.", "═[Macro log for 2026/10/01]")
     app.send("\x1b")                           # Escape: back to the date picker
     app.send("\x1b")                           # Escape: back to the log submenu
     app.close()

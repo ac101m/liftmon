@@ -37,7 +37,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     let existing = MacroLog::find_by_date(conn, date)?.is_some();
     let log = MacroLog::find_or_create(conn, date)?;
     shell.log(if existing {
-        format!("A macro log for {} already exists.", format_date(date))
+        format!("Opening existing log for {}.", format_date(date))
     } else {
         format!("Created a macro log for {}.", format_date(date))
     });
