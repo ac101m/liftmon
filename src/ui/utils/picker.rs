@@ -14,6 +14,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{
     Block, BorderType, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget,
 };
@@ -38,8 +39,11 @@ pub(crate) struct Picker {
     /// The suggestion shown dimmed in the filter row while it is empty (e.g.
     /// "type to filter"); `None` leaves the row just the "> " prompt.
     prompt: Option<String>,
-    /// Every option, in their given order; the filter narrows this.
-    all: Vec<String>,
+    /// Every option, in their given order; the filter narrows this. Each row
+    /// is a styled line, so a caller can subdue a secondary option — e.g. an
+    /// empty day's "nothing recorded" — with an attribute (a `DIM` modifier)
+    /// rather than a hard-coded colour, keeping the list theme-friendly.
+    all: Vec<Line<'static>>,
     /// The typed filter.
     filter: String,
     /// Byte index into `filter` where the caret sits (a char boundary).
@@ -52,10 +56,30 @@ pub(crate) struct Picker {
     state: ListState,
 }
 
+/// A row's plain text — every span's content joined — which is what the
+/// filter matches on and what a pick returns. Styling lives on the spans, so
+/// the visible text and the returned value always agree.
+fn line_text(line: &Line<'_>) -> String {
+    line.spans.iter().map(|s| s.content.as_ref()).collect()
+}
+
+/// The row as a list item, with the picker's one-space row indent in front of
+/// the (already styled) line — the indent inherits the line's style, so a
+/// dimmed row reads dimmed right up to the list edge.
+fn prefixed(line: &Line<'static>) -> Line<'static> {
+    let mut spans = vec![Span::raw(" ")];
+    spans.extend(line.spans.iter().cloned());
+    Line::from(spans)
+}
+
 impl Picker {
     /// Build a picker over `options`; they must not be empty (empty options
     /// would be unresolvable, so [`super::shell::Shell::pick`] asserts it).
-    pub(crate) fn new(title: Option<String>, prompt: Option<String>, options: Vec<String>) -> Self {
+    pub(crate) fn new(
+        title: Option<String>,
+        prompt: Option<String>,
+        options: Vec<Line<'static>>,
+    ) -> Self {
         let mut state = ListState::default();
         state.select(Some(0));
         Self {
@@ -78,12 +102,11 @@ impl Picker {
     }
 
     /// The options currently matching the filter, in their original order.
-    fn matches(&self) -> Vec<&str> {
+    fn matches(&self) -> Vec<&Line<'static>> {
         let filter_lower = self.filter.to_lowercase();
         self.all
             .iter()
-            .filter(|option| matches_filter(option, &filter_lower))
-            .map(String::as_str)
+            .filter(|line| matches_filter(&line_text(line), &filter_lower))
             .collect()
     }
 
@@ -207,7 +230,7 @@ impl Element for Picker {
         }
         let items: Vec<ListItem> = matches
             .iter()
-            .map(|name| ListItem::new(format!(" {name}")))
+            .map(|line| ListItem::new(prefixed(line)))
             .collect();
         let list_area = Rect::new(
             inner.x,
@@ -258,8 +281,8 @@ impl Element for Picker {
             KeyCode::Enter => {
                 // Pick the highlighted match, if any.
                 let matches = self.matches();
-                if let Some(name) = matches.get(self.selected) {
-                    return Some(ElementResult::Value((*name).to_owned()));
+                if let Some(line) = matches.get(self.selected) {
+                    return Some(ElementResult::Value(line_text(line)));
                 }
             }
             KeyCode::Esc => return Some(ElementResult::Cancelled),
@@ -271,12 +294,13 @@ impl Element for Picker {
 
 #[cfg(test)]
 mod tests {
-    use super::Picker;
     use super::{Element, ElementResult};
+    use super::{Picker, line_text};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use ratatui::style::Modifier;
+    use ratatui::text::Line;
 
     const OPTIONS: [&str; 4] = ["bench press", "deadlift", "incline bench", "squat"];
 
@@ -288,7 +312,7 @@ mod tests {
         Picker::new(
             Some("Select".into()),
             Some("type to filter".into()),
-            OPTIONS.iter().map(|s| s.to_string()).collect(),
+            OPTIONS.iter().map(|s| Line::from(s.to_string())).collect(),
         )
     }
 
@@ -298,7 +322,9 @@ mod tests {
         Picker::new(
             Some("Select".into()),
             Some("type to filter".into()),
-            (0..17).map(|i| format!("exercise {i:02}")).collect(),
+            (0..17)
+                .map(|i| Line::from(format!("exercise {i:02}")))
+                .collect(),
         )
     }
 
@@ -308,24 +334,34 @@ mod tests {
         }
     }
 
-    fn names(picker: &Picker) -> Vec<&str> {
-        picker.matches()
+    fn names(picker: &Picker) -> Vec<String> {
+        picker
+            .matches()
+            .iter()
+            .map(|line| line_text(line))
+            .collect()
     }
 
     #[test]
     fn empty_filter_lists_all_options() {
         let picker = picker();
-        assert_eq!(names(&picker), OPTIONS.to_vec());
+        assert_eq!(
+            names(&picker),
+            OPTIONS.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn typing_narrows_matches_case_insensitively() {
         let mut picker = picker();
         type_text(&mut picker, "beNch");
-        assert_eq!(names(&picker), vec!["bench press", "incline bench"]);
+        assert_eq!(
+            names(&picker),
+            vec!["bench press".to_string(), "incline bench".to_string()]
+        );
         // The filter is the whole string, so typing on narrows it further.
         type_text(&mut picker, " p");
-        assert_eq!(names(&picker), vec!["bench press"]);
+        assert_eq!(names(&picker), vec!["bench press".to_string()]);
     }
 
     #[test]
@@ -339,7 +375,11 @@ mod tests {
         assert_eq!(picker.selected, 0, "filtering jumps back to the top");
         assert_eq!(
             names(&picker),
-            vec!["bench press", "deadlift", "incline bench"]
+            vec![
+                "bench press".to_string(),
+                "deadlift".to_string(),
+                "incline bench".to_string()
+            ]
         );
     }
 
@@ -400,7 +440,10 @@ mod tests {
         assert!(names(&picker).is_empty(), "the stray 'x' kills every match");
 
         picker.on_key(key(KeyCode::Backspace)); // removes the 'x'
-        assert_eq!(names(&picker), vec!["bench press", "incline bench"]);
+        assert_eq!(
+            names(&picker),
+            vec!["bench press".to_string(), "incline bench".to_string()]
+        );
     }
 
     #[test]
@@ -581,7 +624,7 @@ mod tests {
         let mut picker = Picker::new(
             Some("Select".into()),
             None,
-            OPTIONS.iter().map(|s| s.to_string()).collect(),
+            OPTIONS.iter().map(|s| Line::from(s.to_string())).collect(),
         );
         let area = Rect::new(0, 0, 40, picker.natural_height(40));
         let mut buf = Buffer::empty(area);

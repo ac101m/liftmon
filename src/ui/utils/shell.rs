@@ -301,12 +301,43 @@ impl Shell {
         prompt: Option<String>,
         options: impl IntoIterator<Item = S>,
     ) -> Result<Option<String>, UiError> {
-        let options: Vec<String> = options.into_iter().map(|s| s.as_ref().to_owned()).collect();
+        self.pick_lines(
+            title,
+            prompt,
+            options
+                .into_iter()
+                .map(|s| Line::from(s.as_ref().to_owned())),
+        )
+    }
+
+    /// A pick over styled rows — each option carries the attribute(s) it
+    /// renders with, so a caller can subdue a secondary row (e.g. an empty
+    /// day's "nothing recorded") with a `DIM` modifier rather than a
+    /// hard-coded colour. The picked value is still the row's plain text:
+    /// styling never leaks into what a pick returns.
+    pub(crate) fn pick_styled(
+        &mut self,
+        title: Option<String>,
+        prompt: Option<String>,
+        lines: Vec<Line<'static>>,
+    ) -> Result<Option<String>, UiError> {
+        self.pick_lines(title, prompt, lines)
+    }
+
+    /// The shared pick body: run one [`super::picker::Picker`] over the rows
+    /// and return the chosen row's plain text, or `None` on Escape.
+    fn pick_lines<I: IntoIterator<Item = Line<'static>>>(
+        &mut self,
+        title: Option<String>,
+        prompt: Option<String>,
+        lines: I,
+    ) -> Result<Option<String>, UiError> {
+        let lines: Vec<Line<'static>> = lines.into_iter().collect();
         assert!(
-            !options.is_empty(),
+            !lines.is_empty(),
             "cannot pick from an empty list of options"
         );
-        match self.run(&mut Picker::new(title, prompt, options))? {
+        match self.run(&mut Picker::new(title, prompt, lines))? {
             ElementResult::Value(value) => Ok(Some(value)),
             ElementResult::Cancelled => Ok(None),
         }

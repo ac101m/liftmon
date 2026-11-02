@@ -16,6 +16,8 @@
 
 use std::collections::HashMap;
 
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
 use crate::domain::{MacroLog, MacroLogInclusion};
@@ -49,8 +51,15 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         // A day with nothing logged — its row made by "create log", or emptied
         // by removals — has no totals to carry, so its row reads "nothing
         // recorded" instead of "0kcal · 0g protein", and resolves nothing.
+        // Only the trailing "nothing recorded" is dimmed (an attribute, not a
+        // hard-coded colour, so it stays legible under any terminal theme) —
+        // the date and separator keep their full strength, so an empty day
+        // still reads normally and just its placeholder recedes.
         let label = if MacroLogInclusion::for_log(conn, log.id)?.is_empty() {
-            format!("{date} · nothing recorded")
+            Line::from(vec![
+                Span::raw(format!("{date} · ")),
+                Span::styled("nothing recorded", Style::new().add_modifier(Modifier::DIM)),
+            ])
         } else {
             let macros = MacroLog::resolved_macros_cached(conn, log.id, &mut cache)?;
             // The calories are right-aligned within a fixed field so every
@@ -59,15 +68,15 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
             // with two spaces separating the pair. A day whose totals outgrow
             // the 8-wide field (a 4-digit count already fills it) just shifts
             // that one row.
-            format!(
+            Line::from(format!(
                 "{date} · {:>8}  {}g protein",
                 format!("{}kcal", round2(macros.calories)),
                 round2(macros.protein),
-            )
+            ))
         };
         labels.push(label);
     }
-    let Some(chosen) = shell.pick(
+    let Some(chosen) = shell.pick_styled(
         Some("Select date".to_string()),
         Some("type to filter".to_string()),
         labels,
