@@ -9,7 +9,7 @@ use crate::ui::utils::{Shell, UiError};
 /// Ask the items-submenu question and return where the user's choice leads.
 pub(super) fn run(shell: &mut Shell) -> Result<Option<Menu>, UiError> {
     let choice = shell.ask(
-        Some("Items".to_string()),
+        Some("Macro items".to_string()),
         ["show items", "new item", "back"],
     )?;
     Ok(match choice.as_deref() {
