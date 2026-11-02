@@ -5,8 +5,10 @@
 //! newest date first — the same most-recent-first reading the session list
 //! gives its sessions, since a log is usually wanted for a day the user just
 //! added to — with the day's resolved calories and protein riding along as a
-//! suffix (`2026/10/02 · 320kcal · 60g protein`), so a day's totals are
-//! legible before opening it. A day with nothing logged reads `· nothing
+//! suffix (`2026/10/02 ·  320kcal  60g protein`), so a day's totals are
+//! legible before opening it. The calories are right-aligned to a fixed
+//! field, so the protein quantity always starts at the same column.
+//! A day with nothing logged reads `· nothing
 //! recorded` instead — there are no totals to show. The dates are UNIQUE (one
 //! log per day), so
 //! picking one names the log exactly. Escape backs out to the log submenu
@@ -51,9 +53,15 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
             format!("{date} · nothing recorded")
         } else {
             let macros = MacroLog::resolved_macros_cached(conn, log.id, &mut cache)?;
+            // The calories are right-aligned within a fixed field so every
+            // row's protein quantity starts at the same column — ` 540kcal`
+            // lines up under `  60kcal`, the numbers' right edges flush —
+            // with two spaces separating the pair. A day whose totals outgrow
+            // the 8-wide field (a 4-digit count already fills it) just shifts
+            // that one row.
             format!(
-                "{date} · {}kcal · {}g protein",
-                round2(macros.calories),
+                "{date} · {:>8}  {}g protein",
+                format!("{}kcal", round2(macros.calories)),
                 round2(macros.protein),
             )
         };

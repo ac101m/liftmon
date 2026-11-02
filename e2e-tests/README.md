@@ -108,7 +108,9 @@ the database), the macros
 show-logs path (the log submenu's "history" option: a filter picker
 over the logged dates in the app's `YYYY/MM/DD` form — each row carrying its
 day's resolved calories and protein as bare quantities, calories first,
-`2026/10/02 · 320kcal · 60g protein` (a day with nothing logged reads
+`2026/10/02 ·  320kcal  60g protein` — the calories right-aligned to a fixed
+field, so the protein quantity starts in the same column on every row (a day
+with nothing logged reads
 `· nothing recorded` instead) — newest first, lands on the
 day's options screen titled "Macro log for <date>", whose info shows the day's
 resolved total macros in the items' format headed by that same title, then an
