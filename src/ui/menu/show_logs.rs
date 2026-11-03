@@ -10,14 +10,17 @@
 //! calories label among the shown options, so every protein quantity starts
 //! at the same column, the pipe separating the pair.
 //! A day with nothing logged reads `· nothing
-//! recorded` instead — there are no totals to show. The dates are UNIQUE (one
+//! recorded` instead — there are no totals to show — and a day flagged as a
+//! cheat reads `· CHEAT`, the marker in red standing in for the totals (the
+//! point of a cheat day's row is the flag, not its macros).
+//! The dates are UNIQUE (one
 //! log per day), so
 //! picking one names the log exactly. Escape backs out to the log submenu
 //! ([`super::macros_logs`]).
 
 use std::collections::HashMap;
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
@@ -57,17 +60,31 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     let mut calorie_width = 0usize;
     for log in logs.iter().rev() {
         let date = format_date(log.date);
-        if MacroLogInclusion::for_log(conn, log.id)?.is_empty() {
-            rows.push((date, None));
+        if log.is_cheat {
+            // A cheat day's row carries only its red marker — the totals are
+            // not the point of the day, and marking the cheat out of the
+            // column (no kcal) keeps it from widening the alignment.
+            rows.push((date, true, None));
+        } else if MacroLogInclusion::for_log(conn, log.id)?.is_empty() {
+            rows.push((date, false, None));
         } else {
             let macros = MacroLog::resolved_macros_cached(conn, log.id, &mut cache)?;
             let kcal = format!("{}kcal", round2(macros.calories));
             calorie_width = calorie_width.max(kcal.len());
-            rows.push((date, Some((kcal, round2(macros.protein)))));
+            rows.push((date, false, Some((kcal, round2(macros.protein)))));
         }
     }
     let mut labels = Vec::with_capacity(rows.len());
-    for (date, totals) in rows {
+    for (date, is_cheat, totals) in rows {
+        // A flagged cheat day reads `· CHEAT` in red, standing in for whatever
+        // the totals or the "nothing recorded" placeholder would read.
+        if is_cheat {
+            labels.push(Line::from(vec![
+                Span::raw(format!("{date} · ")),
+                Span::styled("CHEAT", Style::new().fg(Color::Red)),
+            ]));
+            continue;
+        }
         // A day with nothing logged — its row made by "create log", or emptied
         // by removals — has no totals to carry, so its row reads "nothing
         // recorded" instead of "0kcal | 0g protein", and resolves nothing.

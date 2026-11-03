@@ -15,14 +15,21 @@
 //! Yes/No "are you sure" that defaults to "No", dropping exactly that one use),
 //! then **add note** (a free-text line recorded against the day, shown in the
 //! info) and **show notes** (a filter picker over the day's notes, each picked
-//! one opening its [`super::note_options`] screen to edit or delete it),
+//! one opening its [`super::note_options`] screen to edit or delete it), then
+//! **mark as cheat** — a toggle that works just like the logs submenu's "log
+//! cheat" (a text description becomes a note and the day is flagged), reading
+//! "mark as clean" once the day *is* a cheat, and clearing the flag with no
+//! further ask — then
 //! **delete log** (after a Yes/No "are you sure" that defaults to "No",
 //! taking all the items and notes with it), or back out to the log picker.
+//! A cheat day's info heads itself with a red `[CHEAT]` after the date's
+//! colon, and
+//! its history row reads `CHEAT` in red.
 //! Deleting or backing out returns to the picker, which no longer lists a
 //! deleted date.
 
 use chrono::{NaiveDate, Utc};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use rusqlite::Connection;
 
@@ -31,7 +38,7 @@ use crate::domain::{Item, MacroLog, MacroLogInclusion, MacroLogNote};
 use crate::ui::utils::{ReadOutcome, Shell, UiError};
 
 use super::Menu;
-use super::item_options::{heading, resolved_macro_lines};
+use super::item_options::resolved_macro_lines;
 use super::select_session::format_date;
 
 /// Drive the per-log menu until the user deletes the log or backs out. `date`
@@ -51,18 +58,29 @@ pub(super) fn run(
             shell.log("That log is no longer there");
             return Ok(Some(Menu::ShowLogs));
         };
+        // The cheat toggle's label depends on the day's own flag — "mark as
+        // clean" for a cheat day, "mark as cheat" for a clean one — so the
+        // option list is built, not literal. The length is the same either
+        // way, so the re-ask's highlight index stays valid across the toggle.
+        let cheat_label = if log.is_cheat {
+            "mark as clean"
+        } else {
+            "mark as cheat"
+        };
+        let options = vec![
+            "info".to_string(),
+            "add item".to_string(),
+            "new item".to_string(),
+            "delete item".to_string(),
+            "add note".to_string(),
+            "show notes".to_string(),
+            cheat_label.to_string(),
+            "delete log".to_string(),
+            "back".to_string(),
+        ];
         let (choice, selected_here) = shell.ask_selected(
             Some(format!("Macro log for {}", format_date(date))),
-            [
-                "info",
-                "add item",
-                "new item",
-                "delete item",
-                "add note",
-                "show notes",
-                "delete log",
-                "back",
-            ],
+            options,
             selected,
         )?;
         selected = selected_here;
@@ -97,6 +115,17 @@ pub(super) fn run(
                     return Ok(Some(Menu::NoteOptions { date, note_id }));
                 }
             }
+            // Flag the day as a cheat, exactly like the logs submenu's "log
+            // cheat": a text description becomes a note, and the day is
+            // marked. Stays on this menu — the next re-ask reloads the log and
+            // reads "mark as clean" instead.
+            Some("mark as cheat") => mark_as_cheat(shell, conn, &log)?,
+            // The day already is a cheat: clear the flag, no text ask. Stays
+            // on this menu, its label flipping back to "mark as cheat".
+            Some("mark as clean") => {
+                log.set_is_cheat(conn, false)?;
+                shell.log("Marked as clean");
+            }
             // Delete the log after a Yes/No "are you sure" that defaults to
             // "No" — deleting is destructive, so an explicit "Yes" is required
             // even for an accidental Enter. Unlike an item there is nothing to
@@ -130,7 +159,19 @@ pub(super) fn run(
 /// composite's ingredients, and then any notes under a bold "Notes:" heading,
 /// in the order they were written.
 fn log_info_lines(conn: &Connection, log: &MacroLog) -> Result<Vec<Line<'static>>, UiError> {
-    let mut lines = vec![heading(&format!("Macro log for {}", format_date(log.date)))];
+    // The heading is `<name>:` bold (heading()'s shape), and a cheat day reads
+    // its flag right after the closing colon — a red `[CHEAT]`, the same red
+    // a failed set's marker carries, so the heading reads
+    // `Macro log for 2026/10/02: [CHEAT]`.
+    let mut title = vec![Span::styled(
+        format!("Macro log for {}", format_date(log.date)),
+        Style::new().add_modifier(Modifier::BOLD),
+    )];
+    title.push(Span::styled(":", Style::new().add_modifier(Modifier::BOLD)));
+    if log.is_cheat {
+        title.push(Span::styled(" [CHEAT]", Style::new().fg(Color::Red)));
+    }
+    let mut lines = vec![Line::from(title)];
     // A day with nothing logged — its row made by "create log", or emptied by
     // removals — has no macros to sum and no items to list, so say so instead
     // of printing a row of zeroed totals under an empty "Items:" heading. Its
@@ -172,27 +213,55 @@ fn log_info_lines(conn: &Connection, log: &MacroLog) -> Result<Vec<Line<'static>
     Ok(lines)
 }
 
-/// Ask for the note's text and record it against the log, re-asking from
-/// what was typed when it comes back empty (edit_name's pattern: the field
-/// prefills nothing here, but the retry keeps the rejected input). Escape
-/// stays on this menu without a note. "Added note" joins the log line, and
-/// the info section lists it under "Notes:" from here on.
+/// Ask for the note's text and record it against the log. Escape stays on
+/// this menu without a note. "Added note" joins the log line, and the info
+/// section lists it under "Notes:" from here on.
 fn add_note(shell: &mut Shell, conn: &Connection, log: &MacroLog) -> Result<(), UiError> {
+    let Some(text) = ask_required_text(shell, "Add note", "The note cannot be empty")? else {
+        return Ok(());
+    };
+    MacroLogNote::create(conn, log.id, text, Utc::now())?;
+    shell.log("Added note");
+    Ok(())
+}
+
+/// Flag the day as a cheat — the log options' version of the logs submenu's
+/// "log cheat": ask for the cheat's text (a required description), record it
+/// as a note, and set the day's `is_cheat`. Escape cancels without a flag.
+fn mark_as_cheat(shell: &mut Shell, conn: &Connection, log: &MacroLog) -> Result<(), UiError> {
+    let Some(text) =
+        ask_required_text(shell, "Describe the cheat", "The cheat needs a description")?
+    else {
+        return Ok(());
+    };
+    MacroLogNote::create(conn, log.id, text, Utc::now())?;
+    log.set_is_cheat(conn, true)?;
+    shell.log("Marked as cheat");
+    Ok(())
+}
+
+/// Ask for a required piece of text — the day-note and cheat-description
+/// fields' shared loop: the field prefills nothing, a blank answer is refused
+/// with `empty_msg` and re-asks with what was typed kept, Escape returns
+/// [`None`] with nothing written.
+fn ask_required_text(
+    shell: &mut Shell,
+    title: &str,
+    empty_msg: &str,
+) -> Result<Option<String>, UiError> {
     let mut prefill = String::new();
     loop {
-        match shell.read_line(Some("Add note".to_string()), None, &prefill)? {
+        match shell.read_line(Some(title.to_string()), None, &prefill)? {
             ReadOutcome::Value(text) => {
                 let text = text.trim().to_owned();
                 if text.is_empty() {
-                    shell.log("The note cannot be empty");
+                    shell.log(empty_msg.to_string());
                     prefill.clear();
                     continue;
                 }
-                MacroLogNote::create(conn, log.id, text, Utc::now())?;
-                shell.log("Added note");
-                return Ok(());
+                return Ok(Some(text));
             }
-            ReadOutcome::Cancelled { .. } => return Ok(()),
+            ReadOutcome::Cancelled { .. } => return Ok(None),
         }
     }
 }
@@ -465,5 +534,59 @@ mod tests {
         assert_eq!(lines[0].spans[0].style, bold);
         assert_eq!(lines[2].spans[0].style, bold);
         assert_eq!(lines[3].spans[0].style, Style::new());
+    }
+
+    #[test]
+    fn info_of_a_cheat_log_heads_with_a_red_cheat_marker() {
+        let (conn, log) = test_db();
+        // The real log-options loop reloads by date each pass, so a struct
+        // read after the toggle carries the fresh flag; mirror that here.
+        let mut log = log;
+        log.is_cheat = true;
+        log.set_is_cheat(&conn, true).unwrap();
+
+        let lines = log_info_lines(&conn, &log).unwrap();
+        assert_eq!(
+            lines_text(&lines),
+            [
+                // The red marker sits after the heading's closing colon.
+                "Macro log for 2026/10/02: [CHEAT]",
+                "  Fat: 16 g (of which saturates: 4 g)",
+                "  Carbs: 10 g (of which sugars: 5 g)",
+                "  Protein: 63 g",
+                "  Calories: 380 kcal",
+                "Items:",
+                "  1 × Whole milk",
+                "  2 × Chicken breast",
+            ]
+        );
+        // The date name and closing colon are bold; the CHEAT marker is the
+        // same red a failed set's marker reads as, after the colon.
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        assert_eq!(lines[0].spans[0].style, bold);
+        assert_eq!(lines[0].spans[1].style, bold);
+        assert_eq!(lines[0].spans[2].style, Style::new().fg(Color::Red));
+    }
+
+    #[test]
+    fn info_of_a_cleared_cheat_log_has_no_cheat_marker() {
+        let (conn, log) = test_db();
+        // A day marked then cleared — "mark as clean" — reads as a plain day
+        // again in its info, the marker gone (the struct again refreshed the
+        // way the reload-on-each-pass loop would).
+        let mut log = log;
+        log.is_cheat = true;
+        log.set_is_cheat(&conn, true).unwrap();
+        log.is_cheat = false;
+        log.set_is_cheat(&conn, false).unwrap();
+
+        let lines = log_info_lines(&conn, &log).unwrap();
+        assert_eq!(
+            lines_text(&lines)[0],
+            "Macro log for 2026/10/02:",
+            "clearing the flag restores the plain heading"
+        );
+        // No CHEAT span between the name and the colon.
+        assert_eq!(lines[0].spans.len(), 2);
     }
 }

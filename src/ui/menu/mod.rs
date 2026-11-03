@@ -12,6 +12,7 @@
 //! [`self::freeform_session`],
 //! [`self::select_session`], [`self::session_options`], [`self::add_exercise`],
 //! [`self::add_item`], [`self::create_log`], [`self::log_item`],
+//! [`self::log_cheat`],
 //! [`self::show_logs`],
 //! [`self::log_options`], [`self::add_recipe_item`],
 //! [`self::exercise_options`], [`self::select_muscle_group`],
@@ -44,6 +45,7 @@ mod exercise_options;
 mod exercises_menu;
 mod freeform_session;
 mod item_options;
+mod log_cheat;
 mod log_item;
 mod log_options;
 mod macros_items;
@@ -90,6 +92,9 @@ pub(crate) enum Menu {
     /// The log-item screen: record one use of an item against today, creating
     /// today's log if it's the day's first entry.
     LogItem,
+    /// The log-cheat screen: describe a cheat against today, creating today's
+    /// log if it doesn't exist, noting the description, and flagging the day.
+    LogCheat,
     /// The show-logs screen: browse the stored logs' dates with the filter
     /// picker, newest first, then into that log's options screen.
     ShowLogs,
@@ -201,6 +206,7 @@ impl Menu {
             Menu::AddItem => add_item::run(shell, conn),
             Menu::CreateLog => create_log::run(shell, conn),
             Menu::LogItem => log_item::run(shell, conn),
+            Menu::LogCheat => log_cheat::run(shell, conn),
             Menu::ShowLogs => show_logs::run(shell, conn),
             Menu::LogOptions { date } => log_options::run(shell, conn, date),
             Menu::NoteOptions { date, note_id } => note_options::run(shell, conn, date, note_id),

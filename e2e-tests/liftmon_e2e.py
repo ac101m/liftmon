@@ -112,14 +112,17 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
             SELECT RAISE(ABORT, 'item cannot contain itself, directly or indirectly')
             WHERE NEW.parent_id IN (SELECT x FROM contains);
         END;""")
-    # Day-by-day macro logging (migration v9): one log per calendar date, holding
+    # Day-by-day macro logging (migration v9, plus v10's cheat flag): one log
+    # per calendar date — carry `is_cheat`, the day's cheat marker added to the
+    # v10 migration in place — holding
     # item-use rows — each with its own id (so the same item can be included
     # several times in one log) — recording the log, the item, its quantity
     # factor and the UTC created_at moment, mirroring the app's schema so the
     # seed matches exactly what `upgrade()` produces.
     con.execute("""CREATE TABLE macro_logs (
-        id   INTEGER PRIMARY KEY,
-        date TEXT NOT NULL UNIQUE)""")
+        id       INTEGER PRIMARY KEY,
+        date     TEXT NOT NULL UNIQUE,
+        is_cheat INTEGER NOT NULL DEFAULT 0)""")
     con.execute("""CREATE TABLE macro_log_inclusions (
         id           INTEGER PRIMARY KEY,
         macro_log_id INTEGER NOT NULL REFERENCES macro_logs(id) ON DELETE CASCADE,
@@ -1218,7 +1221,7 @@ def macros_log_item_path():
     app.send("\x7f0\r")                        # clear the prefilled 1; a factor an entry can't have
     app.check("zero quantity refused", "Enter a number greater than 0", "═[Chicken breast · Quantity]", "> 0")
     app.send("\x7f2\r")                        # clear the refused 0, then fix it
-    app.check("logged for today", f"Logged 2 × 'Chicken breast' on {today_slashed}.", "═[Macro logs]", "log item", "create log", "history", "back")
+    app.check("logged for today", f"Logged 2 × 'Chicken breast' on {today_slashed}.", "═[Macro logs]", "log item", "log cheat", "create log", "history", "back")
     app.close()
     con = sqlite3.connect(DB)
     today_logs = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = ?",
@@ -1252,10 +1255,10 @@ def macros_create_log_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\r")                       # create log (index 1)
+    app.send("\x1b[B\x1b[B\r")                     # create log (index 2)
     app.check("create-log date field defaults to today", "═[Log date (YYYY/MM/DD)]", today_slashed)
     app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date (10 chars), then backdate
-    app.check("created a backdated log", "Created a macro log for 2026/10/01.", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
+    app.check("created a backdated log", "Created a macro log for 2026/10/01.", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "add note", "show notes", "mark as cheat", "delete log", "back")
     app.send("\x1b[B\r")                       # add item (index 1) on the log options
     app.send("milk\r")                         # filter to Whole milk, pick it
     app.check("quantity field defaults to one", "═[Whole milk · Quantity]", "1")
@@ -1264,7 +1267,7 @@ def macros_create_log_path():
     app.send("\x1b")                           # Escape: back out to the date picker
     app.check("back at the date picker", "═[Select date]", "type to filter")
     app.send("\x1b")                           # Escape: back out to the log submenu
-    app.check("back at the log submenu", "═[Macro logs]", "log item", "create log", "history", "back")
+    app.check("back at the log submenu", "═[Macro logs]", "log item", "log cheat", "create log", "history", "back")
     app.close()
     con = sqlite3.connect(DB)
     if con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2026-10-01'").fetchone()[0] != 1:
@@ -1285,7 +1288,7 @@ def macros_create_log_path():
     app.check("main menu (2nd)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\r")                       # create log (index 1)
+    app.send("\x1b[B\x1b[B\r")                     # create log (index 2)
     app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date, then the same backdate
     app.check("existing log is announced", "Opening existing log for 2026/10/01.", "═[Macro log for 2026/10/01]")
     app.send("\x1b")                           # Escape: back to the date picker
@@ -1303,7 +1306,7 @@ def macros_create_log_path():
     app.check("main menu (3rd)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\r")                       # create log (index 1)
+    app.send("\x1b[B\x1b[B\r")                     # create log (index 2)
     app.check("create-log date field (3rd)", "═[Log date (YYYY/MM/DD)]", today_slashed)
     app.send("\r")                             # accept the default: today
     app.check("created today's empty log", f"Created a macro log for {today_slashed}.", f"═[Macro log for {today_slashed}]")
@@ -1317,7 +1320,7 @@ def macros_create_log_path():
     app.send("\x1b")                           # Escape: back out to the date picker
     app.check("empty log listed as nothing recorded", "═[Select date]", f"{today_slashed} · nothing recorded")
     app.send("\x1b")                           # Escape: back out to the log submenu
-    app.check("back at the log submenu", "═[Macro logs]", "log item", "create log", "history", "back")
+    app.check("back at the log submenu", "═[Macro logs]", "log item", "log cheat", "create log", "history", "back")
     app.close()
     con = sqlite3.connect(DB)
     today_rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = ?",
@@ -1339,13 +1342,13 @@ def macros_create_log_path():
     app.check("main menu (4th)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\r")                       # create log (index 1)
+    app.send("\x1b[B\x1b[B\r")                     # create log (index 2)
     app.send("\x7f" * 10 + "2099/12/31\r")     # clear the prefilled date, then a far-future date
     app.check("future date asks before creating", "2099/12/31 is a future date — log anyway?", "Yes", "No")
     app.send("\r")                             # No is the highlighted default: decline
     app.check("declined, date text kept", "═[Log date (YYYY/MM/DD)]", "> 2099/12/31")
     app.send("\x1b")                           # Escape: cancel the create
-    app.check("cancelled back at the log submenu", "═[Macro logs]", "log item", "create log", "history", "back")
+    app.check("cancelled back at the log submenu", "═[Macro logs]", "log item", "log cheat", "create log", "history", "back")
     app.close()
     con = sqlite3.connect(DB)
     future_rows = con.execute("SELECT COUNT(*) FROM macro_logs WHERE date = '2099-12-31'").fetchone()[0]
@@ -1359,7 +1362,7 @@ def macros_create_log_path():
     app.check("main menu (5th)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\r")                       # create log (index 1)
+    app.send("\x1b[B\x1b[B\r")                     # create log (index 2)
     app.send("\x7f" * 10 + "2099/12/31\r")     # clear the prefilled date, then a far-future date
     app.check("future date asks (yes path)", "2099/12/31 is a future date — log anyway?", "Yes", "No")
     app.send("\x1b[A\r")                       # Yes: insist (No is the default)
@@ -1380,11 +1383,11 @@ def macros_create_log_path():
     app.check("main menu (6th)", "═[Main menu]")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\r")                       # create log (index 1)
+    app.send("\x1b[B\x1b[B\r")                     # create log (index 2)
     app.send("\x7f" * 10 + "abc\r")            # clear the prefilled date, then a date that can't parse
     app.check("invalid date refused", "Enter a date as YYYY/MM/DD.", "═[Log date (YYYY/MM/DD)]", "> abc")
     app.send("\x1b")                           # Escape: cancel the create
-    app.check("cancelled back at the log submenu", "═[Macro logs]", "log item", "create log", "history", "back")
+    app.check("cancelled back at the log submenu", "═[Macro logs]", "log item", "log cheat", "create log", "history", "back")
     app.close()
     print("ok   an unparseable date re-asks with the text kept, and Escape cancels to the log submenu")
     print()
@@ -1401,9 +1404,9 @@ def macros_log_new_item_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\r")                       # create log (index 1)
+    app.send("\x1b[B\x1b[B\r")                     # create log (index 2)
     app.send("\x7f" * 10 + "2026/10/01\r")     # clear the prefilled date, then backdate
-    app.check("log options for the backdate", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
+    app.check("log options for the backdate", "═[Macro log for 2026/10/01]", "info", "add item", "new item", "delete item", "add note", "show notes", "mark as cheat", "delete log", "back")
     # "new item" runs the items submenu's add-item flow (plain/recipe chooser)
     # from here, and lands back on this date's log options.
     app.send("\x1b[B\x1b[B\r")                 # new item (index 2)
@@ -1453,7 +1456,7 @@ def macros_show_logs_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\x1b[B\r")                 # history (index 2)
+    app.send("\x1b[B\x1b[B\x1b[B\r")               # history (index 3)
     # Each date row carries its day's resolved calories and protein — bare
     # quantities, calories first — so the totals are legible before opening
     # the log.
@@ -1466,7 +1469,7 @@ def macros_show_logs_path():
     if rows.index("2026/10/02 · 320kcal | 60g protein") > rows.index("2026/10/01 · 220kcal | 33g protein"):
         raise SystemExit("FAIL: the log picker should list the newest date first")
     app.send("2026/10/02\r")                   # filter to the newest log, pick it
-    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
+    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "add note", "show notes", "mark as cheat", "delete log", "back")
     app.send("\r")                             # info (index 0)
     app.check("info: totals then items",
               "Macro log for 2026/10/02:",
@@ -1491,7 +1494,7 @@ def macros_show_logs_path():
               "  Calories: 380 kcal",
               "  2 × Chicken breast",          # logged at 09:00 ...
               "  1 × Whole milk")              # ... before the milk just added
-    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")     # delete log (index 6, below show notes)
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")   # delete log (index 7, below mark as cheat)
     app.check("delete prompt defaults to No", "Delete macro log for 2026/10/02?", "Yes", "No")
     app.send("\r")                             # No (the default): the log stays
     app.check("declined delete keeps the log", "═[Macro log for 2026/10/02]", "info", "delete")
@@ -1549,7 +1552,7 @@ def macros_log_alignment_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\x1b[B\r")                 # history (index 2)
+    app.send("\x1b[B\x1b[B\x1b[B\r")               # history (index 3)
     # Each row's calories are right-aligned into a field as wide as the
     # longest of them, then a pipe — the "g protein" suffix starts on the
     # same column on every row.
@@ -1585,11 +1588,11 @@ def macros_log_notes_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\x1b[B\r")                 # history (index 2)
+    app.send("\x1b[B\x1b[B\x1b[B\r")               # history (index 3)
     app.send("2026/10/02\r")                   # filter to the day, pick it
     app.check("log options with the note actions",
               "═[Macro log for 2026/10/02]",
-              "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
+              "info", "add item", "new item", "delete item", "add note", "show notes", "mark as cheat", "delete log", "back")
 
     # Add a note: down four from info to "add note" (index 4), type the text.
     app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")
@@ -1681,11 +1684,11 @@ def macros_log_delete_item_path():
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
-    app.send("\x1b[B\x1b[B\r")                 # history (index 2)
+    app.send("\x1b[B\x1b[B\x1b[B\r")               # history (index 3)
     app.check("date picker with the day's totals", "═[Select date]",
               "2026/10/02 · 540kcal | 93g protein")
     app.send("2026/10/02\r")                   # filter to the day, pick it
-    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "add note", "show notes", "delete log", "back")
+    app.check("log options", "═[Macro log for 2026/10/02]", "info", "add item", "new item", "delete item", "add note", "show notes", "mark as cheat", "delete log", "back")
     app.send("\x1b[B\x1b[B\x1b[B\r")           # delete item (index 3)
     # The picker rows read exactly like the info's "Items:" list, in creation
     # order — 2 × chicken at 09:00, milk at 10:00, then the second chicken at
@@ -1752,6 +1755,116 @@ def macros_log_delete_item_path():
     if items_left != 2:
         raise SystemExit(f"FAIL: removing uses must not touch items, got {items_left}")
     print("ok   delete item removes exactly the picked use (duplicates by id, No by default); an emptied day keeps its row (listed as 'nothing recorded') and guards 'No items logged on this date yet'")
+    print()
+
+def macros_log_cheat_path():
+    print("=== MACROS LOG CHEAT PATH: 'log cheat' describes and flags today; the log options toggle 'mark as cheat'/'mark as clean'; info and history show a red CHEAT ===")
+    seed_db(items=(
+        ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 30.0, 160.0)),
+    ))
+    today_iso = date.today().isoformat()
+    today_slashed = date.today().strftime("%Y/%m/%d")
+
+    # "log cheat" (index 1, directly below "log item") asks for the cheat's
+    # words — the blank answer is refused — then notes the description against
+    # today and flags the day, both in one go, with no date ask (like "log
+    # item", it targets today).
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
+    app.check("macros menu", "═[Macros]", "items", "logs", "back")
+    app.send("\x1b[B\r")                       # -> Macro logs (index 1)
+    app.send("\x1b[B\r")                       # log cheat (index 1, below log item)
+    app.check("cheat description prompt", "═[Describe the cheat]")
+    app.send("\r")                             # blank: a cheat needs words
+    app.check("blank cheat refused", "The cheat needs a description", "═[Describe the cheat]")
+    app.send("Slipped up\r")                   # describe it
+    app.check("logged the cheat", "Logged cheat", "═[Macro logs]", "log item", "log cheat", "create log", "history", "back")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    cheat = con.execute("SELECT is_cheat FROM macro_logs WHERE date = ?", (today_iso,)).fetchone()
+    notes = con.execute(
+        "SELECT ml.is_cheat, mn.note FROM macro_logs ml"
+        " JOIN macro_log_notes mn ON mn.macro_log_id = ml.id WHERE ml.date = ?",
+        (today_iso,)).fetchall()
+    con.close()
+    if cheat != (1,):
+        raise SystemExit(f"FAIL: logging a cheat should mark today's log is_cheat=1, got {cheat}")
+    if notes != [(1, "Slipped up")]:
+        raise SystemExit(f"FAIL: logging a cheat should note exactly its description against the flagged day, got {notes}")
+    print("ok   'log cheat' refuses a blank description, notes it against today, and flags the day")
+
+    # The history picker shows the cheat day as just CHEAT; picking it opens
+    # the log options, whose toggle now reads "mark as clean", and whose info
+    # heads with a red [CHEAT] after the date.
+    app = App()
+    app.check("main menu (2nd)", "═[Main menu]")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros
+    app.send("\x1b[B\r")                       # -> Macro logs (index 1)
+    app.send("\x1b[B\x1b[B\x1b[B\r")           # history (index 3)
+    app.check("cheat day's row reads CHEAT", "═[Select date]", f"{today_slashed} · CHEAT")
+    app.send(f"{today_slashed}\r")             # filter to today, pick it
+    app.check("log options show the clean toggle",
+              f"═[Macro log for {today_slashed}]",
+              "info", "add item", "new item", "delete item", "add note", "show notes",
+              "mark as clean", "delete log", "back")
+    app.send("\r")                             # info (index 0)
+    app.check("info heads with the cheat marker", f"Macro log for {today_slashed}: [CHEAT]")
+    app.close()
+    print("ok   a cheat day's history row reads CHEAT; its options toggle reads 'mark as clean'; its info heads [CHEAT]")
+
+    # "mark as clean" clears the flag with no text ask; the picker row loses
+    # its CHEAT (today has no items, so it reads "nothing recorded"), and the
+    # toggle flips back to "mark as cheat".
+    app = App()
+    app.check("main menu (3rd)", "═[Main menu]")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros
+    app.send("\x1b[B\r")                       # -> Macro logs (index 1)
+    app.send("\x1b[B\x1b[B\x1b[B\r")           # history (index 3)
+    app.send(f"{today_slashed}\r")             # pick today
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")  # mark as clean (index 6)
+    app.check("cleared, back on the options", "Marked as clean", f"═[Macro log for {today_slashed}]", "mark as cheat")
+    app.send("\x1b")                           # Escape: back to the date picker
+    app.check("clean day reads nothing recorded", "═[Select date]", f"{today_slashed} · nothing recorded")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    cheat = con.execute("SELECT is_cheat FROM macro_logs WHERE date = ?", (today_iso,)).fetchone()
+    con.close()
+    if cheat != (0,):
+        raise SystemExit(f"FAIL: 'mark as clean' should clear the cheat flag, got {cheat}")
+    print("ok   'mark as clean' clears the flag with no text ask, and the picker row reverts")
+
+    # "mark as cheat" from the options works exactly like "log cheat": a
+    # required description noted and the flag set, so the day reads CHEAT again.
+    app = App()
+    app.check("main menu (4th)", "═[Main menu]")
+    app.send("\x1b[B\x1b[B\r")                 # -> Macros
+    app.send("\x1b[B\r")                       # -> Macro logs (index 1)
+    app.send("\x1b[B\x1b[B\x1b[B\r")           # history (index 3)
+    app.send(f"{today_slashed}\r")             # pick today
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\r")  # mark as cheat (index 6)
+    app.check("mark-as-cheat asks for words", "═[Describe the cheat]")
+    app.send("Ate the cake\r")
+    app.check("re-flagged, back on the options", "Marked as cheat", f"═[Macro log for {today_slashed}]", "mark as clean")
+    app.send("\x1b")                           # Escape: back to the date picker
+    app.check("cheat again on the history row", "═[Select date]", f"{today_slashed} · CHEAT")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    cheat = con.execute("SELECT is_cheat FROM macro_logs WHERE date = ?", (today_iso,)).fetchone()
+    noted = con.execute(
+        "SELECT COUNT(*) FROM macro_log_notes mn"
+        " JOIN macro_logs ml ON ml.id = mn.macro_log_id"
+        " WHERE ml.date = ? AND mn.note = 'Ate the cake'",
+        (today_iso,)).fetchone()[0]
+    con.close()
+    if cheat != (1,):
+        raise SystemExit(f"FAIL: re-flagging from the options should set is_cheat=1, got {cheat}")
+    if noted != 1:
+        raise SystemExit(f"FAIL: 'mark as cheat' should note the description like 'log cheat', got {noted}")
+    print("ok   'mark as cheat' on the options notes the description and flags the day, like 'log cheat'")
     print()
 
 def macros_add_item_path():
@@ -3014,6 +3127,7 @@ macros_show_logs_path()
 macros_log_alignment_path()
 macros_log_notes_path()
 macros_log_delete_item_path()
+macros_log_cheat_path()
 macros_add_item_path()
 macros_add_recipe_item_path()
 macros_edit_item_name_path()

@@ -50,7 +50,8 @@ What happens on a run:
    both indexes, the FK delete rules, the muscle-group tables with the 18
    default groups seeded, the macros `items` table and its `item_reference`
    composition table (with its no-cycles trigger), the macro-log tables — a
-   `macro_logs` row per calendar date holding `macro_log_inclusions` item-use
+   `macro_logs` row per calendar date (carrying the `is_cheat` cheat flag)
+   holding `macro_log_inclusions` item-use
    rows at a quantity factor and `macro_log_notes` free-text notes — `PRAGMA
    user_version`), seeded with a
    couple of exercises.
@@ -148,6 +149,17 @@ emptied day keeps its `macro_logs` row and is still listed in the picker, now
 as `· nothing recorded` (its info "No items logged yet."), with whole-day
 "delete" the way to remove
 the date), the macros
+log-cheat path (the log submenu's "log cheat" option, directly below "log
+item": a description is *required* — a blank answer re-asks with "The cheat
+needs a description" — and the given text becomes a note against today's log,
+created on demand, with the day's `is_cheat` flag set in the same breath, both
+verified in the database; a cheat day's history row reads `· CHEAT` instead of
+its totals, its log options show the toggle as "mark as clean" and its info
+heads with a red `[CHEAT]` after the date; "mark as clean" clears the flag with
+no further ask — the row reverts to `· nothing recorded` and the toggle flips
+back to "mark as cheat" — and "mark as cheat" notes a fresh description and
+sets the flag again, exactly like "log cheat", each flip verified in the
+database), the macros
 add-item path (the items submenu's "new item" first asks
 whether the item is a plain or a recipe
 item; a plain item is the existing leaf form — name plus six macro fields

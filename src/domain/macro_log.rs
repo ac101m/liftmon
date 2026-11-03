@@ -8,7 +8,8 @@
 //! quantity factor, and the day's macros ([`MacroLog::resolved_macros`])
 //! resolve to the sum over the rows of quantity × each included item's resolved
 //! macros — a composite item counts through its composition, like everywhere
-//! else.
+//! else. A log also carries an `is_cheat` flag (a v10 column add): mark a day
+//! as a cheat and its info and history row say so in red.
 
 use std::collections::HashMap;
 
@@ -19,12 +20,16 @@ use crate::domain::{DomainError, Item, MacroLogInclusion, Macros};
 
 /// A single day's macro log. `date` is the unique identity: the calendar date
 /// the log records, stored as the bare YYYY-MM-DD text (never a datetime).
+/// `is_cheat` marks the day as a cheat, shown in red where a log's status is
+/// read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MacroLog {
     /// Database row id; assigned by [`MacroLog::create`].
     pub id: i64,
     /// The calendar date this log records; UNIQUE, and the log's name.
     pub date: NaiveDate,
+    /// Whether the day's log is flagged as a cheat (defaults to false).
+    pub is_cheat: bool,
 }
 
 impl MacroLog {
@@ -52,13 +57,14 @@ impl MacroLog {
         Ok(Self {
             id: conn.last_insert_rowid(),
             date,
+            is_cheat: false,
         })
     }
 
     /// Load the log for a `date`, if one exists.
     pub fn find_by_date(conn: &Connection, date: NaiveDate) -> Result<Option<Self>, DomainError> {
         match conn.query_row(
-            "SELECT id, date FROM macro_logs WHERE date = ?1",
+            "SELECT id, date, is_cheat FROM macro_logs WHERE date = ?1",
             [date],
             row_mapper,
         ) {
@@ -80,7 +86,7 @@ impl MacroLog {
 
     /// Load every log, oldest date first.
     pub fn all(conn: &Connection) -> Result<Vec<Self>, DomainError> {
-        let mut stmt = conn.prepare("SELECT id, date FROM macro_logs ORDER BY date")?;
+        let mut stmt = conn.prepare("SELECT id, date, is_cheat FROM macro_logs ORDER BY date")?;
         let rows = stmt.query_map([], row_mapper)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
@@ -91,6 +97,25 @@ impl MacroLog {
     /// when the log is already gone.
     pub fn delete(&self, conn: &Connection) -> Result<(), DomainError> {
         let changed = conn.execute("DELETE FROM macro_logs WHERE id = ?1", [self.id])?;
+        if changed == 0 {
+            return Err(DomainError::MissingRow {
+                kind: "macro log",
+                id: self.id,
+            });
+        }
+        Ok(())
+    }
+
+    /// Set (or clear) the day's cheat flag — the "log cheat" screen sets it
+    /// true with its note, the log options screen toggles it with "mark as
+    /// cheat" / "mark as clean". [`DomainError::MissingRow`] when the log is
+    /// already gone. The caller usually reloads by date after, so nothing is
+    /// returned.
+    pub fn set_is_cheat(&self, conn: &Connection, value: bool) -> Result<(), DomainError> {
+        let changed = conn.execute(
+            "UPDATE macro_logs SET is_cheat = ?1 WHERE id = ?2",
+            params![value, self.id],
+        )?;
         if changed == 0 {
             return Err(DomainError::MissingRow {
                 kind: "macro log",
@@ -151,6 +176,7 @@ fn row_mapper(row: &rusqlite::Row<'_>) -> rusqlite::Result<MacroLog> {
     Ok(MacroLog {
         id: row.get(0)?,
         date: row.get(1)?,
+        is_cheat: row.get(2)?,
     })
 }
 
@@ -358,8 +384,57 @@ mod tests {
         let err = MacroLog {
             id: 9999,
             date: NaiveDate::from_ymd_opt(2026, 10, 30).unwrap(),
+            is_cheat: false,
         }
         .delete(&conn)
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                DomainError::MissingRow {
+                    kind: "macro log",
+                    id: 9999,
+                }
+            ),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn new_logs_start_clean_and_not_cheats() {
+        let (conn, _, _, log) = test_db();
+        assert!(!log.is_cheat, "a fresh log is not a cheat");
+        let loaded = MacroLog::find_by_date(&conn, log.date).unwrap().unwrap();
+        assert!(!loaded.is_cheat, "the stored flag reads back false");
+    }
+
+    #[test]
+    fn set_is_cheat_toggles_the_flag_and_round_trips() {
+        let (conn, _, _, log) = test_db();
+
+        log.set_is_cheat(&conn, true).unwrap();
+        let loaded = MacroLog::find_by_date(&conn, log.date).unwrap().unwrap();
+        assert!(loaded.is_cheat, "set true reads back true");
+
+        // `all` carries the flag too, so the history picker can read it
+        // without opening the day.
+        let listed = MacroLog::all(&conn).unwrap();
+        assert_eq!(listed, vec![loaded]);
+
+        log.set_is_cheat(&conn, false).unwrap();
+        let loaded = MacroLog::find_by_date(&conn, log.date).unwrap().unwrap();
+        assert!(!loaded.is_cheat, "clearing flips it back to clean");
+    }
+
+    #[test]
+    fn set_is_cheat_reports_a_missing_row() {
+        let conn = test_db().0;
+        let err = MacroLog {
+            id: 9999,
+            date: NaiveDate::from_ymd_opt(2026, 10, 30).unwrap(),
+            is_cheat: false,
+        }
+        .set_is_cheat(&conn, true)
         .unwrap_err();
         assert!(
             matches!(

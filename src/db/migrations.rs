@@ -337,20 +337,37 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
 
         -- FK column the per-log note loaders join on.
         CREATE INDEX idx_notes_log ON macro_log_notes(macro_log_id);
+
+        -- A day's cheat flag: 0/false for every log unless the user marks it.
+        -- The `macro_logs` table itself is v9 (frozen), so the flag rides in
+        -- here as an in-place column add, not a new table. The constant
+        -- default backfills existing rows without a rewrite.
+        ALTER TABLE macro_logs ADD COLUMN is_cheat INTEGER NOT NULL DEFAULT 0;
         ",
     )
-    .down("DROP TABLE macro_log_notes;")
+    .down(
+        r"
+        ALTER TABLE macro_logs DROP COLUMN is_cheat;
+        DROP TABLE macro_log_notes;
+        ",
+    )
     .comment(
-        "Free-text notes recorded against a day's macro log. `macro_logs` \
-         held only items before; a note is a plain line of text (the user's \
-         own words about the day — how it went, why a total is what it is), \
-         `macro_log_notes` giving every day any number of them. The row's own \
-         `id` primary key (nothing here is unique) lets several notes share \
-         one log, each created at its own `created_at` UTC moment in the same \
-         timezone-aware TEXT format as every other `created_at` column, and \
-         the idx_notes_log index (like idx_inclusions_log) serves the per-log \
-         lookups. A log's notes cascade away with it (CASCADE), the same \
-         rule as its inclusions. See src/domain/macro_log_note.rs.",
+        "Free-text notes recorded against a day's macro log, plus the day's \
+         cheat flag. `macro_logs` held only items before; a note is a plain \
+         line of text (the user's own words about the day — how it went, why \
+         a total is what it is), `macro_log_notes` giving every day any \
+         number of them. The row's own `id` primary key (nothing here is \
+         unique) lets several notes share one log, each created at its own \
+         `created_at` UTC moment in the same timezone-aware TEXT format as \
+         every other `created_at` column, and the idx_notes_log index (like \
+         idx_inclusions_log) serves the per-log lookups. A log's notes \
+         cascade away with it (CASCADE), the same rule as its inclusions. \
+         The `is_cheat` column on `macro_logs` marks a day as a cheat day \
+         (0/false by default); the user sets it via the \"log cheat\" screen \
+         or the log options' \"mark as cheat\". The down drops the column \
+         (SQLite's DROP COLUMN, as v9's down does for `epley_e1rm`) before \
+         the table. See src/domain/macro_log_note.rs and \
+         src/domain/macro_log.rs.",
     ),
 ];
 
