@@ -323,9 +323,10 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          guarding INSERT at the end of its `up`), the v6 'Hip adductors' \
          precedent.",
     ),
-    // Not yet frozen (schema v10, this build's latest): free-text notes hung
-    // off a day's log. Once this ships, append a new migration rather than
-    // editing it.
+    // FROZEN — shipped in liftmon 1.4.0. Do not edit; append a new migration.
+    // The `is_cheat` column on `macro_logs` was added in place before this
+    // shipped — the migration was still unfrozen and no database had run it,
+    // so editing it diverged no file.
     M::up(
         r"
         CREATE TABLE macro_log_notes (
