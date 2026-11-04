@@ -52,7 +52,8 @@ What happens on a run:
    composition table (with its no-cycles trigger), the macro-log tables — a
    `macro_logs` row per calendar date (carrying the `is_cheat` cheat flag)
    holding `macro_log_inclusions` item-use
-   rows at a quantity factor and `macro_log_notes` free-text notes — `PRAGMA
+   rows at a quantity factor and `macro_log_notes` free-text notes, and the
+   `weight_measurements` weigh-in table — `PRAGMA
    user_version`), seeded with a
    couple of exercises.
 2. For each scenario it launches the binary in a fresh pseudo-terminal

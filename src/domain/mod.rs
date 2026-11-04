@@ -32,6 +32,7 @@ mod muscle_group;
 mod muscle_group_reference;
 mod session;
 mod set;
+mod weight_measurement;
 
 pub use self::error::DomainError;
 // Flat path used by consumers (ui/logic).
@@ -49,3 +50,6 @@ pub use self::muscle_group::{MuscleGroup, MuscleGroupCount};
 pub use self::muscle_group_reference::{MuscleGroupReference, Stimulus};
 pub use self::session::{Session, SessionInfo};
 pub use self::set::{Difficulty, Set};
+// Body-weight measurements (migration v11): one weigh-in row each.
+#[allow(unused_imports)] // waits on the weight-tracking UI
+pub use self::weight_measurement::WeightMeasurement;

@@ -370,6 +370,30 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          the table. See src/domain/macro_log_note.rs and \
          src/domain/macro_log.rs.",
     ),
+    // Unfrozen: the weight-tracking feature's first schema slice. Freeze it
+    // (a FROZEN line naming the release, like the entries above) when the
+    // weight-tracking work ships.
+    M::up(
+        r"
+        CREATE TABLE weight_measurements (
+            id         INTEGER PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            weight_kg  REAL NOT NULL
+        );
+        ",
+    )
+    .down("DROP TABLE weight_measurements;")
+    .comment(
+        "Body-weight measurements for the weight tracker: one row per \
+         weigh-in, `weight_kg` — the body weight in kilograms, a REAL \
+         like `sets.weight_kg` — recorded at its `created_at` moment in \
+         the same timezone-aware UTC TEXT format as every other \
+         `created_at` column. Nothing here is UNIQUE — you can weigh in \
+         more than once a day — so the row's own `id` tells measurements \
+         apart, and a measurement stands alone (no foreign keys), hence no \
+         indexes beyond the id primary key. See \
+         src/domain/weight_measurement.rs.",
+    ),
 ];
 
 /// The migrations, ready to apply to a connection.

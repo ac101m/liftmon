@@ -391,19 +391,20 @@ mod tests {
         v1.to_latest(&mut conn).unwrap();
         drop(conn);
 
-        // This build knows nine more migrations (exercises, the workout
+        // This build knows ten more migrations (exercises, the workout
         // tables, the epley_e1rm column, the muscle groups, then the Hip
         // adductors default, items, the item composition table, the macro-log
-        // tables, then the macro-log notes): opening the old file reports an
-        // upgradable schema — the case main/UI prompts on.
+        // tables, the macro-log notes, then the weight-measurements table):
+        // opening the old file reports an upgradable schema — the case
+        // main/UI prompts on.
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 1, to: 10 }
+            DbStatus::Upgradeable { from: 1, to: 11 }
         );
 
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 9);
+        assert_eq!(outcome.applied, 10);
         let backup = outcome
             .backup
             .expect("upgrading an old file must back it up");
@@ -461,14 +462,15 @@ mod tests {
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 3, to: 10 }
+            DbStatus::Upgradeable { from: 3, to: 11 }
         );
         // v4 backfills the e1RM column; v5 adds the muscle groups; v6 adds
         // the Hip adductors default; v7 adds items; v8 adds the item
         // composition table; v9 adds the macro-log tables; v10 adds the
-        // macro-log notes (and the upgrade seeds the muscle groups).
+        // macro-log notes; v11 adds the weight-measurements table (and the
+        // upgrade seeds the muscle groups).
         let outcome = db.upgrade().unwrap();
-        assert_eq!(outcome.applied, 7);
+        assert_eq!(outcome.applied, 8);
 
         // Every pre-existing set now carries its e1RM, computed with the same
         // Epley formula the app writes on new inserts.
@@ -493,8 +495,8 @@ mod tests {
     fn newer_database_is_rejected_as_too_new() {
         let scratch = Scratch::new("future.sqlite");
 
-        // A future build knew eleven migrations, one more than this build, so
-        // the file is left at a schema version we don't understand (v11).
+        // A future build knew twelve migrations, one more than this build, so
+        // the file is left at a schema version we don't understand (v12).
         let future_defs = [
             M::up("CREATE TABLE a (x INTEGER);"),
             M::up("CREATE TABLE b (x INTEGER);"),
@@ -507,6 +509,7 @@ mod tests {
             M::up("CREATE TABLE i (x INTEGER);"),
             M::up("CREATE TABLE j (x INTEGER);"),
             M::up("CREATE TABLE k (x INTEGER);"),
+            M::up("CREATE TABLE l (x INTEGER);"),
         ];
         let future = Migrations::from_slice(&future_defs);
         let mut conn = Connection::open(&scratch.path).unwrap();
@@ -514,7 +517,7 @@ mod tests {
         drop(conn);
 
         let mut db = Database::open(&scratch.path).unwrap();
-        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 11 });
+        assert_eq!(db.status().unwrap(), DbStatus::FromFuture { version: 12 });
         assert!(
             matches!(db.upgrade(), Err(DbError::TooNew { .. })),
             "must refuse to downgrade a newer database"
@@ -591,7 +594,7 @@ mod tests {
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 5, to: 10 }
+            DbStatus::Upgradeable { from: 5, to: 11 }
         );
         db.upgrade().unwrap();
 
@@ -634,7 +637,7 @@ mod tests {
         let mut db = Database::open(&scratch.path).unwrap();
         assert_eq!(
             db.status().unwrap(),
-            DbStatus::Upgradeable { from: 8, to: 10 }
+            DbStatus::Upgradeable { from: 8, to: 11 }
         );
         db.upgrade().unwrap();
 

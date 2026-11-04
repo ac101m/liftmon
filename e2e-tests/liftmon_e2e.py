@@ -43,15 +43,15 @@ os.chdir("/tmp")
 # The newest schema version this build knows. seed_db stamps it, and the splash
 # path asserts the startup splash reports it, so a schema migration both bumps
 # the seed and flips the assertion in the same run.
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat")),
             refs=(), items=(), composition=(), logs=()):
     """Rebuild the on-disk DB to the exact current schema (delete rules
     included) — mirroring what the app's `upgrade()` produces: the shipped
-    migrations' tables (through the macro-log tables), with the 18 default
-    muscle groups seeded — with the given exercises and, optionally, their
-    muscle-group references as
+    migrations' tables (through the weight-measurements table), with the 18
+    default muscle groups seeded — with the given exercises and, optionally,
+    their muscle-group references as
     (exercise name, muscle group name) pairs, the macros items as
     (name, macros) pairs (macros the six REAL columns in order), item
     compositions as (parent name, ((child name, quantity), ...)) pairs and
@@ -139,6 +139,13 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         note         TEXT NOT NULL,
         created_at   TEXT NOT NULL)""")
     con.execute("CREATE INDEX idx_notes_log ON macro_log_notes(macro_log_id)")
+    # Body-weight measurements (migration v11): one row per weigh-in — its own
+    # id, the UTC created_at moment and the weight in kg — mirroring the app's
+    # schema so the seed matches exactly what `upgrade()` produces.
+    con.execute("""CREATE TABLE weight_measurements (
+        id         INTEGER PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        weight_kg  REAL NOT NULL)""")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
     # Optional macros items — (name, macros) pairs, macros the six REAL columns
