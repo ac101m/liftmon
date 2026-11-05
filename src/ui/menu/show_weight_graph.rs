@@ -5,7 +5,8 @@
 //! with the whole terminal row's worth of days (or just the days the data
 //! spans, whichever is smaller), Enter accepting the default and a different
 //! number typed in place, like the log-weight date field. Then it
-//! prints a framed section titled `Weight over last N days (kg)` where every
+//! prints a framed section titled `Weight over last N days (kg) - 7 day
+//! average` where every
 //! column is one day and a column's bar is that day's **trailing 7-day moving
 //! average**: the mean of its daily means over the day and the six days before
 //! it (a day weighed several times counts once, through its own mean). A day
@@ -63,7 +64,7 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     // exceed it. The renderer draws whatever series — this is the weight one.
     let (first, values) = daily_trend(&measurements, today, days);
     let lines = graph_lines(
-        &format!("Weight over last {days} days (kg)"),
+        &format!("Weight over last {days} days (kg) - 7 day average"),
         &values,
         &format_date(first),
         &format_date(today),

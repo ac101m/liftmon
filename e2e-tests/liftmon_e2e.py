@@ -2757,35 +2757,35 @@ def exercise_muscle_groups_path():
     print()
 
 def weight_path():
-    print("=== WEIGHT PATH: log a weigh-in (and a backdate), same-day warning, history, modify, delete, 7-day graph ===")
+    print("=== WEIGHT PATH: log a weigh-in (and a backdate), same-day warning, show logs, modify, delete, 7-day graph ===")
     seed_db()
     today_slashed = date.today().strftime("%Y/%m/%d")
     today_dashed = date.today().strftime("%Y-%m-%d")
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B" * 3 + "\r")                     # Weight (index 3, above Muscle groups)
-    app.check("weight menu", "═[Weight]", "log weight", "history", "show graph", "back")
-    # history with nothing yet says so and returns to the weight menu
-    app.send("\x1b[B\r")                              # history (index 1)
+    app.check("weight menu", "═[Weight]", "log weight", "show logs", "show graph", "back")
+    # show logs with nothing yet says so and returns to the weight menu
+    app.send("\x1b[B\r")                              # show logs (index 1)
     app.check("no weigh-ins", "No weigh-ins yet — log one first", "═[Weight]")
     # with nothing stored, show graph explains before even asking the span
     app.send("\x1b[B\x1b[B\r")                        # show graph (index 2)
     app.check("graph empty before any weigh-in", "No weigh-ins yet — log one first",
-              "═[Weight]", "log weight", "history", "show graph", "back")
+              "═[Weight]", "log weight", "show logs", "show graph", "back")
     # log today's weigh-in: date prefilled, Enter accepts it, then the weight
     app.send("\r")                                    # log weight (index 0)
     app.check("log-date field", "Log date (YYYY/MM/DD)", today_slashed)
     app.send("\r")                                    # accept today's date
     app.check("weight field", "Weight (kg)", "e.g. 82.5")
     app.send("82.25\r")
-    app.check("logged today", f"Logged 82.25 kg on {today_slashed}", "═[Weight]", "log weight", "history", "show graph", "back")
+    app.check("logged today", f"Logged 82.25 kg on {today_slashed}", "═[Weight]", "log weight", "show logs", "show graph", "back")
     # log again today -> warning; No (the default) records nothing
     app.send("\r")                                    # log weight
     app.send("\r")                                    # accept today's date
     app.send("82.2\r")
     app.check("same-day warning declines", f"A weight log already exists for {today_slashed}. Log anyway?", "No")
     app.send("\r")                                    # No (the default): nothing recorded
-    app.check("nothing recorded", "═[Weight]", "log weight", "history", "show graph", "back")
+    app.check("nothing recorded", "═[Weight]", "log weight", "show logs", "show graph", "back")
     # log again today -> an explicit Yes records a second entry
     app.send("\r")                                    # log weight
     app.send("\r")                                    # accept today's date
@@ -2798,9 +2798,9 @@ def weight_path():
     app.send("\x7f" * 10 + "2020/06/15\r")            # clear the prefilled date, then backdate
     app.send("83.25\r")
     app.check("logged backdate", "Logged 83.25 kg on 2020/06/15")
-    # history: newest first — today's two entries, then the older backdate
-    app.send("\x1b[B\r")                              # history (index 1)
-    app.check("history picker", "═[Select weigh-in]", today_slashed, "82.5 kg", "82.25 kg")
+    # show logs: newest first — today's two entries, then the older backdate
+    app.send("\x1b[B\r")                              # show logs (index 1)
+    app.check("logs picker", "═[Select weigh-in]", today_slashed, "82.5 kg", "82.25 kg")
     app.check("history backdate", "2020/06/15", "83.25 kg")
     app.send("\r")                                    # pick the top row: today's latest (82.5)
     app.check("entry options", "═[Weight log ", "· 82.5 kg", "modify weight", "delete", "back")
@@ -2819,7 +2819,7 @@ def weight_path():
     # history area above the picker still shows the "Updated/Delete … 81.75 kg"
     # log lines. The DB assertions at the end prove the row is gone.)
     app.send("\x1b")                                  # Esc: back to the weight menu
-    app.check("back at weight menu", "═[Weight]", "log weight", "history", "show graph", "back")
+    app.check("back at weight menu", "═[Weight]", "log weight", "show logs", "show graph", "back")
     # the weight-over-time graph: the span field defaults to the data's span
     # (the backdate makes it far longer than the row), capped by the row width,
     # and Enter accepts it
@@ -2827,7 +2827,7 @@ def weight_path():
     app.check("graph span field", "Graph span (days)")
     app.send("\r")                                    # accept the prefilled default
     graph_days = min(App.W - 7, (date.today() - date(2020, 6, 15)).days + 1)
-    app.check("graph title", f"Weight over last {graph_days} days (kg)")
+    app.check("graph title", f"Weight over last {graph_days} days (kg) - 7 day average")
     app.check("graph bar drawn", "█")
     # Only today's 82.25 falls in the window — the 2020/06/15 backdate is far
     # outside it — so today's trailing-7-day average (82.25) is the one bar,
@@ -2835,7 +2835,7 @@ def weight_path():
     window_start = (date.today() - timedelta(days=graph_days - 1)).strftime("%Y/%m/%d")
     app.check("graph axis caption", window_start, today_slashed)
     app.check("graph axis tick markers", "┬")
-    app.check("back at weight menu after graph", "═[Weight]", "log weight", "history", "show graph", "back")
+    app.check("back at weight menu after graph", "═[Weight]", "log weight", "show logs", "show graph", "back")
     app.send("\x1b")                                  # Esc: back to the main menu
     app.check("back at main", "═[Main menu]", "Weight")
     app.close()

@@ -49,16 +49,20 @@ pub(super) fn graph_lines(
         return Vec::new();
     }
 
-    // The vertical scale: the plotted series' rounded min..max, widened when
-    // the data barely moves so a flat trend still reads as a bar rather than
-    // hugging the axis. Rounded to the tenth so the labels read cleanly.
+    // The vertical scale: the top sits on the rounded-up largest value, the
+    // bottom opens 10% of the data range below the smallest, so the lowest bar
+    // rises clear of the axis instead of hugging it. Both bounds are still
+    // rounded to the tenth so the labels read cleanly (the padded bottom is
+    // rounded, not floored, so a handful of floating-point residue can't snap
+    // it a whole tenth low), and a flat series (no range to pad) is widened so
+    // its bar still visibly rises.
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
     for &value in &plotted {
         min = min.min(value);
         max = max.max(value);
     }
-    let mut lo = (min * 10.0).floor() / 10.0;
+    let mut lo = ((min - 0.10 * (max - min)) * 10.0).round() / 10.0;
     let mut hi = (max * 10.0).ceil() / 10.0;
     if hi - lo < 1.0 {
         let pad = (1.0 - (hi - lo)) / 2.0;
@@ -214,7 +218,7 @@ mod tests {
             Some(82.0),
         ];
         let lines = graph_lines(
-            "Weight over last 7 days (kg)",
+            "Weight over last 7 days (kg) - 7 day average",
             &values,
             "2026/01/02",
             "2026/01/08",
@@ -223,7 +227,7 @@ mod tests {
         );
         let rows = rows_text(&lines);
         assert_eq!(rows.len(), 1 + ROWS + 2, "title + rows + axis + caption");
-        assert_eq!(rows[0], "Weight over last 7 days (kg)");
+        assert_eq!(rows[0], "Weight over last 7 days (kg) - 7 day average");
         assert!(rows.last().unwrap().contains("2026/01/02"));
         assert!(rows.last().unwrap().contains("2026/01/08"));
         // The axis corner sits directly beneath the side axis's `┤`, so they
@@ -236,21 +240,21 @@ mod tests {
         let corner = rows[ROWS + 1].chars().position(|c| c == '└').unwrap();
         assert_eq!(corner, side, "the `└` corner joins the `┤` axis column");
         // The bars start immediately next to the `┤` — no gap column between
-        // the y-axis and the first bar (a past layout had a space there). The
-        // first column holds the minimum value, so its bar may be just a
-        // sliver — any block character counts.
+        // the y-axis and the first bar (a past layout had a space there).
         let first_cell = rows[ROWS].chars().nth(side + 1).unwrap();
         assert!(
             "▁▂▃▄▅▆▇█".contains(first_cell),
             "the first bar sits flush with the axis, not {first_cell:?}"
         );
-        // The first bar's top resolves within its row rather than lumping onto
-        // a whole one: the minimum value renders as a one-eighth sliver at the
-        // axis, and some plot row carries a partial eighth block (bars built
-        // from whole rows alone would only ever show `█`s).
+        // The scale opens 10% of the data's range below the smallest value
+        // (78.7 = 79 − 0.3), so the minimum bar rises clear of the axis — the
+        // bottom label reads the padded bound, and the first bar's top still
+        // resolves within its row rather than lumping onto a whole one, with
+        // some plot row carrying a partial eighth block (bars built from whole
+        // rows alone would only ever show `█`s).
         assert!(
-            rows[ROWS].starts_with("79 ┤▁"),
-            "the minimum bar reads as a sliver at the axis: {:?}",
+            rows[ROWS].starts_with("78.7 ┤▆"),
+            "the lowest bar rises off the padded axis: {:?}",
             rows[ROWS]
         );
         assert!(

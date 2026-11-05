@@ -3,7 +3,7 @@
 //! It branches into three flows rather than listing every one flat, like the
 //! macros screen ([`super::macros_menu`]): **log weight** (ask the day's date
 //! and the weight, and record the weigh-in — see [`super::log_weight`]),
-//! **history** (browse the weigh-ins in the picker, newest first — see
+//! **show logs** (browse the weigh-ins in the picker, newest first — see
 //! [`super::show_weight_logs`]), **show graph** (print the 7-day moving-average
 //! weight plot — see [`super::show_weight_graph`]), plus backing out to the
 //! main menu.
@@ -15,11 +15,11 @@ use crate::ui::utils::{Shell, UiError};
 pub(super) fn run(shell: &mut Shell) -> Result<Option<Menu>, UiError> {
     let choice = shell.ask(
         Some("Weight".to_string()),
-        ["log weight", "history", "show graph", "back"],
+        ["log weight", "show logs", "show graph", "back"],
     )?;
     Ok(match choice.as_deref() {
         Some("log weight") => Some(Menu::LogWeight),
-        Some("history") => Some(Menu::ShowWeightLogs),
+        Some("show logs") => Some(Menu::ShowWeightLogs),
         Some("show graph") => Some(Menu::ShowWeightGraph),
         _ => Some(Menu::Main), // "back", or Escape
     })
