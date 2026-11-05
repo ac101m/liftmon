@@ -370,9 +370,10 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
          the table. See src/domain/macro_log_note.rs and \
          src/domain/macro_log.rs.",
     ),
-    // Unfrozen: the weight-tracking feature's first schema slice. Freeze it
-    // (a FROZEN line naming the release, like the entries above) when the
-    // weight-tracking work ships.
+    // FROZEN — shipped in liftmon 1.5.0. Do not edit; append a new migration.
+    // The weight tracker's `weight_measurements` table was shaped in place
+    // before this shipped — the migration was still unfrozen and no database
+    // had run it, so editing it diverged no file.
     M::up(
         r"
         CREATE TABLE weight_measurements (
