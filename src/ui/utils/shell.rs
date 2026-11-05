@@ -115,6 +115,14 @@ impl Shell {
         })
     }
 
+    /// The terminal's current width in columns — screens use it to size
+    /// line-art (the weight graph buckets its days to fit a row) to what will
+    /// actually fit. Falls back to a standard 80 columns if the terminal query
+    /// fails, so callers always get a renderable width.
+    pub(crate) fn width(&self) -> u16 {
+        self.terminal.size().map(|size| size.width).unwrap_or(80)
+    }
+
     /// Append a single-line entry to the history area. Besides plain text,
     /// callers can pass a [`Line`] with styled spans (e.g. a bold section
     /// title). Lines sit directly beneath the one before them — only sections

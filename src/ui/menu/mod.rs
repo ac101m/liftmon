@@ -20,7 +20,8 @@
 //! [`self::show_items`],
 //! [`self::item_options`], [`self::weight_menu`] (the weight screen),
 //! [`self::log_weight`] (its log-a-weigh-in flow), [`self::show_weight_logs`]
-//! (its history picker) and
+//! (its history picker), [`self::show_weight_graph`] (its 7-day
+//! moving-average plot) and
 //! [`self::weight_log_options`] (a picked entry's actions) — with
 //! [`self::select_exercise`] (the shared
 //! "Select exercise" chooser), [`self::select_exercise_by_group`] (the
@@ -67,6 +68,7 @@ mod session_menu;
 mod session_options;
 mod show_items;
 mod show_logs;
+mod show_weight_graph;
 mod show_weight_logs;
 mod weight_log_options;
 mod weight_menu;
@@ -136,8 +138,8 @@ pub(crate) enum Menu {
     /// The freeform session flow: pick exercises and log sets until the user
     /// leaves, then land back on that session's options screen.
     FreeformSession { session_id: i64 },
-    /// The weight screen (Log weight / History / Back), the home of the weight
-    /// tracker.
+    /// The weight screen (Log weight / History / Show graph / Back), the home
+    /// of the weight tracker.
     Weight,
     /// The log-weight screen: ask the day's date (default today, backdatable,
     /// future date warned) and the weight in kg, and record the weigh-in —
@@ -146,6 +148,10 @@ pub(crate) enum Menu {
     /// The show-weight-logs screen: browse the stored weigh-ins with the
     /// filter picker, newest first, then into that entry's options screen.
     ShowWeightLogs,
+    /// The show-weight-graph screen: ask how many days the plot should span
+    /// (default 30, editable) and print the 7-day moving-average bar chart
+    /// into the history area.
+    ShowWeightGraph,
     /// The actions for one picked weigh-in, identified by its database row id.
     WeightLogOptions { id: i64 },
 }
@@ -244,6 +250,7 @@ impl Menu {
             Menu::Weight => weight_menu::run(shell),
             Menu::LogWeight => log_weight::run(shell, conn),
             Menu::ShowWeightLogs => show_weight_logs::run(shell, conn),
+            Menu::ShowWeightGraph => show_weight_graph::run(shell, conn),
             Menu::WeightLogOptions { id } => weight_log_options::run(shell, conn, id),
         }
     }
