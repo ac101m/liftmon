@@ -2,8 +2,9 @@
 //! area and return to the weight menu.
 //!
 //! Choosing "show graph" first asks how far back to look — a field prefilled
-//! with 30 days (a month is a natural span), Enter accepting the default and a
-//! different number typed in place, like the log-weight date field. Then it
+//! with the whole terminal row's worth of days (or just the days the data
+//! spans, whichever is smaller), Enter accepting the default and a different
+//! number typed in place, like the log-weight date field. Then it
 //! prints a framed section titled `Weight over last N days (kg)` where every
 //! column is one day and a column's bar is that day's **trailing 7-day moving
 //! average**: the mean of its daily means over the day and the six days before
@@ -34,9 +35,9 @@ use super::Menu;
 use super::item_options::round2;
 use super::select_session::format_date;
 
-/// The span prefilled into [`ask_days`]'s field — a month, accepted as-is with
-/// a plain Enter.
-const DEFAULT_DAYS: &str = "30";
+/// How many columns the y-axis side (a weight label plus ` ┤`) takes on each
+/// row, so the default span measures the room left for one-column-per-day bars.
+const Y_AXIS_GUTTER: u16 = 7;
 
 /// The longest span accepted, so an absurd number can't walk the whole window
 /// through its per-day loops (ten years is more history than any trend needs).
@@ -58,18 +59,17 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
         shell.log("No weigh-ins yet — log one first");
         return Ok(Some(Menu::Weight));
     }
-    let Some(days) = ask_days(shell)? else {
+    let today = Local::now().date_naive();
+    let width = shell.width();
+    // The span is prefilled to hug the data and the row — as many one-day
+    // columns as fit the terminal width, capped by how far back the weigh-ins
+    // actually go — and stays editable for a custom window.
+    let Some(days) = ask_days(shell, suggested_days(&measurements, today, width))? else {
         return Ok(Some(Menu::Weight)); // Escape: nothing printed
     };
-    // Ask the terminal's live width so the plot's columns fit the history row
-    // as it will actually render (a resize since the run started may have
-    // changed it).
-    let lines = graph_lines(
-        &measurements,
-        Local::now().date_naive(),
-        days,
-        shell.width(),
-    );
+    // `width` was queried just above, so it still reflects the live row the
+    // plot renders into; bucket the span if a custom window exceeds it.
+    let lines = graph_lines(&measurements, today, days, width);
     if lines.is_empty() {
         shell.log(format!("No weigh-ins in the last {days} days."));
     } else {
@@ -78,11 +78,25 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
     Ok(Some(Menu::Weight))
 }
 
-/// Ask how many days the graph should span — prefilled with [`DEFAULT_DAYS`],
-/// editable like any defaulted field, re-asking with what was typed when it
-/// won't parse as a span. `None` when the user cancels with Escape.
-fn ask_days(shell: &mut Shell) -> Result<Option<u32>, UiError> {
-    let mut pending = DEFAULT_DAYS.to_string();
+/// The size the "Graph span (days)" field defaults to: the terminal width's
+/// worth of one-column-per-day bars (width minus the y-axis gutter), capped by
+/// how many days the stored weigh-ins actually span — from the first through
+/// today — whichever is smaller. A long history thus fills the whole row, and
+/// a short one doesn't show a wide empty window. Always at least 1 and at most
+/// [`MAX_DAYS`].
+fn suggested_days(measurements: &[WeightMeasurement], today: NaiveDate, width: u16) -> u32 {
+    let fit = u32::from(width.saturating_sub(Y_AXIS_GUTTER)).max(1);
+    let earliest = measurements.iter().map(|m| m.date).min().unwrap_or(today);
+    let data_days = (today - earliest).num_days().max(0) as u32 + 1;
+    fit.min(data_days).min(MAX_DAYS)
+}
+
+/// Ask how many days the graph should span — prefilled with `default_days`
+/// ([`suggested_days`]'s answer), editable like any defaulted field, re-asking
+/// with what was typed when it won't parse as a span. `None` when the user
+/// cancels with Escape.
+fn ask_days(shell: &mut Shell, default_days: u32) -> Result<Option<u32>, UiError> {
+    let mut pending = default_days.to_string();
     loop {
         let outcome = shell.read_line(Some("Graph span (days)".to_string()), None, &pending)?;
         match outcome {
@@ -208,7 +222,7 @@ fn graph_lines(
     // into as many even day-runs as fit, so the plot always renders whole.
     let window = days as usize;
     let plot_columns = (width as usize)
-        .saturating_sub(label_width + 3)
+        .saturating_sub(label_width + 2)
         .max(1)
         .min(window);
     let days_per_column = window.div_ceil(plot_columns);
@@ -473,6 +487,39 @@ mod tests {
         // one-eighth sliver.
         assert_eq!(eighth_level(82.0, 80.0, 82.0), 64);
         assert_eq!(eighth_level(80.0, 80.0, 82.0), 1);
+    }
+
+    #[test]
+    fn suggested_days_fills_the_row_when_the_data_is_long() {
+        // A weigh-in months ago and one today: more days of data than fit the
+        // row (60 − 7), so the default is a column per day across the whole row.
+        let measurements = [
+            measurement(date(2026, 1, 1), 82.0),
+            measurement(date(2026, 11, 4), 82.0),
+        ];
+        assert_eq!(suggested_days(&measurements, date(2026, 11, 4), 60), 53);
+    }
+
+    #[test]
+    fn suggested_days_is_capped_by_the_data_span_when_short() {
+        // Two weigh-ins three days apart: the default hugs the data (3 days),
+        // not the whole row.
+        let measurements = [
+            measurement(date(2026, 11, 1), 82.0),
+            measurement(date(2026, 11, 3), 82.0),
+        ];
+        assert_eq!(suggested_days(&measurements, date(2026, 11, 3), 60), 3);
+    }
+
+    #[test]
+    fn suggested_days_stays_sane_on_extreme_widths_and_dates() {
+        // A single weigh-in today: there's one day of data, whatever the width.
+        let today = [measurement(date(2026, 11, 4), 82.0)];
+        assert_eq!(suggested_days(&today, date(2026, 11, 4), u16::MAX), 1);
+        // A very old backdate on a huge terminal: the span still can't exceed
+        // MAX_DAYS (ten years), even though the raw data goes back decades.
+        let old = [measurement(date(1990, 1, 1), 82.0)];
+        assert_eq!(suggested_days(&old, date(2026, 11, 4), u16::MAX), MAX_DAYS);
     }
 
     #[test]

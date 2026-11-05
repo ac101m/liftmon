@@ -2820,16 +2820,19 @@ def weight_path():
     # log lines. The DB assertions at the end prove the row is gone.)
     app.send("\x1b")                                  # Esc: back to the weight menu
     app.check("back at weight menu", "═[Weight]", "log weight", "history", "show graph", "back")
-    # the weight-over-time graph: the span field defaults to 30 days, Enter accepts it
+    # the weight-over-time graph: the span field defaults to the data's span
+    # (the backdate makes it far longer than the row), capped by the row width,
+    # and Enter accepts it
     app.send("\x1b[B\x1b[B\r")                        # show graph (index 2)
     app.check("graph span field", "Graph span (days)")
-    app.send("\r")                                    # accept the default 30 days
-    app.check("graph title", "Weight over last 30 days (kg)")
+    app.send("\r")                                    # accept the prefilled default
+    graph_days = min(App.W - 7, (date.today() - date(2020, 6, 15)).days + 1)
+    app.check("graph title", f"Weight over last {graph_days} days (kg)")
     app.check("graph bar drawn", "█")
     # Only today's 82.25 falls in the window — the 2020/06/15 backdate is far
     # outside it — so today's trailing-7-day average (82.25) is the one bar,
     # and the axis caption spans the window's first date to today.
-    window_start = (date.today() - timedelta(days=29)).strftime("%Y/%m/%d")
+    window_start = (date.today() - timedelta(days=graph_days - 1)).strftime("%Y/%m/%d")
     app.check("graph axis caption", window_start, today_slashed)
     app.check("graph axis tick markers", "┬")
     app.check("back at weight menu after graph", "═[Weight]", "log weight", "history", "show graph", "back")

@@ -149,7 +149,8 @@ pub(crate) enum Menu {
     /// filter picker, newest first, then into that entry's options screen.
     ShowWeightLogs,
     /// The show-weight-graph screen: ask how many days the plot should span
-    /// (default 30, editable) and print the 7-day moving-average bar chart
+    /// (prefilled to fit the terminal row or the data's span, whichever is
+    /// smaller) and print the 7-day moving-average bar chart
     /// into the history area.
     ShowWeightGraph,
     /// The actions for one picked weigh-in, identified by its database row id.
