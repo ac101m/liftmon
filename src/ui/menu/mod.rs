@@ -21,7 +21,7 @@
 //! [`self::item_options`], [`self::weight_menu`] (the weight screen),
 //! [`self::log_weight`] (its log-a-weigh-in flow), [`self::show_weight_logs`]
 //! (its history picker), [`self::show_weight_graph`] (its 7-day
-//! moving-average plot) and
+//! moving-average plot, drawn by the shared renderer [`self::graph`]) and
 //! [`self::weight_log_options`] (a picked entry's actions) — with
 //! [`self::select_exercise`] (the shared
 //! "Select exercise" chooser), [`self::select_exercise_by_group`] (the
@@ -49,6 +49,7 @@ mod exercise_muscle_groups;
 mod exercise_options;
 mod exercises_menu;
 mod freeform_session;
+mod graph;
 mod item_options;
 mod log_cheat;
 mod log_item;
