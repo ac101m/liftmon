@@ -377,21 +377,30 @@ pub(crate) static MIGRATION_DEFS: &[M<'static>] = &[
         r"
         CREATE TABLE weight_measurements (
             id         INTEGER PRIMARY KEY,
+            date       TEXT NOT NULL,
             created_at TEXT NOT NULL,
             weight_kg  REAL NOT NULL
         );
+
+        -- The same-day lookups join on this column.
+        CREATE INDEX idx_weight_date ON weight_measurements(date);
         ",
     )
     .down("DROP TABLE weight_measurements;")
     .comment(
         "Body-weight measurements for the weight tracker: one row per \
          weigh-in, `weight_kg` — the body weight in kilograms, a REAL \
-         like `sets.weight_kg` — recorded at its `created_at` moment in \
-         the same timezone-aware UTC TEXT format as every other \
-         `created_at` column. Nothing here is UNIQUE — you can weigh in \
-         more than once a day — so the row's own `id` tells measurements \
-         apart, and a measurement stands alone (no foreign keys), hence no \
-         indexes beyond the id primary key. See \
+         like `sets.weight_kg` — recorded for the calendar `date` it was \
+         logged against (bare YYYY-MM-DD, the same day convention a macro \
+         log's date uses; several weigh-ins may share one) at its \
+         `created_at` moment when it was actually entered, in the same \
+         timezone-aware UTC TEXT format as every other `created_at` \
+         column. Nothing here is UNIQUE — you can weigh in more than \
+         once a day — so the row's own `id` tells measurements apart, \
+         and a measurement stands alone (no foreign keys). The \
+         idx_weight_date index, like the other join indexes, serves the \
+         same-day lookups (whether a date already has a weigh-in). Down \
+         drops the table (and with it the index). See \
          src/domain/weight_measurement.rs.",
     ),
 ];

@@ -140,12 +140,16 @@ def seed_db(exercises=(("Bench press","flat barbell press"),("Squat","back squat
         created_at   TEXT NOT NULL)""")
     con.execute("CREATE INDEX idx_notes_log ON macro_log_notes(macro_log_id)")
     # Body-weight measurements (migration v11): one row per weigh-in — its own
-    # id, the UTC created_at moment and the weight in kg — mirroring the app's
-    # schema so the seed matches exactly what `upgrade()` produces.
+    # id, the calendar date it records, the UTC created_at moment and the
+    # weight in kg, with an index on the date for the same-day lookups —
+    # mirroring the app's schema so the seed matches exactly what `upgrade()`
+    # produces.
     con.execute("""CREATE TABLE weight_measurements (
         id         INTEGER PRIMARY KEY,
+        date       TEXT NOT NULL,
         created_at TEXT NOT NULL,
         weight_kg  REAL NOT NULL)""")
+    con.execute("CREATE INDEX idx_weight_date ON weight_measurements(date)")
     for name, desc in exercises:
         con.execute("INSERT INTO exercises (name, description) VALUES (?, ?)", (name, desc))
     # Optional macros items — (name, macros) pairs, macros the six REAL columns
@@ -1197,7 +1201,7 @@ def macros_path():
     seed_db()
     app = App()
     app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros",
-              "Muscle groups", "Exit")
+              "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # Macros (index 2, below Sessions, above Muscle groups)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B" * 2 + "\r")                # back (index 2) -> main menu
@@ -1214,7 +1218,7 @@ def macros_log_item_path():
     ))
     today_slashed = date.today().strftime("%Y/%m/%d")
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
@@ -1258,7 +1262,7 @@ def macros_create_log_path():
     # Backdating a brand-new date creates the log and lands on its options,
     # where "add item" extends it — the historical-log use case end to end.
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
@@ -1407,7 +1411,7 @@ def macros_log_new_item_path():
         ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
@@ -1459,7 +1463,7 @@ def macros_show_logs_path():
                         ("Chicken breast", 1.0, "2026-10-01 10:00:00+00:00"),)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
@@ -1555,7 +1559,7 @@ def macros_log_alignment_path():
         ("2026-10-01", (("Egg", 1.0, "2026-10-01 09:00:00+00:00"),)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
@@ -1591,7 +1595,7 @@ def macros_log_notes_path():
         ("2026-10-02", (("Chicken breast", 1.0, "2026-10-02 09:00:00+00:00"),)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
@@ -1687,7 +1691,7 @@ def macros_log_delete_item_path():
                         ("Chicken breast", 1.0, "2026-10-02 18:00:00+00:00"),)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
@@ -1777,7 +1781,7 @@ def macros_log_cheat_path():
     # today and flags the day, both in one go, with no date ask (like "log
     # item", it targets today).
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\x1b[B\r")                       # -> Macro logs (index 1)
@@ -1878,7 +1882,7 @@ def macros_add_item_path():
     print("=== MACROS ADD-ITEM PATH: create an item; blanks default to 0; duplicates refused ===")
     seed_db()
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
@@ -1955,7 +1959,7 @@ def macros_add_recipe_item_path():
         ("Whole milk", (4.0, 2.0, 5.0, 5.0, 3.0, 60.0)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
@@ -2032,7 +2036,7 @@ def macros_edit_item_name_path():
         ("Egg", (9.5, 3.1, 0.7, 0.7, 12.6, 143.0)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
@@ -2079,7 +2083,7 @@ def macros_edit_ingredients_path():
         ("Chicken sandwich", (("Chicken breast", 2.0), ("Whole milk", 0.5))),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
@@ -2209,7 +2213,7 @@ def macros_add_ingredient_path():
         ("Sandwich", (("Chicken breast", 2.0),)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
@@ -2291,7 +2295,7 @@ def macros_edit_macros_path():
         ("Chicken breast", (4.0, 1.0, 0.0, 0.0, 31.0, 165.0)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
@@ -2400,7 +2404,7 @@ def macros_show_items_path():
         ("Chicken breast", (3.6, 1.0, 0.0, 0.0, 31.0, 165.0)),
     ))
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
@@ -2460,7 +2464,7 @@ def macros_delete_item_path():
         return names, refs, incs
 
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
     app.send("\x1b[B\x1b[B\r")                 # -> Macros (index 2)
     app.check("macros menu", "═[Macros]", "items", "logs", "back")
     app.send("\r")                             # -> Macro items (index 0)
@@ -2547,8 +2551,8 @@ def muscle_groups_path():
     print("=== MUSCLE GROUPS PATH: browse the seeded groups, view one's info, back out ===")
     seed_db()
     app = App()
-    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Exit")
-    app.send("\x1b[B\x1b[B\x1b[B\r")           # Muscle groups (index 3, after Macros)
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
+    app.send("\x1b[B\x1b[B\x1b[B\x1b[B\r")           # Muscle groups (index 4, below Weight)
     # The plain (non-filtering) list: the 9-row Choice box shows the seeded
     # groups in name order; "Pecs" (index 11) starts below the fold, so assert
     # only what is visible initially — a top, middle and bottom row — and,
@@ -2750,6 +2754,81 @@ def exercise_muscle_groups_path():
     app.check("landed on Row options", "═[Row]", "edit muscle groups", "delete")
     app.close()
     print("ok   by muscle group: the picker lists groups with exercises (with their counts) and the unassigned row (only when it holds an exercise), the category lists filter, and picking one opens its options")
+    print()
+
+def weight_path():
+    print("=== WEIGHT PATH: log a weigh-in (and a backdate), same-day warning, history, modify, delete ===")
+    seed_db()
+    today_slashed = date.today().strftime("%Y/%m/%d")
+    today_dashed = date.today().strftime("%Y-%m-%d")
+    app = App()
+    app.check("main menu", "═[Main menu]", "Exercises", "Sessions", "Macros", "Muscle groups", "Weight", "Exit")
+    app.send("\x1b[B" * 3 + "\r")                     # Weight (index 3, above Muscle groups)
+    app.check("weight menu", "═[Weight]", "log weight", "history", "back")
+    # history with nothing yet says so and returns to the weight menu
+    app.send("\x1b[B\r")                              # history (index 1)
+    app.check("no weigh-ins", "No weigh-ins yet — log one first", "═[Weight]")
+    # log today's weigh-in: date prefilled, Enter accepts it, then the weight
+    app.send("\r")                                    # log weight (index 0)
+    app.check("log-date field", "Log date (YYYY/MM/DD)", today_slashed)
+    app.send("\r")                                    # accept today's date
+    app.check("weight field", "Weight (kg)", "e.g. 82.5")
+    app.send("82.25\r")
+    app.check("logged today", f"Logged 82.25 kg on {today_slashed}", "═[Weight]", "log weight", "history", "back")
+    # log again today -> warning; No (the default) records nothing
+    app.send("\r")                                    # log weight
+    app.send("\r")                                    # accept today's date
+    app.send("82.2\r")
+    app.check("same-day warning declines", f"A weight log already exists for {today_slashed}. Log anyway?", "No")
+    app.send("\r")                                    # No (the default): nothing recorded
+    app.check("nothing recorded", "═[Weight]", "log weight", "history", "back")
+    # log again today -> an explicit Yes records a second entry
+    app.send("\r")                                    # log weight
+    app.send("\r")                                    # accept today's date
+    app.send("82.5\r")
+    app.check("same-day warning accepts", "Log anyway?")
+    app.send("\x1b[A\r")                              # Yes: record it anyway
+    app.check("logged again", f"Logged 82.5 kg on {today_slashed}")
+    # a backdated weigh-in: clear the prefilled date (10 chars) and type an old day
+    app.send("\r")                                    # log weight
+    app.send("\x7f" * 10 + "2020/06/15\r")            # clear the prefilled date, then backdate
+    app.send("83.25\r")
+    app.check("logged backdate", "Logged 83.25 kg on 2020/06/15")
+    # history: newest first — today's two entries, then the older backdate
+    app.send("\x1b[B\r")                              # history (index 1)
+    app.check("history picker", "═[Select weigh-in]", today_slashed, "82.5 kg", "82.25 kg")
+    app.check("history backdate", "2020/06/15", "83.25 kg")
+    app.send("\r")                                    # pick the top row: today's latest (82.5)
+    app.check("entry options", "═[Weight log ", "· 82.5 kg", "modify weight", "delete", "back")
+    # modify the weight: clear the prefilled 82.5 and type a correction
+    app.send("\r")                                    # modify weight (index 0)
+    app.check("modify prefilled", "Weight (kg)", "82.5")
+    app.send("\x7f" * 4 + "81.75\r")
+    app.check("modified", "Updated weight to 81.75 kg.", "· 81.75 kg")
+    # delete it: No-defaulted confirm, then an explicit Yes
+    app.send("\x1b[B\r")                              # delete (index 1)
+    app.check("delete confirm", "Delete", "81.75 kg", "No")
+    app.send("\x1b[A\r")                              # Yes: delete it
+    app.check("deleted", "Deleted the weight log.")
+    app.check("back at the picker", "═[Select weigh-in]", "82.25 kg", "83.25 kg")
+    # (The deleted 81.75 kg can't be asserted absent from the grid: the
+    # history area above the picker still shows the "Updated/Delete … 81.75 kg"
+    # log lines. The DB assertions at the end prove the row is gone.)
+    app.send("\x1b")                                  # Esc: back to the weight menu
+    app.check("back at weight menu", "═[Weight]", "log weight", "history", "back")
+    app.send("\x1b")                                  # Esc: back to the main menu
+    app.check("back at main", "═[Main menu]", "Weight")
+    app.close()
+
+    con = sqlite3.connect(DB)
+    rows = con.execute("SELECT date, weight_kg FROM weight_measurements ORDER BY date").fetchall()
+    count = con.execute("SELECT COUNT(*) FROM weight_measurements").fetchone()[0]
+    con.close()
+    if rows != [("2020-06-15", 83.25), (today_dashed, 82.25)]:
+        raise SystemExit(f"FAIL: unexpected weight_measurements rows {rows}")
+    if count != 2:
+        raise SystemExit(f"FAIL: the declined duplicate and the deleted entry must leave exactly the two kept rows, got {count}")
+    print("ok   weigh-ins log against a date and time, warn once per day, backdate, and modify/delete individually")
     print()
 
 def wrap_path():
@@ -3145,6 +3224,7 @@ macros_show_items_path()
 macros_delete_item_path()
 muscle_groups_path()
 exercise_muscle_groups_path()
+weight_path()
 wrap_path()
 weight_default_path()
 confirm_set_path()

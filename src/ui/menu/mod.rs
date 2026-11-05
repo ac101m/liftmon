@@ -17,8 +17,12 @@
 //! [`self::log_options`], [`self::add_recipe_item`],
 //! [`self::exercise_options`], [`self::select_muscle_group`],
 //! [`self::muscle_group_options`],
-//! [`self::show_items`] and
-//! [`self::item_options`] — with [`self::select_exercise`] (the shared
+//! [`self::show_items`],
+//! [`self::item_options`], [`self::weight_menu`] (the weight screen),
+//! [`self::log_weight`] (its log-a-weigh-in flow), [`self::show_weight_logs`]
+//! (its history picker) and
+//! [`self::weight_log_options`] (a picked entry's actions) — with
+//! [`self::select_exercise`] (the shared
 //! "Select exercise" chooser), [`self::select_exercise_by_group`] (the
 //! per-muscle-group browse it offers, over in the muscle-group picker too) and
 //! [`self::edit_ingredients`] (the composite item's ingredient editor, run
@@ -48,6 +52,7 @@ mod item_options;
 mod log_cheat;
 mod log_item;
 mod log_options;
+mod log_weight;
 mod macros_items;
 mod macros_logs;
 mod macros_menu;
@@ -62,6 +67,9 @@ mod session_menu;
 mod session_options;
 mod show_items;
 mod show_logs;
+mod show_weight_logs;
+mod weight_log_options;
+mod weight_menu;
 
 /// The current screen in the app's menu hierarchy.
 pub(crate) enum Menu {
@@ -128,6 +136,18 @@ pub(crate) enum Menu {
     /// The freeform session flow: pick exercises and log sets until the user
     /// leaves, then land back on that session's options screen.
     FreeformSession { session_id: i64 },
+    /// The weight screen (Log weight / History / Back), the home of the weight
+    /// tracker.
+    Weight,
+    /// The log-weight screen: ask the day's date (default today, backdatable,
+    /// future date warned) and the weight in kg, and record the weigh-in —
+    /// warning when the date already has one.
+    LogWeight,
+    /// The show-weight-logs screen: browse the stored weigh-ins with the
+    /// filter picker, newest first, then into that entry's options screen.
+    ShowWeightLogs,
+    /// The actions for one picked weigh-in, identified by its database row id.
+    WeightLogOptions { id: i64 },
 }
 
 /// The lines of an exercise's info section: the bold exercise name (with a
@@ -221,6 +241,10 @@ impl Menu {
             Menu::SelectSession => select_session::run(shell, conn),
             Menu::SessionOptions { session_id } => session_options::run(shell, conn, session_id),
             Menu::FreeformSession { session_id } => freeform_session::run(shell, conn, session_id),
+            Menu::Weight => weight_menu::run(shell),
+            Menu::LogWeight => log_weight::run(shell, conn),
+            Menu::ShowWeightLogs => show_weight_logs::run(shell, conn),
+            Menu::WeightLogOptions { id } => weight_log_options::run(shell, conn, id),
         }
     }
 }

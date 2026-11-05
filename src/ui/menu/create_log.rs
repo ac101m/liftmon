@@ -49,8 +49,9 @@ pub(super) fn run(shell: &mut Shell, conn: &Connection) -> Result<Option<Menu>, 
 /// place, clearing the default first (backdating the entry). A date that won't
 /// parse re-asks with what was typed, so a single digit can be fixed, and a
 /// date in the future is confirmed rather than trusted — the clock may be
-/// wrong. `None` when the user cancels with Escape.
-fn ask_date(shell: &mut Shell) -> Result<Option<NaiveDate>, UiError> {
+/// wrong. `None` when the user cancels with Escape. Shared with the log-weight
+/// screen, which asks its day's date the same way.
+pub(super) fn ask_date(shell: &mut Shell) -> Result<Option<NaiveDate>, UiError> {
     let mut pending = format_date(Local::now().date_naive());
     loop {
         let outcome = shell.read_line(Some("Log date (YYYY/MM/DD)".to_string()), None, &pending)?;
