@@ -88,16 +88,17 @@ pub(super) fn run(
         None => None,
     };
     // A resume — the session already holds work, so it has a current exercise
-    // to continue — announces where the session started and which exercise the
-    // user is mid-flow in, as plain lines beneath one another. Beginning a
-    // brand-new session (nothing performed yet) reads as a fresh start and
-    // logs nothing.
+    // to continue — announces where the session started, which exercise the
+    // user is mid-flow in, and that exercise's current personal record, as
+    // plain lines beneath one another. Beginning a brand-new session (nothing
+    // performed yet) reads as a fresh start and logs nothing.
     if let Some((exercise, _)) = &current {
         shell.log(format!(
             "Resumed freeform session from {}",
             format_date(local_date(session.created_at))
         ));
         shell.log(format!("Current exercise '{}'", exercise.name));
+        log_current_pr(shell, conn, exercise)?;
     }
     // The active exercise and its performance, driven by one loop: ask a set
     // (unless freshly resumed onto an existing performance, which shows the
@@ -162,6 +163,7 @@ pub(super) fn run(
                     // performance is still deferred until the first set.
                     Some(picked) => {
                         shell.log(format!("Moved to next exercise '{}'", picked.name));
+                        log_current_pr(shell, conn, &picked)?;
                         performance = None;
                         exercise = picked;
                         continue 'active;
@@ -204,9 +206,40 @@ fn begin_exercise(shell: &mut Shell, conn: &Connection) -> Result<Option<Exercis
     };
     // A picked exercise begins with a plain notice — not a framed section — so
     // a session's log reads as a contiguous stream of set lines with a small
-    // marker where each exercise starts.
+    // marker where each exercise starts, with the exercise's current personal
+    // record beneath it (see [`log_current_pr`]).
     shell.log(format!("Moved to next exercise '{}'", exercise.name));
+    log_current_pr(shell, conn, &exercise)?;
     Ok(Some(exercise))
+}
+
+/// Log the exercise's current personal record — its best set so far, the
+/// number a new set must beat to be a PR — as one plain line, at the moment
+/// the exercise becomes the current one: `Current PR: 100 kg × 5 · set on
+/// 2026/10/20`, or `No PR yet` when it has never been performed. Called from
+/// the resume and move-on paths, so the number to beat is in front of the user
+/// as they begin a set. The record's date is its local day, in the same
+/// `· set on {date}` shape the info screen lists its records in; the first of
+/// [`Set::personal_records`] is the current best, since records run in
+/// strictly rising e1RM order.
+fn log_current_pr(
+    shell: &mut Shell,
+    conn: &Connection,
+    exercise: &Exercise,
+) -> Result<(), UiError> {
+    let record = Set::personal_records(conn, exercise.id, 1)?
+        .into_iter()
+        .next();
+    match record {
+        Some(set) => shell.log(format!(
+            "Current PR: {} kg × {} · set on {}",
+            set.weight_kg,
+            set.reps,
+            format_date(local_date(set.created_at)),
+        )),
+        None => shell.log("No PR yet"),
+    }
+    Ok(())
 }
 
 /// The title of a set-form field, prefixed with the current exercise's name as

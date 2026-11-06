@@ -387,6 +387,7 @@ def end_path():
     app.check("exercise picker", "Select exercise", "type to filter", " Bench press", " Squat")
     app.send("\r")                                          # pick Bench press
     app.check("moved to next exercise logged", "Moved to next exercise 'Bench press'")
+    app.check("fresh exercise has no PR yet", "No PR yet")
     app.check("weight prompt", "═[Bench press · Weight (kg)]", "e.g. 100")
     app.send("100\r")
     app.check("reps prompt", "═[Bench press · Reps]", "e.g. 5")
@@ -604,6 +605,8 @@ def resume_path():
               "Resumed freeform session from " + date.today().strftime("%Y/%m/%d"),
               "Current exercise 'Squat'",
               "═[Squat]", "next set", "next exercise", "show exercise info", "exit session")
+    # The resumed exercise's current PR rides under the "Current exercise" line.
+    app.check("current PR logged on resume", "Current PR: 60 kg × 10 · set on " + date.today().strftime("%Y/%m/%d"))
     app.send("\r")                                          # next set
     app.check("weight prompt (resumed)", "═[Squat · Weight (kg)]", "> 60")
     app.send("\x7f" * 2 + "70\r")                           # clear the prefilled 60, then the new weight
@@ -651,9 +654,10 @@ def stale_confirm_path():
     created_label = created_at.astimezone().date().strftime("%Y/%m/%d")   # the UI writes 2026/10/19
     last_set_at = datetime.now(timezone.utc) - timedelta(days=2, hours=1)
     last_set_text = last_set_at.strftime("%Y-%m-%d %H:%M:%S+00:00")
+    last_set_label = last_set_at.astimezone().date().strftime("%Y/%m/%d")  # the PR line's record date
     con.execute("INSERT INTO sessions (created_at) VALUES (?)", (created_text,))
     con.execute("INSERT INTO exercise_performances (session_id, exercise_id, created_at) VALUES (1, 1, ?)", (last_set_text,))
-    con.execute("INSERT INTO sets (exercise_performance_id, exercise_id, created_at, weight_kg, reps, difficulty) VALUES (1, 1, ?, 100.0, 5, 'failure')", (last_set_text,))
+    con.execute("INSERT INTO sets (exercise_performance_id, exercise_id, created_at, weight_kg, reps, difficulty, epley_e1rm) VALUES (1, 1, ?, 100.0, 5, 'failure', ?)", (last_set_text, 100.0 * (1 + 5 / 30.0)))
     con.commit(); con.close()
 
     app = App()
@@ -676,6 +680,10 @@ def stale_confirm_path():
               "Resumed freeform session from " + created_label,
               "Current exercise 'Bench press'",
               "═[Bench press]", "next set", "next exercise", "show exercise info", "exit session")
+    # The resumed exercise's current PR — the seeded set, dated by its own
+    # record day (two days ago), not the resume's today — rides under the
+    # "Current exercise" line so the user sees the number to beat.
+    app.check("current PR logged on resume", "Current PR: 100 kg × 5 · set on " + last_set_label)
     app.close()
 
     d = db()
